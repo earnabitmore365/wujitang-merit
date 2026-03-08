@@ -34,29 +34,25 @@ if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/nul
     commit -m "pre-evolve snapshot $(date '+%Y-%m-%d %H:%M:%S')" || true
 fi
 
-# ── Step 1: 生成 GEP Prompt ─────────────────────────────────────────────
+# ── Step 1: 生成 GEP Prompt → 保存到带时间戳的新文件 ──────────────────
 echo "🧬 生成 GEP Prompt..."
+TIMESTAMP=$(date '+%s%3N')
+PROMPT_FILE="$EVOLVER_WORKSPACE/evolution/gep_prompt_run_${TIMESTAMP}.txt"
+
 MEMORY_DIR="$EVOLVER_WORKSPACE" \
 OPENCLAW_WORKSPACE="$EVOLVER_WORKSPACE" \
 EVOLVER_REPO_ROOT="$REPO_ROOT" \
 EVOLVE_BRIDGE=false \
 EVOLVER_ROLLBACK_MODE=stash \
-node "$EVOLVER_DIR/index.js" run "${@:2}"
+node "$EVOLVER_DIR/index.js" run "${@:2}" > "$PROMPT_FILE"
 
-# ── Step 2: 找最新 Prompt ─────────────────────────────────────────────
-LATEST=$(ls -t "$EVOLVER_WORKSPACE/evolution/gep_prompt_"*.txt 2>/dev/null | head -1)
-if [ -z "$LATEST" ]; then
-  echo "❌ 未找到 GEP prompt 文件"
-  exit 1
-fi
-
-CYCLE=$(echo "$LATEST" | grep -oE 'Cycle_#([0-9]+)' | grep -oE '[0-9]+')
-RESPONSE_FILE="$EVOLVER_WORKSPACE/evolution/gep_response_Cycle_${CYCLE}.json"
+# ── Step 2: 使用刚刚生成的 Prompt ────────────────────────────────────
+LATEST="$PROMPT_FILE"
+RESPONSE_FILE="$EVOLVER_WORKSPACE/evolution/gep_response_run_${TIMESTAMP}.json"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "GEP Prompt: $LATEST"
-echo "Cycle: #${CYCLE}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # ── Step 3: Claude Code headless 执行 ────────────────────────────────
@@ -74,4 +70,4 @@ EVOLVER_ROLLBACK_MODE=stash \
 node "$EVOLVER_DIR/index.js" solidify
 
 echo ""
-echo "✅ 进化周期 #${CYCLE} 完成"
+echo "✅ 进化完成（run_${TIMESTAMP}）"
