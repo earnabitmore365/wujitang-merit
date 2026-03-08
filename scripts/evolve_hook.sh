@@ -2,7 +2,9 @@
 # 自动进化 hook — PreCompact / SessionEnd 触发
 # 后台跑，不阻塞主会话
 
-CWD="${1:-$(pwd)}"
+# 从 stdin 读取 hook JSON，提取 cwd
+CWD=$(python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('cwd',''))" 2>/dev/null)
+
 HOME_DIR="$HOME"
 
 # 按 cwd 判断项目
@@ -11,7 +13,6 @@ if [ "$CWD" = "$HOME_DIR/.claude" ]; then
 elif [ "$CWD" = "$HOME_DIR/project/auto-trading" ]; then
   PROJECT="auto-trading"
 else
-  # 不在管理的项目里，不跑
   exit 0
 fi
 
