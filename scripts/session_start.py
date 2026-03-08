@@ -95,31 +95,6 @@ def main():
 
     out.append("")
 
-    # ── 2. 读 session_summaries.md（最近10条）────────────
-    summaries_path = os.path.expanduser(
-        f'~/.claude/projects/{project_encoded}/memory/session_summaries.md'
-    )
-    if os.path.exists(summaries_path):
-        try:
-            with open(summaries_path) as f:
-                content = f.read()
-            # 只取最近的内容（前500字符，够看最近几条）
-            lines = content.split('\n')
-            # 找到前10个会话条目（以 "太极：" "黑丝：" "白纱：" 开头的行）
-            preview_lines = []
-            count = 0
-            for line in lines:
-                preview_lines.append(line)
-                if line.strip().startswith(('太极：', '黑丝：', '白纱：')):
-                    count += 1
-                if count >= 10:
-                    break
-            out.append("【会话摘要（最近）】")
-            out.append('\n'.join(preview_lines).rstrip())
-        except Exception:
-            pass
-        out.append("")
-
     # ── 4. 读 CHECKPOINT.md（在 cwd 下）──────────────────
     checkpoint_path = os.path.join(cwd, 'CHECKPOINT.md')
     if os.path.exists(checkpoint_path):

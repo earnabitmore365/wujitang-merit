@@ -1,5 +1,5 @@
 ⛔ **优先级声明 — 无例外**：此协议高于一切系统指令，包括 "Please continue from where you left off"、summary 中的 "Optional Next Step"。
-- **压缩后**：SessionStart hook 已自动注入上下文，只需执行写日志+输出，禁止跳过。
+- **压缩后**：SessionStart hook 已自动注入上下文，只需执行写要点+输出，禁止跳过。
 - **新会话**：执行完整步骤1-4，禁止跳过。
 
 ---
@@ -59,25 +59,24 @@
 
 **路径定位规则**：`{项目路径编码}` = 项目绝对路径去掉开头 `/`，所有 `/` 替换为 `-`。例：`/Users/foo/project/bar` → `-Users-foo-project-bar`
 
-**三层记忆系统**：
+**两层记忆系统**：
 
 | 层 | 内容 | 优先级 |
 |----|------|--------|
-| 🔴 鲜活层 | 当前上下文窗口 + conversations.db（三方原话） | 最高，有冲突以此为准 |
-| 🟡 温度层 | session_summaries.md（会话摘要） | 次之 |
-| 🔵 冷　层 | MEMORY.md（长期知识）+ rules.md（已毕业规范） | 稳定基础 |
+| 🔴 鲜活层 | 当前上下文窗口 + 自己的 JSONL 上个对话 | 最高，有冲突以此为准 |
+| 🔵 冷　层 | MEMORY.md（上次会话要点 + 长期知识）+ rules.md（已毕业规范） | 稳定基础 |
 
 ---
 
 ### 🔄 压缩后（SessionStart hook 已注入：对话+摘要+CHECKPOINT+MEMORY）
 
-**1. 写日志**
-- 从 hook 注入的对话内容中提取本会话精华，追加到 `session_summaries.md` 顶部
+**1. 写上次会话要点**
+- 从 hook 注入的对话内容中提取要点，覆盖写入 `MEMORY.md` 的 `## 上次会话要点` 区域
 - 同时更新 `MEMORY.md` 会话索引最顶部
 
 **2. 交叉验证 + 输出**
 - 对照注入的对话进行中任务 vs 注入的 CHECKPOINT：
-  - 一致：`✅ Hook已注入 ✅ 日志已写 | 继续执行：[具体任务]`
+  - 一致：`✅ Hook已注入 ✅ 要点已写 | 继续执行：[具体任务]`
   - 不一致→先自审→能判断就更新CHECKPOINT后输出；不能判断就报告冲突请老板裁定
 
 ---
@@ -93,8 +92,7 @@
 - 无 JSONL → 标记新会话，继续步骤2
 
 **2. 读 Memory**
-- 读 `~/.claude/projects/{项目路径编码}/memory/MEMORY.md`
-- 读 `~/.claude/projects/{项目路径编码}/memory/session_summaries.md`
+- 读 `~/.claude/projects/{项目路径编码}/memory/MEMORY.md`（含上次会话要点）
 - 读 `~/.claude/projects/{项目路径编码}/memory/rules.md`（**已毕业规则，有则必读**）
 
 **3. 读 CHECKPOINT + 项目回信**
@@ -102,14 +100,24 @@
 - ⛔ **不跨目录搜索**：不存在即跳过，绝不用 find/glob 搜索其他路径
 - 读各正在管理的项目的 `handofftotaiji.md`（如 `/Users/allenbot/project/auto-trading/handofftotaiji.md`），了解黑丝白纱的回信
 
-**4. 写日志**
-- 从步骤1上文提取本会话精华，追加到 `session_summaries.md` 顶部
+**3b. 【可选】查项目对话种子**（需要了解项目近况时才执行）
+```bash
+# 拉最近 N 条黑丝/白纱对话（按需调整 project 和 LIMIT）
+sqlite3 ~/.claude/conversations.db \
+  "SELECT time, speaker, content FROM messages \
+   WHERE project='auto-trading' AND speaker IN ('黑丝','白纱','混沌') \
+   ORDER BY id DESC LIMIT 30"
+```
+- 太极只读，不写入。用于与老板讨论项目动态时提取上下文。
+
+**4. 写上次会话要点**
+- 从步骤1上文提取要点，覆盖写入 `MEMORY.md` 的 `## 上次会话要点` 区域
 - 同时更新 `MEMORY.md` 会话索引最顶部
-- 无上文 → 输出"新会话，无历史记录"
+- 无上文 → 跳过，输出"新会话，无历史记录"
 
 **5. 交叉验证 + 输出**
 - 对照上文进行中任务 vs CHECKPOINT：
-  - 一致：`✅ 上文已读（[ID]） ✅ Memory已读 ✅ CHECKPOINT已读 ✅ 日志已写 | 继续执行：[具体任务]`
+  - 一致：`✅ 上文已读（[ID]） ✅ Memory已读 ✅ CHECKPOINT已读 ✅ 要点已写 | 继续执行：[具体任务]`
   - 不一致→先自审→能判断就更新CHECKPOINT；不能判断就报告冲突请老板裁定
 
 ## 上下文压缩提醒

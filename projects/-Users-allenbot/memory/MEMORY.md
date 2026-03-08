@@ -52,7 +52,7 @@
 | 制度 | `CLAUDE.md` | 规则、行为准则 |
 | 交接 | `CHECKPOINT.md` | 任务状态、下一步 |
 | 档案 | `MEMORY.md` | 跨会话知识、决策记录、项目历史 |
-| 日记 | `session_summaries.md` | 每次会话精华摘要 |
+| ~~日记~~ | ~~`session_summaries.md`~~ | ~~废弃（2026-03-08）~~ — 合并进 `MEMORY.md` 的「上次会话要点」区域 |
 
 ---
 
