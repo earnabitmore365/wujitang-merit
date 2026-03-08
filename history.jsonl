@@ -4034,3 +4034,28 @@
 {"display":"那你就继续吧","pastedContents":{},"timestamp":1772987113175,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
 {"display":"测试好了？","pastedContents":{},"timestamp":1773005664220,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
 {"display":"你没试好怎么能叫好了？","pastedContents":{},"timestamp":1773005701241,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"数据验证好了吗？","pastedContents":{},"timestamp":1773005740995,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"那这个feishu是什么东西？上网查查为什么会有这个东西？然后什么东西污染？污染了会怎样？对claude有什么影响？","pastedContents":{},"timestamp":1773006284576,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"如果你现在把他装在openclaw，你然后claude code能用得到吗？讨论什么都不懂","pastedContents":{},"timestamp":1773006516894,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"嗯嗯，没问题的话，就把备份删了吧，然后我们继续","pastedContents":{},"timestamp":1773006560019,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"嗯嗯，可以，那就重跑吧","pastedContents":{},"timestamp":1773006622658,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"所以他会按照我们的session去生成prompt才能真正生效？","pastedContents":{},"timestamp":1773006702271,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"等一下，为什么sub_phase_labels还在？","pastedContents":{},"timestamp":1773006734311,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"那你说跑通了，是跑通了，openclaw的session？要不你上网查查吧。。。我这里有3个人，要怎么决定给他连接哪一个的session？","pastedContents":{},"timestamp":1773006878673,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"我还想让你把完整的种子生成器怎么用写下来了不是吗？","pastedContents":{},"timestamp":1773006926547,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"你真的10次压缩回来有10个做法。。。完全没有统一的。。。你觉得写在哪里你会看就写在哪里吧。然后更新一份在readme。还是你这份是在哪里看到的？lab下的readme？还是你刚刚自己写的？","pastedContents":{},"timestamp":1773007162004,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"","pastedContents":{},"timestamp":1773007277370,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"你搞了那么久就是因为没有去看evomap的官方文档？？","pastedContents":{},"timestamp":1773007420440,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"不能多worker不是已经解决了吗？","pastedContents":{},"timestamp":1773007501024,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"那现在这个种子生成能不能多线跑？","pastedContents":{},"timestamp":1773007594080,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"那怎么能让他多线跑又不丢数据呢？","pastedContents":{},"timestamp":1773007707714,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"你先去验证一下这样改行不行？","pastedContents":{},"timestamp":1773007740945,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"那算了，不要多线跑了。不丢数据就行。改回去单线跑","pastedContents":{},"timestamp":1773007839119,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"还有这个sub_phase_labels跑的时候不要用。放着就行。","pastedContents":{},"timestamp":1773007908260,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"那改了这个，evolver他会认吗？他加工的是苹果，你给他橙子和梨？","pastedContents":{},"timestamp":1773008009715,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"不是，他加工的是message，你给他user 和 assistant，他会处理这2个吗？","pastedContents":{},"timestamp":1773008074392,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"regime_fact_labels你这些一个个英文字是什么东西？都是你们自己创建的，都没跟我解释过。我哪里知道要跑不跑？？","pastedContents":{},"timestamp":1773008132789,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"我的意思是他能读到而已，会不会加工？","pastedContents":{},"timestamp":1773009108866,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"看东西看全套","pastedContents":{},"timestamp":1773009133308,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
+{"display":"嗯嗯，继续","pastedContents":{},"timestamp":1773009173897,"project":"/Users/allenbot/project/auto-trading","sessionId":"42c89a0d-0cb6-4c6c-bdc4-066f67a8a74f"}
+{"display":"嗯嗯","pastedContents":{},"timestamp":1773009192105,"project":"/Users/allenbot","sessionId":"1f704c1f-8bde-4c9b-9327-a7f35cbabe95"}
