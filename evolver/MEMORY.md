@@ -54,3 +54,4 @@
 | #0006 | 2026-03-08 | repair (log_error) | ✅ 创建 evolver daily log，修复 MISSING 错误 |
 | #0008 | 2026-03-08 | repair (log_error, high_failure_ratio) | ✅ 修复配置 + 创建 evo-stats 技能，6 文件 191 行变更 |
 | #0009 | 2026-03-09 | optimize (append history) | ✅ 补录缺失周期到进化历史表，确保追加不覆盖 |
+| #0014 | 2026-03-09 | innovate (code-stats skill) | ✅ 创建 code-stats 技能，仓库复杂度分析仪表盘，3 文件 ~180 行 |
