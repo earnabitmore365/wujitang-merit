@@ -5,7 +5,7 @@
 # Auto-Trading 项目记忆
 
 > 白纱最后更新：2026-03-11 深夜 — GP v0.8专项冠军方案出炉，7文件改动，CHECKPOINT已更新
-> 黑丝最后更新：2026-03-12 49ffc343压缩×2 — Paper Trade 4文件实现完成(PaperAdapter+PaperTradeManager)+py_compile通过+README已更新+CHECKPOINT收尾中
+> 黑丝最后更新：2026-03-13 49ffc343压缩×3 — TTP种子完成+GP进化检查(4毕业生)+rsi_reversal_v2修复+种子预过滤优化+双账号对冲记录
 
 ## 黑丝和白纱的铁律（老板明确要求，压缩后必须记得）
 
@@ -24,10 +24,18 @@
 
 ## 老板待推进想法（白纱记录）
 
-- **Paper Trade 完整系统**（2026-03-12）：接入真实实盘行情做模拟交易。老板要求完整，不要半成品。
-  核心：regime切换 + 策略选择 + 模拟成交（用真实价格）+ 手续费/滑点 + 日志报告。
-  现有基础：live_runner.py已跑实时行情、L2 regime检测在线、89个Gate冠军策略可用。
-  待定：白纱趁黑丝忙GP时推进，还是等黑丝主导。
+- **Paper Trade 完整系统**（2026-03-12）：✅ 代码已完成，待实测。
+
+- **双账号对冲策略**（2026-03-13）：老板原创。用两个账号取代TTP反复平仓再开仓。
+  核心思路：账号A持主仓（吃趋势），账号B在检测到回调时开对冲单（吃回调），回调结束关对冲。主仓全程不动。
+  优势：不踏空（主仓不关）+ 多赚一层回调利润 + 资金费率多空抵消 + 保证金不是成本
+  信号设计：
+  - 开对冲：FVG出现 / 结构高点形成 / RSI超买 / 量能衰竭
+  - 关对冲：FVG填补完成 / 支撑位反弹 / RSI回中性
+  - 主仓止损：regime从牛转熊 / 结构破坏
+  现有积木：FVG策略、regime检测、RSI、break_of_structure
+  状态：等外接SSD到了再开发（磁盘空间不足）
+  老板原话："信号来了，buy。然后检测回调，检测FVG之类的。检测到高点准备或正在回落，就开个对冲单。直到某个点，比如FVG填补完成？"
 
 ---
 
@@ -51,16 +59,17 @@
 
 > 覆盖更新，不累积。
 
-**会话 49ffc343 压缩×2（2026-03-12）：Paper Trade 实现完成**
+**会话 49ffc343 压缩×3（2026-03-13）：TTP种子完成 + GP进化检查**
 
-1. **Paper Trade 4文件全部实现**：老板确认后执行，代码全部写完+py_compile通过
-   - `lab/src/exchange/paper/__init__.py` — 包文件
-   - `lab/src/exchange/paper/adapter.py` (~350行) — PaperAdapter：真实行情(共享HyperLiquidAdapter)+虚拟账本(fee 0.035%/slippage 0.02%/funding 0.01%/8h)+原子持久化+JSONL交易日志
-   - `lab/paper_trade/__init__.py` — 包文件
-   - `lab/paper_trade/run.py` (~500行) — PaperTradeManager：26冠军(ADA 12+XRP 14)×$500独立资金+WebSocket tick级风控+K线对齐策略信号+regime切换(牛/初牛→long, 盘整→mid, 初熊/熊→short)
-2. **关键设计决策**：一个共享HyperLiquidAdapter避免26个WebSocket连接；$1固定注码(min_trade=1, position_pct=0.0001)匹配回测；intervals>4h在PaperAdapter覆写get_klines修复HyperLiquidAdapter的interval_map不全问题
-3. **reverse_position锁重入修复**：close+open两步各自需锁，reverse_position先获锁调_close_position_locked()内部方法，释放后再调place_order
-4. **之前会话要点**：indicator_cache.db 45.68GB全合法不动；Mac Mini扩展坞→Satechi+Crucial P310 2TB；并行种子跳过优化待TTP跑完再改
+1. **TTP种子100%完成**：seed_v3_ttp.db 26,288组/1.857亿笔/40GB，磁盘I/O错误→空间清理(删GarageBand+iWork)→手动重启→预过滤加速→完成
+2. **种子预过滤优化**：generate_seed.py 并行+单线程版，跳过已完成coin/interval不加载K线（1m=210万行），大幅加速断点续传
+3. **rsi_reversal_v2修复**：MA方向过滤逻辑反转（原来超卖+趋势上=矛盾→改为超卖+趋势下=合理），修复107组零交易
+4. **策略诊断**：klinger/linreg_slope/ma在1m全亏100%=高频信号手续费杀手；ma.py有设计缺陷(无交叉检测，每根K线都发信号)
+5. **TTP机制讲解**：swing跟踪→trailing stop→反复平仓再开仓。老板提出双账号对冲概念替代TTP循环（已记录到待推进想法）
+6. **种子压缩讨论**：seed_v3(51GB)>seed_v3_ttp(40GB)因页面填充率差异，VACUUM需~51GB临时空间，等外接SSD
+7. **GP进化检查**：4毕业生（3×ETH_1d long同一fisher_transform公式score=2.40，1×LINK_12h long mass_index score=1.37有4弃权）
+8. **GP调度器运行中**：老板已启动gp_scheduler.py跑全币种全周期
+9. **Paper Trade代码完成**（上次会话）：4文件新建，待实测
 
 ---
 

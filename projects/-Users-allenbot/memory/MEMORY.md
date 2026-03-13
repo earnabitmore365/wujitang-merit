@@ -4,24 +4,29 @@
 
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-08
+> 太极最后更新：2026-03-12
 
 ## 上次会话要点
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **Qwen2.5-Coder:7b 已配好**：`ollama pull qwen2.5-coder:7b` 下载完成（4.7GB，`~/.ollama/models/`），openclaw configure 配为 `custom-localhost-11434`，contextWindow=32768，default model 已切换
-- **evolver 僵尸基因已处理**：`gene_auto_c7368808` 打了 -0.5 epigenetic boost，净 boost 归零，下次 cycle 其他基因有机会被选
-- **evolver 状态查法**：查 `tail -30 ~/.claude/evolver/evolution/evolution_narrative.md`，不要用 `ps aux`（evolver 跑完即退出，进程不常驻）
-- **evolver 产出位置**：`~/.claude/skills/`，直接在 Claude Code 里可用
-- **a2a broadcast**：capsule 有 `eligible_to_broadcast:true` 但本地版不连 EvoMap 网络，不会真正广播
+- **太极升级为 Opus 4.6**：老板将太极从 Sonnet 切换为 Opus，本会话是 Opus 作为太极的首次会话
+- **evolver genes.json 修复**：`~/.claude/assets/gep/genes.json`（引擎实际读取的文件）补回 2 个缺失的 innovate 基因（`gene_evo_forecast` +0.5 boost, `gene_bootstrap_memory_files`），现共 6 个基因
+- **关键路径澄清**：引擎读 `~/.claude/assets/gep/genes.json`，不是 `~/.claude/evolver/assets/gep/genes.json`（后者是 workspace 副本）。路径由 `EVOLVER_REPO_ROOT=$HOME/.claude` → `getGepAssetsDir()` 决定
+- **EVOLVER_README.md 完全重写**：14 节技术手册，修正了 Sonnet 版本的所有路径错误、基因表错误、outcome 推断机制描述错误。新增 BUG-004~006 和 FIX-002
+- **僵尸基因根因**：`inferOutcomeFromSignals()` 对 0-change + no-error 返回 success(0.60)，导致正反馈循环。工作方案：退役僵尸基因（清空 signals_match）
+- **gene_auto_53538cc4 已退役**：signals_match=[]，不再被选中
+- **ghost gene c7368808**：不在 genes.json 中但 memory_graph.jsonl 有 309 条记录，selector 会忽略其 preference，30 天半衰期自然衰减
+- **磁盘 95%（12.5G 剩余）**：已标记，未处理
+- **handofftotaiji.md 未处理**：第 12 章（sentinel detection）、第 13 章（db_write.py bug）待读
 
 ---
 
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
-| S38（new） | 1f704c1f续4 | 03-09 | 压缩后恢复；待修double-dash路径bug（`-Users-allenbot--claude`） |
+| S39 | c2c95c51 | 03-12 | 太极升Opus首会话；evolver genes.json修复(补2 innovate基因)+EVOLVER_README.md完全重写；角色变更(黑丝升主力/白纱转支援) |
+| S38 | 1f704c1f续4 | 03-09 | 压缩后恢复；待修double-dash路径bug（`-Users-allenbot--claude`） |
 | S37 | 1f704c1f续3 | 03-09 | evolver完整链路跑通：session读取+自动触发hook+skills目录验证 |
 | S36 | 1f704c1f续2 | 03-09 | 压缩后恢复；修复两个剩余evolver问题（timestamp+MEMORY.md） |
 | S35 | 1f704c1f续 | 03-09 | evolver rollback彻底解决+所有文件恢复+genes.json重建+solidify跑通（shim生效） |
@@ -75,9 +80,9 @@
 
 ```
 老板（最高决策者）
-  └─ 太极（CEO / home Sonnet）— 管规章、管项目、只对老板负责
-       ├─ 白纱（auto-trading Sonnet）— 方案架构师，分析数据，出精简/完整方案
-       └─ 黑丝（auto-trading Opus）— 执行工程师，写代码，跑测试
+  └─ 太极（CEO / home Opus）— 管规章、管项目、只对老板负责
+       ├─ 黑丝（auto-trading Opus）— 主力全包，规划+执行
+       └─ 白纱（auto-trading Sonnet）— 支援，查资料/整理文档/支线任务
 ```
 
 **规章修改权**：仅限老板及太极。白纱与黑丝只能遵守。
