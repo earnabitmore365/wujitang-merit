@@ -4,20 +4,17 @@
 
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-12
+> 太极最后更新：2026-03-13
 
 ## 上次会话要点
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **太极升级为 Opus 4.6**：老板将太极从 Sonnet 切换为 Opus，本会话是 Opus 作为太极的首次会话
-- **evolver genes.json 修复**：`~/.claude/assets/gep/genes.json`（引擎实际读取的文件）补回 2 个缺失的 innovate 基因（`gene_evo_forecast` +0.5 boost, `gene_bootstrap_memory_files`），现共 6 个基因
-- **关键路径澄清**：引擎读 `~/.claude/assets/gep/genes.json`，不是 `~/.claude/evolver/assets/gep/genes.json`（后者是 workspace 副本）。路径由 `EVOLVER_REPO_ROOT=$HOME/.claude` → `getGepAssetsDir()` 决定
-- **EVOLVER_README.md 完全重写**：14 节技术手册，修正了 Sonnet 版本的所有路径错误、基因表错误、outcome 推断机制描述错误。新增 BUG-004~006 和 FIX-002
-- **僵尸基因根因**：`inferOutcomeFromSignals()` 对 0-change + no-error 返回 success(0.60)，导致正反馈循环。工作方案：退役僵尸基因（清空 signals_match）
-- **gene_auto_53538cc4 已退役**：signals_match=[]，不再被选中
-- **ghost gene c7368808**：不在 genes.json 中但 memory_graph.jsonl 有 309 条记录，selector 会忽略其 preference，30 天半衰期自然衰减
-- **磁盘 95%（12.5G 剩余）**：已标记，未处理
+- **僵尸基因自动复活根因已修（BUG-007 / FIX-005）**：`solidify.js:ensureGene()` 有三级降级（找已选→重选→`buildAutoGene`自动创建），第3级通过 `stableHash(signalKey)` 生成 ID 后 `upsertGene` 写回 genes.json，导致退役基因被相同停滞信号反复复活。修复：ensureGene 在 buildAutoGene 后检查已加载基因中是否有同ID退役记录，命中则拒绝创建。c7368808 已加回 genes.json 作为退役条目。
+- **genes.json 现有 7 个基因**：5 个活跃 + 2 个退役（53538cc4, c7368808）
+- **workspace genes.json 已同步**：`evolver/assets/gep/genes.json` 与 `assets/gep/genes.json` 内容一致
+- **EVOLVER_README.md 已更新**：新增 BUG-007（自动复活循环）+ FIX-005（双保险修复方案+验证方法）
+- **磁盘 99%（2.5G 剩余）**：原因是 JSONL 对话种子文件，老板已知
 - **handofftotaiji.md 未处理**：第 12 章（sentinel detection）、第 13 章（db_write.py bug）待读
 
 ---
@@ -25,6 +22,7 @@
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
+| S40 | c2c95c51续 | 03-13 | 僵尸基因自动复活根因修复(BUG-007/FIX-005: ensureGene退役检查+c7368808退役条目+workspace同步) |
 | S39 | c2c95c51 | 03-12 | 太极升Opus首会话；evolver genes.json修复(补2 innovate基因)+EVOLVER_README.md完全重写；角色变更(黑丝升主力/白纱转支援) |
 | S38 | 1f704c1f续4 | 03-09 | 压缩后恢复；待修double-dash路径bug（`-Users-allenbot--claude`） |
 | S37 | 1f704c1f续3 | 03-09 | evolver完整链路跑通：session读取+自动触发hook+skills目录验证 |

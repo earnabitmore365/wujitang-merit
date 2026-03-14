@@ -19,6 +19,7 @@
         "Select an existing Gene by signals match (no improvisation)",
         "Estimate blast radius (files, lines) before editing",
         "Apply smallest reversible patch",
+        "Validate using declared validation steps; rollback on failure",
         "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
       ],
       "constraints": {
@@ -28,17 +29,20 @@
           "node_modules"
         ]
       },
-      "validation": [],
+      "validation": [
+        "node scripts/validate-modules.js ./src/evolve ./src/gep/solidify",
+        "node scripts/validate-modules.js ./src/gep/selector ./src/gep/memoryGraph"
+      ],
       "epigenetic_marks": [
         {
           "context": "darwin/arm64/v22.22.0",
-          "boost": -0.25000000000000006,
+          "boost": -0.15000000000000002,
           "reason": "reinforced_by_success",
-          "created_at": "2026-03-08T07:58:03.716Z"
+          "created_at": "2026-03-08T16:08:40.403Z"
         }
       ],
       "schema_version": "1.6.0",
-      "asset_id": "sha256:f7a01ee64d6753bfd6525d8cbc6a298c45ddc27c564bee400338c05bb5bfd72e"
+      "asset_id": "sha256:3bc0144584e1066f000677e514e59772e8e124d859245d53387f7a0ff8341ad0"
     },
     {
       "type": "Gene",
@@ -59,6 +63,7 @@
         "Prefer reusing existing Gene/Capsule; only create if no match exists",
         "Refactor prompt assembly to embed assets (genes, capsules, parent event)",
         "Reduce noise and ambiguity; enforce strict output schema",
+        "Validate by running node index.js run and ensuring no runtime errors",
         "Solidify: record EvolutionEvent, update Gene definitions, create Capsule on success"
       ],
       "constraints": {
@@ -68,7 +73,19 @@
           "node_modules"
         ]
       },
-      "validation": []
+      "validation": [
+        "node scripts/validate-modules.js ./src/evolve ./src/gep/prompt"
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.15000000000000002,
+          "reason": "reinforced_by_success",
+          "created_at": "2026-03-13T10:13:56.369Z"
+        }
+      ],
+      "schema_version": "1.6.0",
+      "asset_id": "sha256:d5bb8d3037b3d2e6d991e679daeec6b703d99170e2d5cf21bde8ea274d2873fa"
     },
     {
       "type": "Gene",
@@ -85,8 +102,8 @@
         "Extract structured signals from logs and user instructions",
         "Select an existing Gene by signals match (no improvisation)",
         "Estimate blast radius (files, lines) before editing and record it",
-        "Apply smallest reversible patch: persist gene to genes.json + append cycle row to MEMORY.md",
-        "Validate: confirm gene exists in genes.json and MEMORY.md history row is appended",
+        "Apply smallest reversible patch",
+        "Validate using declared validation steps; rollback on failure",
         "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
       ],
       "constraints": {
@@ -101,18 +118,93 @@
           "skills/feishu-doc",
           "skills/skill-tools",
           "skills/clawhub",
+          "skills/clawhub-batch-undelete",
           "skills/git-sync"
         ]
       },
-      "validation": [],
+      "validation": [
+        "node scripts/validate-modules.js ./src/gep/solidify"
+      ],
       "epigenetic_marks": [
         {
           "context": "darwin/arm64/v22.22.0",
           "boost": 0.1,
-          "reason": "success_after_failure_repair",
-          "created_at": "2026-03-09T00:30:00.000Z"
+          "reason": "success_in_environment",
+          "created_at": "2026-03-08T21:38:14.447Z"
         }
-      ]
+      ],
+      "asset_id": "sha256:27931d221ba96b040d5abf8c555aeb3c0e7e888a484dc4b93c8b1ac519f82a25"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_auto_53538cc4",
+      "category": "optimize",
+      "signals_match": [],
+      "_retired_signals": [
+        "evolution_stagnation_detected",
+        "stable_success_plateau"
+      ],
+      "_retired_reason": "zombie_gene_manual_2026-03-12: 0变更循环，退出候选池",
+      "preconditions": [
+        "signals_key == evolution_stagnation_detected|stable_success_plateau"
+      ],
+      "strategy": [
+        "Extract structured signals from logs and user instructions",
+        "Select an existing Gene by signals match (no improvisation)",
+        "Estimate blast radius (files, lines) before editing and record it",
+        "Apply smallest reversible patch",
+        "Validate using declared validation steps; rollback on failure",
+        "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
+      ],
+      "constraints": {
+        "max_files": 12,
+        "forbidden_paths": [
+          ".git",
+          "node_modules",
+          "skills/feishu-evolver-wrapper",
+          "skills/feishu-common",
+          "skills/feishu-post",
+          "skills/feishu-card",
+          "skills/feishu-doc",
+          "skills/skill-tools",
+          "skills/clawhub",
+          "skills/clawhub-batch-undelete",
+          "skills/git-sync"
+        ]
+      },
+      "validation": [
+        "node scripts/validate-modules.js ./src/gep/solidify"
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.2,
+          "reason": "reinforced_by_success",
+          "created_at": "2026-03-08T23:11:08.148Z"
+        }
+      ],
+      "asset_id": "sha256:b7201681dfeb3d3a8c2e941b273726e2502e91224e3a34b614e581fa8e27bf47"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_auto_c7368808",
+      "category": "optimize",
+      "signals_match": [],
+      "_retired_signals": [
+        "evolution_stagnation_detected",
+        "stable_success_plateau",
+        "evolution_saturation"
+      ],
+      "_retired_reason": "zombie_gene_2026-03-13: 20+次零变更空循环，ensureGene自动复活根因已堵",
+      "preconditions": [
+        "signals_key == evolution_saturation|evolution_stagnation_detected|stable_success_plateau"
+      ],
+      "strategy": [],
+      "constraints": { "max_files": 0 },
+      "validation": [],
+      "epigenetic_marks": []
     },
     {
       "type": "Gene",
@@ -149,68 +241,6 @@
       "epigenetic_marks": [],
       "registered_at": "2026-03-10T06:55:35.209Z",
       "registered_by": "gene-librarian"
-    },
-    {
-      "type": "Gene",
-      "schema_version": "1.6.0",
-      "id": "gene_auto_c7368808",
-      "category": "optimize",
-      "signals_match": [
-        "evolution_stagnation_detected",
-        "stable_success_plateau",
-        "evolution_saturation"
-      ],
-      "preconditions": [
-        "signals_key == evolution_saturation|evolution_stagnation_detected|stable_success_plateau"
-      ],
-      "strategy": [
-        "Extract structured signals from logs and user instructions",
-        "Select an existing Gene by signals match (no improvisation)",
-        "Estimate blast radius (files, lines) before editing and record it",
-        "Apply smallest reversible patch",
-        "Validate using declared validation steps; rollback on failure",
-        "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
-      ],
-      "constraints": {
-        "max_files": 12,
-        "forbidden_paths": [
-          ".git",
-          "node_modules",
-          "skills/feishu-evolver-wrapper",
-          "skills/feishu-common",
-          "skills/feishu-post",
-          "skills/feishu-card",
-          "skills/feishu-doc",
-          "skills/skill-tools",
-          "skills/clawhub",
-          "skills/clawhub-batch-undelete",
-          "skills/git-sync"
-        ]
-      },
-      "validation": [
-        "node scripts/validate-modules.js ./src/gep/solidify"
-      ],
-      "epigenetic_marks": [
-        {
-          "context": "darwin/arm64/v22.22.0",
-          "boost": 0.5,
-          "reason": "reinforced_by_success",
-          "created_at": "2026-03-11T11:35:55.279Z"
-        },
-        {
-          "context": "darwin/arm64/v22.22.0",
-          "boost": -0.5,
-          "reason": "zombie_gene_retirement",
-          "created_at": "2026-03-11T13:24:25.882Z"
-        },
-        {
-          "context": "darwin/arm64/v22.22.0",
-          "boost": -0.3,
-          "reason": "zombie_gene_retirement",
-          "created_at": "2026-03-12T00:00:00.000Z"
-        }
-      ],
-      "asset_id": "sha256:40aa4e470a54098fdd48057e2f838a569178e9d0e5419db11edd0e7079e2be2e"
     },
     {
       "type": "Gene",
@@ -258,6 +288,52 @@
       ],
       "registered_at": "2026-03-10T09:01:16.703Z",
       "registered_by": "cycle_0040"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_innovate_git_branch_health",
+      "category": "innovate",
+      "signals_match": [
+        "evolution_stagnation_detected",
+        "empty_cycle_loop_detected",
+        "stable_success_plateau",
+        "innovation_gap_git"
+      ],
+      "preconditions": [
+        "no git branch health skill exists",
+        "multi-repo management gap detected"
+      ],
+      "strategy": [
+        "Create git-branch-health skill in ~/.claude/skills/git-branch-health/",
+        "Implement branch scanning: stale detection, ahead/behind main, dirty tree check",
+        "Compute per-repo health score 0-100",
+        "Validate exports with node -e require test",
+        "Run main() to verify real output against managed repos"
+      ],
+      "constraints": {
+        "max_files": 4,
+        "forbidden_paths": [
+          ".git",
+          "node_modules",
+          "skills/evolver",
+          "skills/feishu-evolver-wrapper"
+        ]
+      },
+      "validation": [
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/git-branch-health'); console.log(Object.keys(s))\"",
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/git-branch-health'); s.main().then(r => console.log('repos:', r.repos.length, 'health:', r.avgHealth))\""
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.5,
+          "reason": "new_innovation_skill",
+          "created_at": "2026-03-14T05:51:00.000Z"
+        }
+      ],
+      "registered_at": "2026-03-14T05:51:00.000Z",
+      "registered_by": "cycle_0063"
     }
   ]
 }

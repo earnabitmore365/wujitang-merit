@@ -146,3 +146,18 @@ A chronological record of evolution decisions and outcomes.
   2. Select an existing Gene by signals match (no improvisation)
   3. Estimate blast radius (files, lines) before editing and record it
 - Result: 固化：gene_auto_c7368808 命中信号 evolution_stagnation_detected, stable_success_plateau, evolution_saturation，变更 0 文件 / 0 行。
+### [2026-03-13 10:13:56] INNOVATE - success
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 3 files, 23 lines
+- Signals: [protocol_drift]
+- Strategy:
+  1. Extract signals and determine selection rationale via Selector JSON
+  2. Prefer reusing existing Gene/Capsule; only create if no match exists
+  3. Refactor prompt assembly to embed assets (genes, capsules, parent event)
+- Result: 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift，变更 3 文件 / 23 行。
+### [2026-03-14 05:53:30] INNOVATE - failed
+- Gene: gene_auto_c7368808 | Score: 0.20 | Scope: 0 files, 0 lines
+- Signals: [evolution_stagnation_detected, stable_success_plateau, empty_cycle_loop_detected, force_steady_state]
+- Strategy:
+  1. Extract structured signals from logs and user instructions
+  2. Select an existing Gene by signals match (no improvisation)
+  3. Estimate blast radius (files, lines) before editing and record it

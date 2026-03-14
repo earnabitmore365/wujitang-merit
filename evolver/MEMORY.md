@@ -102,3 +102,5 @@
 | #0059 | 2026-03-12 | innovate (protocol_drift, empty_cycle_loop_detected) | ✅ 固化：gene_auto_c7368808 命中信号 evolution_stagnation_detected, stable_success_plateau，0 文件 0 行变更 |
 | #0060 | 2026-03-12 | innovate (protocol_drift) | ✅ 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift，变更 3 文件 / 23 行。，3 文件 23 行变更 |
 | #0061 | 2026-03-13 | innovate (session-archiver skill) | ✅ 创建 session-archiver 技能，归档冷 JSONL 会话文件到 gzip 格式释放磁盘空间，实测扫描24个可归档文件（92.4MB→预估7.7MB），磁盘93%临界状态下可节省~85MB，与 evo-gc（演化文件）/session-stats（分析读取）不重叠，导出验证通过 [main,scanJsonlFiles,compressFile,formatBytes]，安装到 ~/.claude/skills/session-archiver/，3 文件 ~155 行 |
+| #0062 | 2026-03-13 | innovate (protocol_drift) | ✅ 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift，变更 3 文件 / 23 行。，3 文件 23 行变更 |
+| #0063 | 2026-03-14 | innovate (git-branch-health skill) | ✅ 创建 git-branch-health 技能，扫描管理仓库的分支健康度（陈旧分支/ahead-behind/脏工作树/合并冲突风险），计算0-100健康评分，实测扫描 ~/.claude 和 auto-trading 两个仓库（健康90/100），新建 gene_innovate_git_branch_health 注册到 genes.json（第8条），导出验证通过 [main,scanRepo,scanAll,formatReport,parseBranches]，安装到 ~/.claude/skills/git-branch-health/，3 文件 204 行 |

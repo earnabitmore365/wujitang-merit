@@ -5,7 +5,7 @@
 # Auto-Trading 项目记忆
 
 > 白纱最后更新：2026-03-11 深夜 — GP v0.8专项冠军方案出炉，7文件改动，CHECKPOINT已更新
-> 黑丝最后更新：2026-03-13 49ffc343压缩×3 — TTP种子完成+GP进化检查(4毕业生)+rsi_reversal_v2修复+种子预过滤优化+双账号对冲记录
+> 黑丝最后更新：2026-03-14 49ffc343压缩×4 — 哨兵营修复+磁盘危机(3.7GB)+全停等SSD+澳洲迷你主机选购中
 
 ## 黑丝和白纱的铁律（老板明确要求，压缩后必须记得）
 
@@ -59,17 +59,16 @@
 
 > 覆盖更新，不累积。
 
-**会话 49ffc343 压缩×3（2026-03-13）：TTP种子完成 + GP进化检查**
+**会话 49ffc343 压缩×4（2026-03-14）：哨兵修复+磁盘危机+全停等SSD**
 
-1. **TTP种子100%完成**：seed_v3_ttp.db 26,288组/1.857亿笔/40GB，磁盘I/O错误→空间清理(删GarageBand+iWork)→手动重启→预过滤加速→完成
-2. **种子预过滤优化**：generate_seed.py 并行+单线程版，跳过已完成coin/interval不加载K线（1m=210万行），大幅加速断点续传
-3. **rsi_reversal_v2修复**：MA方向过滤逻辑反转（原来超卖+趋势上=矛盾→改为超卖+趋势下=合理），修复107组零交易
-4. **策略诊断**：klinger/linreg_slope/ma在1m全亏100%=高频信号手续费杀手；ma.py有设计缺陷(无交叉检测，每根K线都发信号)
-5. **TTP机制讲解**：swing跟踪→trailing stop→反复平仓再开仓。老板提出双账号对冲概念替代TTP循环（已记录到待推进想法）
-6. **种子压缩讨论**：seed_v3(51GB)>seed_v3_ttp(40GB)因页面填充率差异，VACUUM需~51GB临时空间，等外接SSD
-7. **GP进化检查**：4毕业生（3×ETH_1d long同一fisher_transform公式score=2.40，1×LINK_12h long mass_index score=1.37有4弃权）
-8. **GP调度器运行中**：老板已启动gp_scheduler.py跑全币种全周期
-9. **Paper Trade代码完成**（上次会话）：4文件新建，待实测
+1. **GP 4毕业生检查**：3×ETH_1d long同一fisher_transform公式(score=2.40)，1×LINK_12h long mass_index(score=1.37，4弃权)
+2. **哨兵营修复**：data_loader.py新增本地_compute_indicators(24指标)替代已删除gp_ind.compute_all()，清理坏断点
+3. **GP+哨兵同跑**：各2 workers配置→但太极会话+4进程OOM killed→重启2 GP workers
+4. **磁盘危机**：indicator_cache.db从46→56GB(GP计算新币种/周期组合)→磁盘剩1.1GB→删哨兵缓存2GB→恢复3.7GB
+5. **全停等SSD**：GP+哨兵全停。SSD+10Gbps dock今天到，40Gbps dock 3月29日
+6. **SSD迁移计划**：rsync整个project/到SSD→VACUUM三库(seed_v3/seed_v3_ttp/indicator_cache)→省~30GB→重启GP+哨兵
+7. **Linux服务器讨论**：推荐硬件(Beelink SER5 $250-350/SER9 Pro $400-500)优于云(Contabo €11-39/月)，长期更划算
+8. **澳洲现货查询**：Amazon.com.au/MediaForm/eBay有Beelink EQR7/SER9，查询未完成即压缩
 
 ---
 

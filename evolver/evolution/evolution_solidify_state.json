@@ -1,8 +1,8 @@
 {
   "last_run": {
-    "run_id": "run_1773394980870",
-    "created_at": "2026-03-13T09:43:00.905Z",
-    "parent_event_id": "evt_1773311603180",
+    "run_id": "run_1773467265132",
+    "created_at": "2026-03-14T05:47:45.160Z",
+    "parent_event_id": "evt_1773395219087",
     "selected_gene_id": "gene_auto_c7368808",
     "selected_capsule_id": "capsule_1773024053738",
     "selector": {
@@ -10,29 +10,27 @@
       "reason": [
         "signals match gene.signals_match",
         "capsule trigger matches signals",
-        "signals: protocol_drift, empty_cycle_loop_detected, stable_success_plateau, force_steady_state, evolution_saturation",
-        "memory_graph: memory_prefer:gene_auto_c7368808 | gene_prior:0.961",
+        "signals: evolution_stagnation_detected, stable_success_plateau, empty_cycle_loop_detected, force_steady_state, evolution_saturation",
+        "memory_graph: memory_prefer:gene_auto_c7368808 | gene_prior:0.963",
         "drift_intensity: 0.500"
       ],
-      "alternatives": [
-        "gene_gep_optimize_prompt_and_assets"
-      ]
+      "alternatives": []
     },
     "signals": [
-      "protocol_drift",
-      "empty_cycle_loop_detected",
+      "evolution_stagnation_detected",
       "stable_success_plateau",
+      "empty_cycle_loop_detected",
       "force_steady_state",
       "evolution_saturation"
     ],
     "mutation": {
       "type": "Mutation",
-      "id": "mut_1773394980869",
+      "id": "mut_1773467265131",
       "category": "innovate",
       "trigger_signals": [
-        "protocol_drift",
-        "empty_cycle_loop_detected",
+        "evolution_stagnation_detected",
         "stable_success_plateau",
+        "empty_cycle_loop_detected",
         "force_steady_state",
         "evolution_saturation"
       ],
@@ -40,7 +38,7 @@
       "expected_effect": "explore new strategy combinations to escape local optimum",
       "risk_level": "medium"
     },
-    "mutation_id": "mut_1773394980869",
+    "mutation_id": "mut_1773467265131",
     "personality_state": {
       "type": "PersonalityState",
       "rigor": 0.7,
@@ -143,7 +141,7 @@
       "src/core/strategy/strategy_williams_fast.py",
       "src/core/strategy/strategy_zscore.py"
     ],
-    "baseline_git_head": "3e755fdd6ceb8cf10a60026d4c7fdc5ac8a3c407",
+    "baseline_git_head": "d1b0f83951a8beeaf9e92f3354573e288c6f106b",
     "blast_radius_estimate": {
       "files": 12,
       "lines": 960
@@ -156,13 +154,13 @@
     "hub_lessons": []
   },
   "last_solidify": {
-    "run_id": "run_1773394980870",
-    "at": "2026-03-13T09:46:59.087Z",
-    "event_id": "evt_1773395219087",
-    "capsule_id": "capsule_1773024053738",
+    "run_id": "run_1773467265132",
+    "at": "2026-03-14T05:53:29.962Z",
+    "event_id": "evt_1773467609962",
+    "capsule_id": null,
     "outcome": {
-      "status": "success",
-      "score": 0.85
+      "status": "failed",
+      "score": 0.2
     }
   }
 }
