@@ -36,9 +36,9 @@
       "epigenetic_marks": [
         {
           "context": "darwin/arm64/v22.22.0",
-          "boost": -0.15000000000000002,
-          "reason": "reinforced_by_success",
-          "created_at": "2026-03-08T16:08:40.403Z"
+          "boost": 0.1,
+          "reason": "corrected_from_negative_anomaly: original -0.15 with reason reinforced_by_success was contradictory",
+          "created_at": "2026-03-15T00:07:10.158Z"
         }
       ],
       "schema_version": "1.6.0",
@@ -53,7 +53,9 @@
         "gep",
         "prompt",
         "audit",
-        "reusable"
+        "reusable",
+        "high_failure_ratio",
+        "force_innovation"
       ],
       "preconditions": [
         "need stricter, auditable evolution protocol outputs"
@@ -63,6 +65,7 @@
         "Prefer reusing existing Gene/Capsule; only create if no match exists",
         "Refactor prompt assembly to embed assets (genes, capsules, parent event)",
         "Reduce noise and ambiguity; enforce strict output schema",
+        "Append cycle record to MEMORY.md history table (never overwrite existing entries)",
         "Validate by running node index.js run and ensuring no runtime errors",
         "Solidify: record EvolutionEvent, update Gene definitions, create Capsule on success"
       ],
@@ -82,6 +85,12 @@
           "boost": 0.15000000000000002,
           "reason": "reinforced_by_success",
           "created_at": "2026-03-13T10:13:56.369Z"
+        },
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.1,
+          "reason": "signal_coverage_expanded",
+          "created_at": "2026-03-14T10:54:23.413Z"
         }
       ],
       "schema_version": "1.6.0",
@@ -138,77 +147,6 @@
     {
       "type": "Gene",
       "schema_version": "1.6.0",
-      "id": "gene_auto_53538cc4",
-      "category": "optimize",
-      "signals_match": [],
-      "_retired_signals": [
-        "evolution_stagnation_detected",
-        "stable_success_plateau"
-      ],
-      "_retired_reason": "zombie_gene_manual_2026-03-12: 0变更循环，退出候选池",
-      "preconditions": [
-        "signals_key == evolution_stagnation_detected|stable_success_plateau"
-      ],
-      "strategy": [
-        "Extract structured signals from logs and user instructions",
-        "Select an existing Gene by signals match (no improvisation)",
-        "Estimate blast radius (files, lines) before editing and record it",
-        "Apply smallest reversible patch",
-        "Validate using declared validation steps; rollback on failure",
-        "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
-      ],
-      "constraints": {
-        "max_files": 12,
-        "forbidden_paths": [
-          ".git",
-          "node_modules",
-          "skills/feishu-evolver-wrapper",
-          "skills/feishu-common",
-          "skills/feishu-post",
-          "skills/feishu-card",
-          "skills/feishu-doc",
-          "skills/skill-tools",
-          "skills/clawhub",
-          "skills/clawhub-batch-undelete",
-          "skills/git-sync"
-        ]
-      },
-      "validation": [
-        "node scripts/validate-modules.js ./src/gep/solidify"
-      ],
-      "epigenetic_marks": [
-        {
-          "context": "darwin/arm64/v22.22.0",
-          "boost": 0.2,
-          "reason": "reinforced_by_success",
-          "created_at": "2026-03-08T23:11:08.148Z"
-        }
-      ],
-      "asset_id": "sha256:b7201681dfeb3d3a8c2e941b273726e2502e91224e3a34b614e581fa8e27bf47"
-    },
-    {
-      "type": "Gene",
-      "schema_version": "1.6.0",
-      "id": "gene_auto_c7368808",
-      "category": "optimize",
-      "signals_match": [],
-      "_retired_signals": [
-        "evolution_stagnation_detected",
-        "stable_success_plateau",
-        "evolution_saturation"
-      ],
-      "_retired_reason": "zombie_gene_2026-03-13: 20+次零变更空循环，ensureGene自动复活根因已堵",
-      "preconditions": [
-        "signals_key == evolution_saturation|evolution_stagnation_detected|stable_success_plateau"
-      ],
-      "strategy": [],
-      "constraints": { "max_files": 0 },
-      "validation": [],
-      "epigenetic_marks": []
-    },
-    {
-      "type": "Gene",
-      "schema_version": "1.6.0",
       "id": "gene_bootstrap_memory_files",
       "category": "innovate",
       "signals_match": [
@@ -251,11 +189,13 @@
         "evolution_stagnation_detected",
         "stable_success_plateau",
         "empty_cycle_loop_detected",
-        "innovation_gap_forecast"
+        "innovation_gap_forecast",
+        "force_innovation_after_repair_loop"
       ],
       "preconditions": [
         "all_catalyst_ideas_implemented",
-        "predictive_capability_gap_exists"
+        "predictive_capability_gap_exists",
+        "repair_loop_exhausted_and_innovation_needed"
       ],
       "strategy": [
         "Parse evolution_narrative.md for all historical cycle records",
@@ -334,6 +274,22 @@
       ],
       "registered_at": "2026-03-14T05:51:00.000Z",
       "registered_by": "cycle_0063"
+    }
+  ],
+  "retired_genes": [
+    {
+      "id": "gene_auto_53538cc4",
+      "category": "optimize",
+      "_retired_signals": ["evolution_stagnation_detected", "stable_success_plateau"],
+      "_retired_reason": "zombie_gene_manual_2026-03-12: 0变更循环，退出候选池",
+      "_retired_at": "2026-03-14T12:08:00.000Z"
+    },
+    {
+      "id": "gene_auto_c7368808",
+      "category": "optimize",
+      "_retired_signals": ["evolution_stagnation_detected", "stable_success_plateau", "evolution_saturation"],
+      "_retired_reason": "zombie_gene_2026-03-13: 20+次零变更空循环，ensureGene自动复活根因已堵",
+      "_retired_at": "2026-03-14T12:08:00.000Z"
     }
   ]
 }

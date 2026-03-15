@@ -25,6 +25,50 @@ def get_project_encoded(cwd):
     return cwd.replace('/', '-')
 
 
+def inject_evolver_notifications():
+    """读取 evolver cycle 通知并输出，读完后清空"""
+    notif_path = os.path.expanduser('~/.claude/evolver/cycle_notifications.jsonl')
+    if not os.path.exists(notif_path):
+        return
+    try:
+        with open(notif_path) as f:
+            lines = f.readlines()
+        if not lines:
+            return
+
+        out = []
+        out.append("╔══════════════════════════════════════════╗")
+        out.append("║  Evolver 新 Cycle 通知")
+        out.append("╚══════════════════════════════════════════╝")
+        out.append("")
+
+        for line in lines[-10:]:  # 最多显示最近 10 条
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                n = json.loads(line)
+                status_icon = '✅' if n.get('status') == 'success' else '❌'
+                out.append(
+                    f"{status_icon} [{n.get('ts','?')[:16]}] "
+                    f"{n.get('source','?')} | "
+                    f"gene: {n.get('gene','?')} | "
+                    f"scope: {n.get('scope','?').strip()} | "
+                    f"{n.get('run','?')}"
+                )
+            except json.JSONDecodeError:
+                out.append(f"  {line}")
+
+        out.append("")
+        print('\n'.join(out))
+
+        # 清空已读通知
+        with open(notif_path, 'w') as f:
+            f.write('')
+    except Exception as e:
+        print(f"[evolver 通知读取失败: {e}]")
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -38,9 +82,11 @@ def main():
     if source != 'compact':
         sys.exit(0)
 
-    # home 目录不注入（太极频道不对外开放）
     home = os.path.expanduser('~')
+
+    # home 目录：只注入 evolver 通知，不做完整压缩注入
     if cwd == home:
+        inject_evolver_notifications()
         sys.exit(0)
 
     project = get_project(cwd)
@@ -86,7 +132,7 @@ def main():
             out.append(f"【最近对话（最新 {len(rows)} 条）】")
 
         for r in rows:
-            preview = r[2][:200].replace('\n', ' ')
+            preview = r[2][:500].replace('\n', ' ')
             out.append(f"[{r[0]}] {r[1]}: {preview}")
 
         conn.close()
@@ -95,19 +141,29 @@ def main():
 
     out.append("")
 
-    # ── 4. 读 CHECKPOINT.md（在 cwd 下）──────────────────
+    # ── 4. 读 CHECKPOINT.md（完整动态区）──────────────────
     checkpoint_path = os.path.join(cwd, 'CHECKPOINT.md')
     if os.path.exists(checkpoint_path):
         try:
             with open(checkpoint_path) as f:
-                lines = f.readlines()
-            out.append("【CHECKPOINT 当前任务（前60行）】")
-            out.append(''.join(lines[:60]).rstrip())
+                content = f.read()
+            # 提取完整动态区（DYNAMIC START 到 DYNAMIC END）
+            ds = content.find('<!-- DYNAMIC START -->')
+            de = content.find('<!-- DYNAMIC END -->')
+            if ds >= 0 and de >= 0:
+                dynamic = content[ds:de + len('<!-- DYNAMIC END -->')].strip()
+                out.append("【CHECKPOINT 动态区（完整）】")
+                out.append(dynamic)
+            else:
+                # 没有动态区标记，读前120行
+                lines = content.splitlines()
+                out.append("【CHECKPOINT（前120行）】")
+                out.append('\n'.join(lines[:120]))
         except Exception:
             pass
         out.append("")
 
-    # ── 5. 读 MEMORY.md（前60行）──────────────────────────
+    # ── 5. 读 MEMORY.md（前120行）──────────────────────────
     memory_path = os.path.expanduser(
         f'~/.claude/projects/{project_encoded}/memory/MEMORY.md'
     )
@@ -115,11 +171,14 @@ def main():
         try:
             with open(memory_path) as f:
                 lines = f.readlines()
-            out.append("【MEMORY（前60行）】")
-            out.append(''.join(lines[:60]).rstrip())
+            out.append("【MEMORY（前120行）】")
+            out.append(''.join(lines[:120]).rstrip())
         except Exception:
             pass
         out.append("")
+
+    # ── 6. Evolver 通知（项目也能看到）──────────────────────
+    inject_evolver_notifications()
 
     print('\n'.join(out))
 

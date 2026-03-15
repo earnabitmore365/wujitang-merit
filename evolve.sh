@@ -78,5 +78,14 @@ EVOLVER_REPO_ROOT="$REPO_ROOT" \
 EVOLVER_ROLLBACK_MODE=stash \
 node "$EVOLVER_DIR/index.js" solidify
 
+# ── 写通知给太极 ─────────────────────────────────────────────────────────
+NOTIF_FILE="$EVOLVER_WORKSPACE/cycle_notifications.jsonl"
+LAST_CYCLE=$(tail -20 "$EVOLVER_WORKSPACE/evolution/evolution_narrative.md" 2>/dev/null | grep -E "^### " | tail -1 || echo "")
+LAST_GENE=$(echo "$LAST_CYCLE" | grep -oE "Gene: [^ |]+" | sed 's/Gene: //' || echo "unknown")
+LAST_SCOPE=$(echo "$LAST_CYCLE" | grep -oE "Scope: [^|]+" | sed 's/Scope: //' || echo "?")
+LAST_STATUS=$(echo "$LAST_CYCLE" | grep -oE "(success|failed)" || echo "unknown")
+
+echo "{\"ts\":\"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\",\"source\":\"claude-code\",\"run\":\"run_${TIMESTAMP}\",\"gene\":\"${LAST_GENE}\",\"scope\":\"${LAST_SCOPE}\",\"status\":\"${LAST_STATUS}\"}" >> "$NOTIF_FILE"
+
 echo ""
 echo "✅ 进化完成（run_${TIMESTAMP}）"

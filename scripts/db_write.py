@@ -45,6 +45,7 @@ DECISION_WORDS = TAG_WORDS['决策词']
 # session 目录 → project 名（路径编码：去掉开头/，所有/换-）
 KNOWN_PROJECTS = {
     '-Users-allenbot-project-auto-trading': 'auto-trading',
+    '-Volumes-BIWIN-NV-7400-2TB-project-auto-trading': 'auto-trading',
 }
 
 # 这些目录的 session 不写入（太极、evolver headless 等）

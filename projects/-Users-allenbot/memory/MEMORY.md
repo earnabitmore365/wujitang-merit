@@ -4,17 +4,18 @@
 
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-13
+> 太极最后更新：2026-03-15
 
 ## 上次会话要点
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **僵尸基因自动复活根因已修（BUG-007 / FIX-005）**：`solidify.js:ensureGene()` 有三级降级（找已选→重选→`buildAutoGene`自动创建），第3级通过 `stableHash(signalKey)` 生成 ID 后 `upsertGene` 写回 genes.json，导致退役基因被相同停滞信号反复复活。修复：ensureGene 在 buildAutoGene 后检查已加载基因中是否有同ID退役记录，命中则拒绝创建。c7368808 已加回 genes.json 作为退役条目。
-- **genes.json 现有 7 个基因**：5 个活跃 + 2 个退役（53538cc4, c7368808）
-- **workspace genes.json 已同步**：`evolver/assets/gep/genes.json` 与 `assets/gep/genes.json` 内容一致
-- **EVOLVER_README.md 已更新**：新增 BUG-007（自动复活循环）+ FIX-005（双保险修复方案+验证方法）
-- **磁盘 99%（2.5G 剩余）**：原因是 JSONL 对话种子文件，老板已知
+- **僵尸基因 evolve.js 根修复完成**：`loadGenes()` 后加退役基因过滤器，阻止退役基因进入 selector（3 重修复：evolve.js filter + memory_graph 清理 206 条 + ensureGene 退役检查）
+- **OpenClaw/Abby 修复**：qwen2.5-coder:7b 用了错误 API 模式（`openai-completions` + `/v1`）导致 Abby 只回 "NO"。已删除 coder 模型，修正 ollama provider 配置（`api: "ollama"`, `baseUrl` 无 `/v1`）
+- **本地模型状态**：llama3.1:8b / gemma2:9b / qwen2.5:7b 已下载+已注册 openclaw.json；phi4:14b 已下载未注册。⚠️ 3 个已注册模型均未完成终端验证（`ollama run`）
+- **Abby 当前用 minimax**：老板手动切回 minimax/MiniMax-M2.5-highspeed（临时，不续费），本地模型待验证后替换
+- **人格文件 17k token 过大**：本地 7-8B 模型处理需数分钟，必须精简才能实用
+- **openclaw.md 完整参考文档已创建**：含文件结构/API 铁律/安装 SOP（5 步）/性能限制/ACP 命令/频道配置
 - **handofftotaiji.md 未处理**：第 12 章（sentinel detection）、第 13 章（db_write.py bug）待读
 
 ---
@@ -22,6 +23,7 @@
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
+| S41 | c2c95c51续2 | 03-15 | OpenClaw/Abby修复(API模式修正)+本地模型安装(3注册1未注册)+evolve.js僵尸根修复+openclaw.md参考文档 |
 | S40 | c2c95c51续 | 03-13 | 僵尸基因自动复活根因修复(BUG-007/FIX-005: ensureGene退役检查+c7368808退役条目+workspace同步) |
 | S39 | c2c95c51 | 03-12 | 太极升Opus首会话；evolver genes.json修复(补2 innovate基因)+EVOLVER_README.md完全重写；角色变更(黑丝升主力/白纱转支援) |
 | S38 | 1f704c1f续4 | 03-09 | 压缩后恢复；待修double-dash路径bug（`-Users-allenbot--claude`） |
@@ -168,3 +170,5 @@
 - `memory/rules.md` — **已毕业行为规范**（/reflect 提案，老板批准后写入）
 - `memory/cashflow.md` — cashflowAPP 完整信息（设计理念/MVP/上线策略/功能需求库）
 - `memory/tools.md` — 工具库调研表（本地LLM/agent框架/图表库等）
+- `memory/feedback_cleanup_background_tasks.md` — 后台任务用完即关（老板反馈）
+- `memory/openclaw.md` — **OpenClaw 完整配置知识**（模型管理/API规范/人格注入/ACP/频道，修改前必读）
