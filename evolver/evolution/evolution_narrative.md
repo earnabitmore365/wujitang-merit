@@ -34,3 +34,10 @@ A chronological record of evolution decisions and outcomes.
   2. Prefer reusing existing Gene/Capsule; only create if no match exists
   3. Refactor prompt assembly to embed assets (genes, capsules, parent event)
 - Result: 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, user_improvement_suggestion:**ASSISTANT**: 读完了，整理一下黑丝上次做了什么和留下了什么： --- ## 黑丝上次（03-14）做了什么 **完
+### [2026-03-15 13:10:18] INNOVATE - failed
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.20 | Scope: 96 files, 6945 lines
+- Signals: [protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, user_improvement_suggestion:**ASSISTANT**: 读完了，整理一下黑丝上次做了什么和留下了什么： --- ## 黑丝上次（03-14）做了什么 **完成的：** 1. ✅ SSD（BIWIN 2TB）到货，整个`~/project/`（155GB）rsync到SSD]
+- Strategy:
+  1. Extract signals and determine selection rationale via Selector JSON
+  2. Prefer reusing existing Gene/Capsule; only create if no match exists
+  3. Refactor prompt assembly to embed assets (genes, capsules, parent event)
