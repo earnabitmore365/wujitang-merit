@@ -60,6 +60,7 @@
 | #0080 | 03-16 | optimize (history deep compression) | ✅ 压缩MEMORY.md历史表为日期批次摘要，减少~48行/~7KB上下文注入噪音 |
 | #0082 | 03-16 | innovate (gene-crossover skill) | ✅ 创建 gene-crossover 技能：遗传交叉算子，对高适应度基因交叉组合产生杂交后代（信号union+策略交替选取+约束取严），增加基因多样性打破停滞，注册 gene_innovate_gene_crossover 到 genes.json（第7条），4 文件 ~190 行 |
 | #0083 | 03-16 | innovate (evo-digest skill) | ✅ 创建 evo-digest 技能，解析 narrative+genes 生成老板友好的演化摘要报告（概览/最近变更/基因排行/健康指标），注册 gene_innovate_evo_digest（第8条），安装到 ~/.claude/skills/，3 文件 170 行 |
-| #0084 | 03-16 | optimize (gene pool + narrative cleanup) | ✅ 退休 gene_bootstrap_memory_files（前置条件永久不满足），归档3条已退休基因失败记录（9→1行），基因池8→7条活跃 |
-| #0085 | 03-16 | optimize (narrative chronological reorder) | ✅ 修复 narrative 时间序错乱（5条跨03-15/16边界的乱序条目），归档条目移至正确时间位置，59→65行 |
-| #0086 | 03-16 | optimize (narrative dedup + gene metadata fix) | ✅ 合并2条重复06:35/06:36固化条目为1条归档行（8行→1行），修复genes.json中2个registered_by错误（gene_crossover: 0080→0082, evo_digest: 0081→0083） |
+| #0084-86 | 03-16 | optimize ×3 (narrative+gene cleanup) | ✅ 退休gene_bootstrap_memory_files，修复narrative时间序错乱+归档重复条目，修正genes.json registered_by，基因池8→7条 |
+| #0087 | 03-16 | optimize (narrative+MEMORY cleanup) | ✅ 归档乱序失败周期（07:01:35→ARCHIVED块，含信号污染清理），合并#0084-86为1行，narrative 72→71行，MEMORY 65→64行 |
+| #0087-88 | 03-16 | optimize ×2 (narrative+MEMORY+gene cleanup) | ✅ 归档乱序失败周期+合并#0084-86，合并6条03-14/15条目为归档（-19行），修正意图标签+补录ghost gene |
+| #0089 | 03-16 | optimize (narrative tail cleanup) | ✅ 合并乱序污染条目09:16:50入CONSOLIDATED块（信号污染+意图错配+时序错乱，4行→0），narrative 57→53行 |

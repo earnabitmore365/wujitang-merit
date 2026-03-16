@@ -66,9 +66,9 @@
   },
   "last_solidify": {
     "run_id": "run_1772893595338",
-    "at": "2026-03-16T06:35:44.361Z",
-    "event_id": "evt_1773642944361",
-    "capsule_id": "capsule_1773642944361",
+    "at": "2026-03-16T09:10:22.809Z",
+    "event_id": "evt_1773652222809",
+    "capsule_id": "capsule_1773652222809",
     "outcome": {
       "status": "success",
       "score": 0.85

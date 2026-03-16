@@ -9,7 +9,7 @@ set -e
 # 并发锁：防止 PreCompact + SessionEnd 同时触发两个 evolver
 LOCKFILE="/tmp/evolve.lock"
 if [ -f "$LOCKFILE" ]; then
-  LOCK_PID=$(cat "$LOCKFILE" 2>/dev/null)
+  LOCK_PID=$(cat "$LOCKFILE" 2>/dev/null) || true
   if kill -0 "$LOCK_PID" 2>/dev/null; then
     echo "⏭️ evolver 已在运行（PID $LOCK_PID），跳过"
     exit 0

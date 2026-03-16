@@ -341,6 +341,13 @@
       "_retired_signals": ["memory_missing", "user_missing", "bootstrap", "init"],
       "_retired_reason": "preconditions_permanently_unmet: MEMORY.md and USER.md exist since 2026-03-08, gene can never fire again",
       "_retired_at": "2026-03-16T06:31:30.000Z"
+    },
+    {
+      "id": "gene_auto_45f153bd",
+      "category": "innovate",
+      "_retired_signals": ["mission_control", "gene_data_fix"],
+      "_retired_reason": "single_use_gene: used once for validate-modules repair (2026-03-15 02:04, 6 files/209 lines), never persisted to genes.json",
+      "_retired_at": "2026-03-16T20:13:00.000Z"
     }
   ]
 }

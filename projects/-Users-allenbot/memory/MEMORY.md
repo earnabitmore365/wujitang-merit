@@ -4,25 +4,27 @@
 
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-15
+> 太极最后更新：2026-03-16
 
 ## 上次会话要点
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **僵尸基因 evolve.js 根修复完成**：`loadGenes()` 后加退役基因过滤器，阻止退役基因进入 selector（3 重修复：evolve.js filter + memory_graph 清理 206 条 + ensureGene 退役检查）
-- **OpenClaw/Abby 修复**：qwen2.5-coder:7b 用了错误 API 模式（`openai-completions` + `/v1`）导致 Abby 只回 "NO"。已删除 coder 模型，修正 ollama provider 配置（`api: "ollama"`, `baseUrl` 无 `/v1`）
-- **本地模型状态**：llama3.1:8b / gemma2:9b / qwen2.5:7b 已下载+已注册 openclaw.json；phi4:14b 已下载未注册。⚠️ 3 个已注册模型均未完成终端验证（`ollama run`）
-- **Abby 当前用 minimax**：老板手动切回 minimax/MiniMax-M2.5-highspeed（临时，不续费），本地模型待验证后替换
-- **人格文件 17k token 过大**：本地 7-8B 模型处理需数分钟，必须精简才能实用
-- **openclaw.md 完整参考文档已创建**：含文件结构/API 铁律/安装 SOP（5 步）/性能限制/ACP 命令/频道配置
-- **handofftotaiji.md 未处理**：第 12 章（sentinel detection）、第 13 章（db_write.py bug）待读
+- **Mission Control 搁置**：Docker 安装+容器跑通，但 Gateway 连接遇连环安全问题（CORS/device identity/origin），老板决定不搞第三方，以后自建通讯部
+- **Claude Code 中间层 API 可用**：port 8100，4 端点 + 仪表盘 HTML，launchd 守护进程已配（`com.claude-code-api.plist`）
+- **Abby 模型升级**：主力切到 `ollama/qwen3.5:9b`（多模态+推理），上下文窗口 32768→8192（解决卡顿），Gateway bind 改 lan
+- **Evolver hook 链路修复**：evolve.sh 加并发锁（所有入口覆盖），evolve_hook.sh 简化为只处理太极，已验证黑丝 clear context 能正确触发 evolver
+- **SessionStart evolver 通知**：session_start.py 改为所有会话启动都检查通知（不限 compact），evolve.sh 通知写入解析修复（正确提取 gene/scope）
+- **Karpathy Autoresearch 调研**：AI 训练 AI 的开源项目，program.md 方向指引模式可借鉴但永不停止循环不适用（rate limit+无客观指标），老板决定暂不动 evolver
+- **命名哲学**：写入 memory/naming_philosophy.md 并索引到太极+auto-trading 两个 memory，黑丝白纱下次恢复可读
+- **Evolver 新 skills**：自动生成了 gene-crossover（遗传交叉）+ evo-digest（老板友好摘要），总 cycle 83
 
 ---
 
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
+| S42 | 0da5d1b1 | 03-16 | Mission Control搁置+Claude Code API(port 8100)+Abby升qwen3.5:9b+evolver hook链路修复(加锁)+SessionStart通知修复+Autoresearch调研(暂不动)+命名哲学记录+evo-digest/gene-crossover新skill |
 | S41 | c2c95c51续2 | 03-15 | OpenClaw/Abby修复(API模式修正)+本地模型安装(3注册1未注册)+evolve.js僵尸根修复+openclaw.md参考文档 |
 | S40 | c2c95c51续 | 03-13 | 僵尸基因自动复活根因修复(BUG-007/FIX-005: ensureGene退役检查+c7368808退役条目+workspace同步) |
 | S39 | c2c95c51 | 03-12 | 太极升Opus首会话；evolver genes.json修复(补2 innovate基因)+EVOLVER_README.md完全重写；角色变更(黑丝升主力/白纱转支援) |
@@ -174,3 +176,6 @@
 - `memory/openclaw.md` — **OpenClaw 完整配置知识**（模型管理/API规范/人格注入/ACP/频道，修改前必读）
 - `memory/feedback_think_before_act.md` — **动手前必须完整盘查推导**（老板核心反馈，不预判就动手=浪费上下文）
 - `memory/naming_philosophy.md` — **命名哲学与伦理姿态**（黑丝/白纱命名的反向赋权用意，老板原话，所有角色必须内化）
+- `memory/research_autoresearch.md` — **Karpathy Autoresearch 调研**（AI训练AI，program.md模式，与evolver对比，暂不动）
+- `memory/research_mission_control.md` — **Mission Control 安装记录**（Docker部署搁置，Claude Code API port 8100 可用，launchd守护进程已配）
+- `memory/research_qwen35_models.md` — **Qwen 3.5 + 本地模型升级**（Abby主力qwen3.5:9b，上下文8192，16GB内存限制）

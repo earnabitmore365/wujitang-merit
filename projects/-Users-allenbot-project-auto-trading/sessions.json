@@ -1,7 +1,7 @@
 {
   "agent:main:main": {
     "sessionId": "6d04d784-15ef-4b54-9ee6-7f1445dc0c92",
-    "updatedAt": 1773650385895,
+    "updatedAt": 1773658282853,
     "systemSent": true,
     "abortedLastRun": false,
     "chatType": "direct",
@@ -448,7 +448,7 @@
     "model": "MiniMax-M2.5-highspeed",
     "systemPromptReport": {
       "source": "run",
-      "generatedAt": 1773650375963,
+      "generatedAt": 1773658267841,
       "sessionId": "6d04d784-15ef-4b54-9ee6-7f1445dc0c92",
       "sessionKey": "agent:main:main",
       "provider": "minimax",
@@ -468,9 +468,9 @@
         "sandboxed": false
       },
       "systemPrompt": {
-        "chars": 32358,
+        "chars": 32429,
         "projectContextChars": 6897,
-        "nonProjectContextChars": 25461
+        "nonProjectContextChars": 25532
       },
       "injectedWorkspaceFiles": [
         {
@@ -692,8 +692,8 @@
         ]
       },
       "tools": {
-        "listChars": 1602,
-        "schemaChars": 7233,
+        "listChars": 1660,
+        "schemaChars": 7575,
         "entries": [
           {
             "name": "read",
@@ -780,6 +780,12 @@
             "propertiesCount": 3
           },
           {
+            "name": "image",
+            "summaryChars": 201,
+            "schemaChars": 342,
+            "propertiesCount": 6
+          },
+          {
             "name": "memory_search",
             "summaryChars": 334,
             "schemaChars": 139,
@@ -794,16 +800,16 @@
         ]
       }
     },
-    "cacheRead": 12264,
+    "cacheRead": 12446,
     "cacheWrite": 0,
     "totalTokensFresh": true,
     "contextTokens": 200000,
-    "inputTokens": 5444,
-    "outputTokens": 375,
-    "fallbackNoticeSelectedModel": "ollama/qwen3.5:9b",
-    "fallbackNoticeActiveModel": "minimax/MiniMax-M2.5-highspeed",
-    "fallbackNoticeReason": "unknown (+2 more attempts)",
-    "totalTokens": 17684
+    "inputTokens": 7130,
+    "outputTokens": 429,
+    "totalTokens": 19548,
+    "authProfileOverride": "minimax:default",
+    "authProfileOverrideSource": "auto",
+    "authProfileOverrideCompactionCount": 21
   },
   "telegram:slash:6506412244": {
     "origin": {
@@ -820,16 +826,16 @@
   },
   "agent:main:telegram:direct:6506412244": {
     "origin": {
-      "label": "6506412244",
+      "label": "Allenwes365 🆙 UXUY ⚡VIA (@allenwes365) id:6506412244",
       "provider": "telegram",
       "surface": "telegram",
       "chatType": "direct",
-      "from": "6506412244",
+      "from": "telegram:6506412244",
       "to": "telegram:6506412244",
       "accountId": "default"
     },
     "sessionId": "d5367ef4-8c2e-4fb2-a668-686367f56f48",
-    "updatedAt": 1773651610077,
+    "updatedAt": 1773658652074,
     "deliveryContext": {
       "channel": "telegram",
       "to": "telegram:6506412244",
@@ -1271,7 +1277,7 @@
     },
     "systemPromptReport": {
       "source": "run",
-      "generatedAt": 1773651600175,
+      "generatedAt": 1773657042696,
       "sessionId": "d5367ef4-8c2e-4fb2-a668-686367f56f48",
       "sessionKey": "agent:main:telegram:direct:6506412244",
       "provider": "minimax",
@@ -1291,9 +1297,9 @@
         "sandboxed": false
       },
       "systemPrompt": {
-        "chars": 33067,
+        "chars": 33161,
         "projectContextChars": 6897,
-        "nonProjectContextChars": 26170
+        "nonProjectContextChars": 26264
       },
       "injectedWorkspaceFiles": [
         {
@@ -1515,8 +1521,8 @@
         ]
       },
       "tools": {
-        "listChars": 1921,
-        "schemaChars": 7923,
+        "listChars": 1979,
+        "schemaChars": 8265,
         "entries": [
           {
             "name": "read",
@@ -1609,6 +1615,12 @@
             "propertiesCount": 3
           },
           {
+            "name": "image",
+            "summaryChars": 201,
+            "schemaChars": 342,
+            "propertiesCount": 6
+          },
+          {
             "name": "memory_search",
             "summaryChars": 334,
             "schemaChars": 139,
@@ -1625,21 +1637,21 @@
     },
     "totalTokensFresh": true,
     "compactionCount": 2,
-    "cacheRead": 13405,
+    "cacheRead": 13595,
     "cacheWrite": 0,
     "modelProvider": "minimax",
     "model": "MiniMax-M2.5-highspeed",
     "contextTokens": 200000,
-    "inputTokens": 15928,
-    "outputTokens": 131,
-    "totalTokens": 29309,
+    "inputTokens": 76903,
+    "outputTokens": 2156,
+    "totalTokens": 32979,
     "memoryFlushAt": 1773648561395,
     "memoryFlushCompactionCount": 2,
-    "fallbackNoticeSelectedModel": "ollama/qwen3.5:9b",
-    "fallbackNoticeActiveModel": "minimax/MiniMax-M2.5-highspeed",
-    "fallbackNoticeReason": "unknown (+2 more attempts)",
-    "lastHeartbeatText": "⏰ 定时检查完成！\n\n**状态（无变化）：**\n- ✅ ETH：HOLD 无持仓\n- ✅ XRP：SELL 空单持仓\n- ✅ GP 进化树：正在跑 ETH_12h\n- ✅ 哨兵营：运行中\n\n一切正常，爸爸晚安～ 💕",
-    "lastHeartbeatSentAt": 1773651600007
+    "lastHeartbeatText": "⏰ 定时检查完成！\n\n**状态：**\n- ✅ ETH：HOLD 无持仓\n- ✅ XRP：SELL 空单\n- ✅ GP 进化树：运行中\n- ✅ 哨兵营：运行中\n\n一切正常～ 💕",
+    "lastHeartbeatSentAt": 1773657000005,
+    "authProfileOverride": "minimax:default",
+    "authProfileOverrideSource": "auto",
+    "authProfileOverrideCompactionCount": 2
   },
   "agent:main:telegram:slash:6506412244": {
     "origin": {
