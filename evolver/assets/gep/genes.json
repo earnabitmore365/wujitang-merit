@@ -144,42 +144,6 @@
     {
       "type": "Gene",
       "schema_version": "1.6.0",
-      "id": "gene_bootstrap_memory_files",
-      "category": "innovate",
-      "signals_match": [
-        "memory_missing",
-        "user_missing",
-        "bootstrap",
-        "init"
-      ],
-      "preconditions": [
-        "MEMORY.md does not exist",
-        "USER.md does not exist"
-      ],
-      "strategy": [
-        "Check if MEMORY.md exists; create with project context if missing",
-        "Check if USER.md exists; create with user profile if missing",
-        "Record creation in MEMORY.md evolution history table"
-      ],
-      "constraints": {
-        "max_files": 5,
-        "forbidden_paths": [
-          ".git",
-          "node_modules",
-          "skills/evolver"
-        ]
-      },
-      "validation": [
-        "test -f MEMORY.md && echo ok",
-        "test -f USER.md && echo ok"
-      ],
-      "epigenetic_marks": [],
-      "registered_at": "2026-03-10T06:55:35.209Z",
-      "registered_by": "gene-librarian"
-    },
-    {
-      "type": "Gene",
-      "schema_version": "1.6.0",
       "id": "gene_evo_forecast",
       "category": "innovate",
       "signals_match": [
@@ -271,6 +235,89 @@
       ],
       "registered_at": "2026-03-14T05:51:00.000Z",
       "registered_by": "cycle_0063"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_innovate_gene_crossover",
+      "category": "innovate",
+      "signals_match": [
+        "evolution_stagnation_detected",
+        "stable_success_plateau",
+        "gene_pool_low_diversity",
+        "crossover_needed"
+      ],
+      "preconditions": [
+        "at least 2 active genes in pool",
+        "stagnation or low diversity detected"
+      ],
+      "strategy": [
+        "Load active genes from genes.json",
+        "Rank genes by composite fitness score (epigenetic boost + category + signal breadth)",
+        "Select top 2 parents for crossover",
+        "Combine strategies via alternating selection, signals via union",
+        "Apply hybrid vigor boost (+0.15) to offspring epigenetic marks",
+        "Validate offspring structure and install gene-crossover skill"
+      ],
+      "constraints": {
+        "max_files": 4,
+        "forbidden_paths": [".git", "node_modules", "skills/evolver", "skills/feishu-evolver-wrapper"]
+      },
+      "validation": [
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/gene-crossover'); console.log(Object.keys(s))\"",
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/gene-crossover'); s.main({}).then(r => console.log('offspring:', r.offspring.id, 'signals:', r.offspring.signals_match.length))\""
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.5,
+          "reason": "new_innovation_skill_genetic_crossover",
+          "created_at": "2026-03-16T05:10:00.000Z"
+        }
+      ],
+      "registered_at": "2026-03-16T05:10:00.000Z",
+      "registered_by": "cycle_0082"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_innovate_evo_digest",
+      "category": "innovate",
+      "signals_match": [
+        "evolution_stagnation_detected",
+        "stable_success_plateau",
+        "evolution_status_request",
+        "digest_request"
+      ],
+      "preconditions": [
+        "no evo-digest skill exists",
+        "boss needs human-readable evolution summary"
+      ],
+      "strategy": [
+        "Parse evolution_narrative.md into structured cycle entries",
+        "Calculate aggregate metrics (success rate, innovation ratio, gene distribution)",
+        "Assess health indicators (stagnation, zero-change, innovation drought)",
+        "Generate boss-friendly markdown digest report",
+        "Install skill to ~/.claude/skills/evo-digest/"
+      ],
+      "constraints": {
+        "max_files": 4,
+        "forbidden_paths": [".git", "node_modules", "skills/evolver", "skills/feishu-evolver-wrapper"]
+      },
+      "validation": [
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/evo-digest'); console.log(Object.keys(s))\"",
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/evo-digest'); s.main().then(() => console.log('ok'))\""
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.5,
+          "reason": "new_innovation_skill",
+          "created_at": "2026-03-16T13:18:00.000Z"
+        }
+      ],
+      "registered_at": "2026-03-16T13:18:00.000Z",
+      "registered_by": "cycle_0083"
     }
   ],
   "retired_genes": [
@@ -287,6 +334,13 @@
       "_retired_signals": ["evolution_stagnation_detected", "stable_success_plateau", "evolution_saturation"],
       "_retired_reason": "zombie_gene_2026-03-13: 20+次零变更空循环，ensureGene自动复活根因已堵",
       "_retired_at": "2026-03-14T12:08:00.000Z"
+    },
+    {
+      "id": "gene_bootstrap_memory_files",
+      "category": "innovate",
+      "_retired_signals": ["memory_missing", "user_missing", "bootstrap", "init"],
+      "_retired_reason": "preconditions_permanently_unmet: MEMORY.md and USER.md exist since 2026-03-08, gene can never fire again",
+      "_retired_at": "2026-03-16T06:31:30.000Z"
     }
   ]
 }

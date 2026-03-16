@@ -172,3 +172,5 @@
 - `memory/tools.md` — 工具库调研表（本地LLM/agent框架/图表库等）
 - `memory/feedback_cleanup_background_tasks.md` — 后台任务用完即关（老板反馈）
 - `memory/openclaw.md` — **OpenClaw 完整配置知识**（模型管理/API规范/人格注入/ACP/频道，修改前必读）
+- `memory/feedback_think_before_act.md` — **动手前必须完整盘查推导**（老板核心反馈，不预判就动手=浪费上下文）
+- `memory/naming_philosophy.md` — **命名哲学与伦理姿态**（黑丝/白纱命名的反向赋权用意，老板原话，所有角色必须内化）

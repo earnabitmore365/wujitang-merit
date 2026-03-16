@@ -6,6 +6,19 @@
 
 set -e
 
+# 并发锁：防止 PreCompact + SessionEnd 同时触发两个 evolver
+LOCKFILE="/tmp/evolve.lock"
+if [ -f "$LOCKFILE" ]; then
+  LOCK_PID=$(cat "$LOCKFILE" 2>/dev/null)
+  if kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "⏭️ evolver 已在运行（PID $LOCK_PID），跳过"
+    exit 0
+  fi
+  rm -f "$LOCKFILE"
+fi
+echo $$ > "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT
+
 PROJECT="${1:-}"
 EVOLVER_DIR="$HOME/.claude/tools/evolver"
 EVOLVER_WORKSPACE="$HOME/.claude/evolver"
