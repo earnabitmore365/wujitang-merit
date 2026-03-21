@@ -24,7 +24,8 @@
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
-| S43 | 当前 | 03-19 | 新会话，待老板指示 |
+| S44 | 当前 | 03-21 | 新会话，待老板指示 |
+| S43 | — | 03-19 | 新会话（无历史记录） |
 | S42 | 0da5d1b1 | 03-16 | Mission Control搁置+Claude Code API(port 8100)+Abby升qwen3.5:9b+evolver hook链路修复(加锁)+SessionStart通知修复+Autoresearch调研(暂不动)+命名哲学记录+evo-digest/gene-crossover新skill |
 | S41 | c2c95c51续2 | 03-15 | OpenClaw/Abby修复(API模式修正)+本地模型安装(3注册1未注册)+evolve.js僵尸根修复+openclaw.md参考文档 |
 | S40 | c2c95c51续 | 03-13 | 僵尸基因自动复活根因修复(BUG-007/FIX-005: ensureGene退役检查+c7368808退役条目+workspace同步) |

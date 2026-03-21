@@ -103,7 +103,7 @@ def get_project_from_session(session_id):
 
 
 def parse_last_assistant(transcript_path):
-    """读取 JSONL 末尾，收集最后一个 turn 的所有 assistant 文字块拼接返回"""
+    """读取 JSONL 末尾，收集最后一个 turn 的所有 assistant 内容（文字 + 工具调用摘要）"""
     try:
         with open(transcript_path, 'r') as f:
             lines = f.readlines()
@@ -125,8 +125,23 @@ def parse_last_assistant(transcript_path):
                 if speaker is None:
                     speaker = '黑丝' if 'opus' in model else ('白纱' if 'sonnet' in model else '未知')
                 blocks = msg.get('content', [])
-                text_parts = [b.get('text', '') for b in blocks
-                              if isinstance(b, dict) and b.get('type') == 'text']
+                text_parts = []
+                for b in blocks:
+                    if not isinstance(b, dict):
+                        continue
+                    if b.get('type') == 'text' and b.get('text', '').strip():
+                        text_parts.append(b['text'].strip())
+                    elif b.get('type') == 'tool_use':
+                        # 记录工具调用摘要，防止纯工具回复被丢弃
+                        tool_name = b.get('name', '?')
+                        tool_input = b.get('input', {})
+                        # 提取关键参数（文件路径、命令等）
+                        hint = tool_input.get('file_path', '') or tool_input.get('command', '') or tool_input.get('pattern', '')
+                        if hint:
+                            hint = str(hint)[:80]
+                            text_parts.append(f'[工具:{tool_name} → {hint}]')
+                        else:
+                            text_parts.append(f'[工具:{tool_name}]')
                 text = '\n'.join(text_parts).strip()
                 if text:
                     parts.append(text)

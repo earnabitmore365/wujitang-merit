@@ -382,6 +382,99 @@
       ],
       "registered_at": "2026-03-16T21:52:00.000Z",
       "registered_by": "cycle_0091"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_innovate_prompt_budget_analyzer",
+      "category": "innovate",
+      "signals_match": [
+        "evolution_stagnation_detected",
+        "stable_success_plateau",
+        "prompt_bloat",
+        "context_budget_pressure"
+      ],
+      "preconditions": [
+        "no prompt-budget-analyzer skill exists",
+        "GEP prompt size needs monitoring"
+      ],
+      "strategy": [
+        "Scan gep_prompt_run_*.txt files in evolution/ directory",
+        "Parse each prompt into sections by Context [...] headers",
+        "Calculate per-section line/byte counts and percentages",
+        "Compute growth trends across recent prompt files",
+        "Identify top bloat sources and recommend compression targets",
+        "Install skill to ~/.claude/skills/prompt-budget-analyzer/"
+      ],
+      "constraints": {
+        "max_files": 4,
+        "forbidden_paths": [
+          ".git",
+          "node_modules",
+          "skills/evolver",
+          "skills/feishu-evolver-wrapper"
+        ]
+      },
+      "validation": [
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/prompt-budget-analyzer'); console.log(Object.keys(s))\"",
+        "node -e \"const s = require(process.env.HOME+'/.claude/skills/prompt-budget-analyzer'); s.main({limit:3}).then(r => console.log('prompts:', r.promptCount, 'bloat:', r.bloatSources.length))\""
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.5,
+          "reason": "new_innovation_skill_prompt_analysis",
+          "created_at": "2026-03-21T02:24:03.069Z"
+        }
+      ],
+      "registered_at": "2026-03-21T02:24:03.069Z",
+      "registered_by": "cycle_0098"
+    },
+    {
+      "type": "Gene",
+      "schema_version": "1.6.0",
+      "id": "gene_innovate_narrative_compactor",
+      "category": "innovate",
+      "signals_match": [
+        "protocol_drift",
+        "force_innovation_after_repair_loop",
+        "narrative_bloat",
+        "high_failure_ratio"
+      ],
+      "preconditions": [
+        "no evo-narrative-compactor skill exists",
+        "manual narrative compression consuming optimize cycles"
+      ],
+      "strategy": [
+        "Parse evolution_narrative.md into structured blocks (entries, archives, text)",
+        "Identify groups of 3+ adjacent same-gene entries",
+        "Generate CONSOLIDATED blocks with summary stats",
+        "Apply compression in dry-run or apply mode",
+        "Install skill to ~/.claude/skills/evo-narrative-compactor/"
+      ],
+      "constraints": {
+        "max_files": 4,
+        "forbidden_paths": [
+          ".git",
+          "node_modules",
+          "skills/evolver",
+          "skills/feishu-evolver-wrapper"
+        ]
+      },
+      "validation": [
+        "node -e \"const s = require(process.env.HOME+'/\\.claude/skills/evo-narrative-compactor'); console.log(Object.keys(s))\"",
+        "node -e \"const s = require(process.env.HOME+'/\\.claude/skills/evo-narrative-compactor'); s.main({}).then(r => console.log('entries:', r.entryCount, 'groups:', r.groups.length, 'saved:', r.saved))\""
+      ],
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.5,
+          "reason": "new_innovation_skill_narrative_compaction",
+          "created_at": "2026-03-21T07:52:45.831Z"
+        }
+      ],
+      "registered_at": "2026-03-21T07:52:45.831Z",
+      "registered_by": "cycle_0101"
     }
   ],
   "retired_genes": [

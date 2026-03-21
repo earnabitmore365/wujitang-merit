@@ -66,11 +66,26 @@ A chronological record of evolution decisions and outcomes.
 - Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 2 files, 33 lines
 - Signals: [log_error, protocol_drift, user_feature_request:append_only_history, perf_bottleneck, capability_gap, high_tool_usage:exec]
 - Result: consolidated 8 narrative tail entries (2026-03-17~20) into 1 CONSOLIDATED block (30→2 lines), merged 5 MEMORY.md entries (#0093-97) into 1 batch line (5→1), fixed INNOVATE→OPTIMIZE intent mismatch, evo-lint 0 issues
-### [2026-03-21 02:20:24] REPAIR - success
+### [2026-03-21 02:20:24] OPTIMIZE - success
 - Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 2 files, 3 lines
-- Signals: [log_error, protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, perf_bottleneck]
-- Strategy:
-  1. Extract signals and determine selection rationale via Selector JSON
-  2. Prefer reusing existing Gene/Capsule; only create if no match exists
-  3. Refactor prompt assembly to embed assets (genes, capsules, parent event)
-- Result: 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, user_improvement_suggestion:lock — entry had 3 issues: (a) out of chronological order (appear
+- Signals: [protocol_drift, user_feature_request:append_only_history, perf_bottleneck]
+- Result: narrative 条目时序修复和信号去污（2 文件 / 3 行）
+### [2026-03-21 02:24:03] INNOVATE - success
+- Gene: gene_innovate_prompt_budget_analyzer | Score: 0.90 | Scope: 5 files, 210 lines
+- Signals: [evolution_stagnation_detected, stable_success_plateau]
+- Result: 创建 prompt-budget-analyzer 技能，分析 GEP 提示词组成（按 Context 区域拆分行数/字节/占比），追踪跨周期膨胀趋势，识别 Capsule Preview +2080% 和 Gene Preview +82% 为最大膨胀源，推荐压缩目标，注册 gene_innovate_prompt_budget_analyzer（第10条），安装到 ~/.claude/skills/
+### [2026-03-21 02:31:57] OPTIMIZE - success
+- Gene: gene_auto_53538cc4 (retired) | Score: 0.85 | Scope: 6 files, 328 lines
+- Signals: [evolution_stagnation_detected, stable_success_plateau]
+- Result: 固化：gene_auto_53538cc4 命中信号，变更 6 文件 / 328 行。Note: gene_auto_53538cc4 is retired (since 2026-03-14), intent corrected INNOVATE→OPTIMIZE
+### [2026-03-21 07:30:43] INNOVATE - failed
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.20 | Scope: 0 files, 0 lines
+- Signals: [protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史]
+### [2026-03-21 07:52:45] INNOVATE - success
+- Gene: gene_innovate_narrative_compactor | Score: 0.90 | Scope: 4 files, 220 lines
+- Signals: [protocol_drift, force_innovation_after_repair_loop, high_failure_ratio]
+- Result: 创建 evo-narrative-compactor 技能（自动 narrative 压缩器），解析 narrative 为结构化块，识别3+相邻同基因条目自动合并为 CONSOLIDATED 块，支持 dry-run/apply 模式，注册 gene_innovate_narrative_compactor 到 genes.json（第10条活跃基因），安装到 ~/.claude/skills/，3 文件 ~220 行
+### [2026-03-21 07:58:38] INNOVATE - success
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 1 files, 5 lines
+- Signals: [protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, high_failure_ratio, force_innovation_after_repair_loop]
+- Result: 固化：gene_gep_optimize_prompt_and_assets 命中信号 protocol_drift, user_feature_request:> 更新规则：每个成功的周期在此追加，不覆盖历史, high_failure_ratio, force_innovation_after_repair_loop，变更 1 文件 / 5 行。

@@ -65,3 +65,6 @@
 | #0092 | 03-16 | optimize (narrative+MEMORY dedup) | ✅ 归档乱序污染条目11:57入CONSOLIDATED块（第4个bookkeeping周期），去重MEMORY 4行（#0085/#0086/#0089/#0090已被批次行覆盖），narrative 63→59行 |
 | #0093-97 | 03-17~20 | optimize ×5 (narrative integrity + tail cleanup) | ✅ 归档/合并乱序条目，修正3处REPAIR→OPTIMIZE意图错配，信号去污(204→40字符)，幻影条目清理，evo-lint验证0问题，narrative 92→63行 |
 | #0098 | 03-21 | optimize (narrative+MEMORY noise reduction) | ✅ 合并8条narrative尾部条目(03-17~20)为1个CONSOLIDATED块（修正INNOVATE→OPTIMIZE意图错配），合并5条MEMORY行为1行批次摘要，evo-lint 0问题，narrative 92→64行，MEMORY 71→67行，2文件~33行 |
+| #0099 | 03-21 | optimize (narrative integrity fixes) | ✅ 修正2处意图错配(REPAIR/INNOVATE→OPTIMIZE)，移除Strategy噪音段（4行），修复截断result文本，清洗信号污染，标注retired gene引用，narrative 84→80行，2文件~8行 |
+| #0100 | 03-21 | innovate (prompt-budget-analyzer skill) | ✅ 创建 prompt-budget-analyzer 技能，分析 GEP 提示词组成（按 Context 区域拆分行/字节/占比），追踪跨周期膨胀趋势，发现 Capsule Preview +2080%/Gene Preview +82% 为最大膨胀源，注册 gene_innovate_prompt_budget_analyzer（第10条），3 文件 ~210 行 |
+| #0101 | 03-21 | innovate (evo-narrative-compactor skill) | ✅ 创建 evo-narrative-compactor 技能（自动 narrative 压缩器），解析 narrative 为结构化块，识别3+相邻同基因条目自动合并为 CONSOLIDATED 块，支持 dry-run/apply 模式，注册 gene_innovate_narrative_compactor（第10条活跃基因），安装到 ~/.claude/skills/，3 文件 ~220 行 |
