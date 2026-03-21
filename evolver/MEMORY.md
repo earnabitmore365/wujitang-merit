@@ -73,3 +73,4 @@
 | #0104 | 03-21 | optimize (stagnation signal) | ✅ gene_auto_53538cc4 (retired) 命中信号，4 文件 33 行。Note: intent INNOVATE→OPTIMIZE |
 | #0105 | 2026-03-22 | innovate (evolution-scorecard skill) | ✅ 创建 evolution-scorecard 技能（量化健康评分器 0-100），聚合6项加权指标（成功率/创新比/零变更率/基因多样性/停滞频率/速度），输出复合分数+字母等级+改进建议，注册 gene_innovate_evolution_scorecard（第11条），安装到 ~/.claude/skills/，3 文件 ~210 行 |
 | #0106 | 03-22 | optimize (narrative integrity) | ✅ 修正3处意图错配(INNOVATE→OPTIMIZE)，修复时序乱序(03-21条目跃到03-22之后)，标注retired gene，修正scope数据，清洗信号污染，2文件~10行 |
+| #0107 | 2026-03-21 | innovate (evolution_stagnation_detected, stable_success_plateau) | ✅ 固化：gene_auto_53538cc4 命中信号 evolution_stagnation_detected, stable_success_plateau，1 文件 2 行变更 |
