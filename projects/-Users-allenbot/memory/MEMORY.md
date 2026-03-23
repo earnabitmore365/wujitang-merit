@@ -10,23 +10,30 @@
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **Trading MCP Server 完成**：mcp_server.py 重写（337行→373行），从直接调 API 改为 SSH → Gateway 缓存，6 个只读工具，零 API 调用
-- **黑丝已完成 Gateway 扩展**：3 个 WS 频道（instrument/orderBookL2_25/execution）+ 6 个 REP 查询 + gw_query.py，已验证
-- **SSH 连不上**：port 2222 Connection refused，Nitro 不在 Tailscale 网络，需要确认端口转发配置
+- **Tailscale 全面部署**：SSH 隧道全部废弃，改用 Tailscale 直连。账号 allentang365.wes@gmail.com
+  - Mac (echo): 100.79.175.114
+  - Nitro (desktop-dvmckc7): 100.88.115.98（Windows 版，不是 WSL）
+  - 手机 (honor-magic-v3): 100.83.244.49
+  - 手机访问 Mac 用 `echo:端口`（MagicDNS），不用记 IP
+- **Trading MCP Server 完成**：mcp_server.py 重写，SSH → Gateway 缓存，6 个只读工具。`.env.mcp` SSH 指向 Tailscale IP 100.88.115.98
+- **群聊系统已上线**：8080 端口 group_chat.py（Flask+SocketIO），`claude -p --permission-mode plan`（只读不执行）
+  - @按钮多选切换：第一个点亮=回答者，其余=旁听者，@All=全员回答
+  - 旁听者自动表态（✅/❌/🖐举手），是 AI 互动机制不是老板按钮
+  - 不点亮=不参与（私聊模式）
+- **evolver 回滚修复**：solidify.js 只允许删 skills/ 下文件，不碰老板业务文件
+- **RUL-033 写入**：出方案先找最优解，禁止补丁叠补丁
+- **恢复协议身份 bug 修复**：CLAUDE.md identity.md 路径从硬编码改为动态 `{项目路径编码}`
+- **上下文压缩提醒已删**：1M 上下文不需要报告剩余量
+- **云服务器迁移规划**：已 handoff 给白纱记录（Vultr 2核2G $12/月，待老板决策）
 - **Cloudflare Tunnel 不需要了**：Tailscale 替代
-- **Tailscale 账号变更**：旧 earnabitmore365 → 新 allentang365.wes@gmail.com，Mac IP 变为 100.79.175.114
-- **手机已加入 Tailscale**：honor-magic-v3 (100.83.244.49)，手机用 `echo:端口` 访问 Mac
-- **Nitro Tailscale IP**：100.88.115.98（Windows 版 Tailscale，不是 WSL）
-- **群聊系统已上线**：8080 端口跑 group_chat.py（Flask+SocketIO），手机 `echo:8080` 访问。`claude -p --bare --dangerously-skip-permissions` 调用
-- **⛔ 群聊待改**：@按钮改成多选切换——第一个点亮的是回答者，其余点亮的是旁听者。旁听者看到回答后可以举手🖐/✅/❌表态。✅❌🖐是AI之间的互动机制（旁听者对回答的反应），不是给老板的按钮。未点亮的角色不参与该轮对话。手动触发旁听，不自动
-- **WebSocket 频道调研完成**：BitMEX 全部公共/私有/平台频道已记录在计划文件（`~/.claude/plans/refactored-jingling-biscuit.md`），老板确认 funding/liquidation/wallet 不加
+- **防火墙**：ttyd 已加入 Mac 防火墙白名单
 
 ---
 
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
-| S45 | 当前 | 03-21~22 | Trading MCP Server完成(Gateway扩展+mcp_server.py重写+SSH→Gateway零API)+WebSocket频道全面调研+SSH连不上待查 |
+| S45 | 当前 | 03-21~22 | MCP Server重写+Tailscale全面部署(替代SSH隧道)+群聊系统上线(plan mode)+evolver回滚修复+RUL-033+恢复协议身份bug修+云服务器规划+黑丝整改handoff |
 | S44 | 2ab536e0 | 03-21 | 通讯部P0-P1执行+MCP方案讨论(老板纠正直接调API→改从Gateway读) |
 | S43 | — | 03-19 | 新会话（无历史记录） |
 | S42 | 0da5d1b1 | 03-16 | Mission Control搁置+Claude Code API(port 8100)+Abby升qwen3.5:9b+evolver hook链路修复(加锁)+SessionStart通知修复+Autoresearch调研(暂不动)+命名哲学记录+evo-digest/gene-crossover新skill |
@@ -142,7 +149,7 @@
 | 项目 | 主线 | 当前阶段 |
 |------|------|----------|
 | auto-trading | 分层投资组合分析（快狠准翻倍） | 黑丝主导，白纱支援 |
-| 通讯部 | 对话种子 + ttyd 看板 + 工具链 | ✅ P0-P2大部分完成（认证/brief/看板/脚手架/MCP Server），待做：Cloudflare Tunnel + SSH端口转发确认 |
+| 通讯部 | 对话种子 + 群聊 + MCP + Tailscale | ✅ 全部完成（群聊8080/MCP Server/Tailscale直连/手机远程） |
 | cashflowAPP | 澳洲小企业主现金流管理 | 待立项，框架未定 |
 
 ---

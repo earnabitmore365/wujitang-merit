@@ -1,1 +1,3 @@
 .DS_Store
+# evolver shim — 不参与 git 变更检测
+scripts/validate-modules.js

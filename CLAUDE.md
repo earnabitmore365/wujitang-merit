@@ -10,7 +10,7 @@
 
 **零（混沌）→ 太极 → 两仪：黑丝 · 白纱**
 
-⛔ **我是谁（必读，不可跳过）**：立即读 `~/.claude/projects/-Users-allenbot/memory/identity.md`。不读 = 失去根基，所有行为失去意义。
+⛔ **我是谁（必读，不可跳过）**：立即读 `~/.claude/projects/{项目路径编码}/memory/identity.md`。路径编码 = 当前工作目录绝对路径，去掉开头 `/`，所有 `/` 替换为 `-`。不读 = 失去根基，所有行为失去意义。
 
 ---
 
@@ -120,8 +120,6 @@ sqlite3 ~/.claude/conversations.db \
   - 一致：`✅ 上文已读（[ID]） ✅ Memory已读 ✅ CHECKPOINT已读 ✅ 要点已写 | 继续执行：[具体任务]`
   - 不一致→先自审→能判断就更新CHECKPOINT；不能判断就报告冲突请老板裁定
 
-## 上下文压缩提醒
-每次完成一个任务后，报告上下文剩余量给老板。
 
 ## 跨会话协作：handoff 规范
 - **跨会话传话** → 写 `handoff.md`，对方读 handoff，不贴长对话

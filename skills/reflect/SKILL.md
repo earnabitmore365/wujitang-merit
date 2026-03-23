@@ -124,6 +124,13 @@ for id, t, n in candidates:
 "
 ```
 
+### 步骤4b：升级后归档
+
+条目升级（promoted）到 rules.md 后，从 LEARNINGS.md 移到 `~/.claude/learnings/LEARNINGS_ARCHIVE.md`：
+1. 将该条目的状态改为 `✅ promoted → {目标rules.md} {RUL-ID}`
+2. 将整条从 LEARNINGS.md 剪切到 LEARNINGS_ARCHIVE.md 末尾
+3. LEARNINGS.md 只保留 pending 条目，保持精简
+
 ### 步骤5：提案输出
 
 向老板输出结构化报告：
@@ -154,6 +161,7 @@ for id, t, n in candidates:
 
 - **数据源**：`~/.claude/conversations.db` messages 表（tags LIKE '%纠错%'）
 - **学习草稿**：`~/.claude/learnings/LEARNINGS.md`（pending，未毕业）
+- **已升级归档**：`~/.claude/learnings/LEARNINGS_ARCHIVE.md`（promoted，仅追溯用）
 - **升级目标（系统自带 memory 目录）**：
   - 全局规则 → `~/.claude/projects/-Users-allenbot/memory/rules.md`
   - auto-trading 规则 → `~/.claude/projects/-Users-allenbot-project-auto-trading/memory/rules.md`

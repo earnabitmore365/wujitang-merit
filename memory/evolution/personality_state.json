@@ -10,11 +10,11 @@
   },
   "stats": {
     "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9": {
-      "success": 34,
+      "success": 41,
       "fail": 0,
       "avg_score": 0.85,
-      "n": 34,
-      "updated_at": "2026-03-21T22:50:50.300Z"
+      "n": 41,
+      "updated_at": "2026-03-23T11:25:38.450Z"
     }
   },
   "history": [
@@ -255,7 +255,56 @@
       "outcome": "success",
       "score": 0.85,
       "notes": "event:evt_1774133450267"
+    },
+    {
+      "at": "2026-03-21T23:44:25.861Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774136665825"
+    },
+    {
+      "at": "2026-03-22T03:29:52.707Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774150192676"
+    },
+    {
+      "at": "2026-03-22T09:52:58.676Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774173178642"
+    },
+    {
+      "at": "2026-03-22T14:25:06.714Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774189506681"
+    },
+    {
+      "at": "2026-03-22T14:42:05.839Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774190525803"
+    },
+    {
+      "at": "2026-03-23T08:26:03.306Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774254363270"
+    },
+    {
+      "at": "2026-03-23T11:25:38.450Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.4|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774265138410"
     }
   ],
-  "updated_at": "2026-03-21T22:50:50.300Z"
+  "updated_at": "2026-03-23T11:25:38.450Z"
 }
