@@ -74,3 +74,4 @@
 | #0105 | 03-22 | innovate (evolution-scorecard skill) | ✅ 创建 evolution-scorecard 技能（量化健康评分器 0-100），聚合6项加权指标（成功率/创新比/零变更率/基因多样性/停滞频率/速度），输出复合分数+字母等级+改进建议，注册 gene_innovate_evolution_scorecard（第11条），安装到 ~/.claude/skills/，3 文件 ~210 行 |
 | #0106-12 | 03-22~23 | optimize ×7 (narrative+gene integrity) | ✅ 意图错配修正×6(INNOVATE→OPTIMIZE)，时序乱序修复×3，信号去污×3，retired gene标注+stagnation信号×2(4文件25行)，CONSOLIDATED块合并(-6行)，gene signals_match根因修复(移除force_innovation)，failure抑制标记添加，MEMORY批次合并 |
 | #0113 | 03-23 | optimize (zero change) | ⚠️ gene_gep_optimize_prompt_and_assets 零变更周期，意图错配 INNOVATE→OPTIMIZE + 信号污染(raw user message)，已在#0114合并修正 |
+| #0116 | 03-23 | optimize (narrative+gene integrity) | ✅ 修正2处意图错配(INNOVATE→OPTIMIZE)，信号去污(raw user message→append_only_history)，时序乱序修复(12:24条目恢复到15:21之前)，retired gene标注+scope修正(4→9 files/50→178 lines)，补录genes.json缺失epigenetic mark(cycle_0113)，3文件~20行 |
