@@ -4,36 +4,35 @@
 
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-22
+> 太极最后更新：2026-03-24
 
 ## 上次会话要点
 
 > 覆盖更新，不累积。只记下次会话需要知道的事。
 
-- **Tailscale 全面部署**：SSH 隧道全部废弃，改用 Tailscale 直连。账号 allentang365.wes@gmail.com
-  - Mac (echo): 100.79.175.114
-  - Nitro (desktop-dvmckc7): 100.88.115.98（Windows 版，不是 WSL）
-  - 手机 (honor-magic-v3): 100.83.244.49
-  - 手机访问 Mac 用 `echo:端口`（MagicDNS），不用记 IP
-- **Trading MCP Server 完成**：mcp_server.py 重写，SSH → Gateway 缓存，6 个只读工具。`.env.mcp` SSH 指向 Tailscale IP 100.88.115.98
-- **群聊系统已上线**：8080 端口 group_chat.py（Flask+SocketIO），`claude -p --permission-mode plan`（只读不执行）
-  - @按钮多选切换：第一个点亮=回答者，其余=旁听者，@All=全员回答
-  - 旁听者自动表态（✅/❌/🖐举手），是 AI 互动机制不是老板按钮
-  - 不点亮=不参与（私聊模式）
-- **evolver 回滚修复**：solidify.js 只允许删 skills/ 下文件，不碰老板业务文件
-- **RUL-033 写入**：出方案先找最优解，禁止补丁叠补丁
-- **恢复协议身份 bug 修复**：CLAUDE.md identity.md 路径从硬编码改为动态 `{项目路径编码}`
-- **上下文压缩提醒已删**：1M 上下文不需要报告剩余量
-- **云服务器迁移规划**：已 handoff 给白纱记录（Vultr 2核2G $12/月，待老板决策）
-- **Cloudflare Tunnel 不需要了**：Tailscale 替代
-- **防火墙**：ttyd 已加入 Mac 防火墙白名单
+- **conversations MCP Server**：写好了 `~/.claude/scripts/conversations_mcp.py`（4个工具：catchup/query_messages/brief/stats），但老板从 settings.json 移除了注册（可能有问题待排查）
+- **Ralph Loop 搭建完成**：外置硬盘 `/Volumes/BIWIN NV 7400 2TB/Loop/` + `Loop Done/`
+  - `/ralph` slash command：交互式，太极自动循环审查
+  - `run.sh`：无人值守后台跑
+  - `PROMPT.md`：审查规则（P0-P3 优先级）
+  - `CLAUDE.md`：覆盖全局恢复协议，loop 专用
+  - 收尾自动生成 README（每轮实时追加记录）
+  - 首次试跑 gp_engine 12 个 .py 文件，4 轮完成（1个P0 + 5个P1 + 2个P2）
+- **黑丝完工三问**：auto-trading CLAUDE.md 主线流程第5步改为完工三问（删了什么→grep确认 / 改了什么→调用方同步 / 干净吗→通篇扫），必须贴结果
+- **reflect 链路修复**：
+  - `reflect_hook.py`：改用 `last_reflect`（只有 /reflect 执行时才推进），防信号丢失
+  - `session_start.py`：加 `inject_reflect_pending()`，所有会话启动检查待处理信号
+  - `reflect_mcp.py`：加 `clear_pending()` 工具
+  - auto-trading CLAUDE.md：加"被老板纠正时当场承认+说教训"
+- **权限确认**：全局 `bypassPermissions` + 所有项目无项目级 settings = 全工具自动放行
 
 ---
 
 ## 会话索引（最新在最上面）
 | # | ID | 日期 | 核心内容 |
 |---|-----|------|----------|
-| S45 | 当前 | 03-21~22 | MCP Server重写+Tailscale全面部署(替代SSH隧道)+群聊系统上线(plan mode)+evolver回滚修复+RUL-033+恢复协议身份bug修+云服务器规划+黑丝整改handoff |
+| S46 | 当前 | 03-24 | Ralph Loop搭建(/ralph command+run.sh+外置硬盘Loop/LoopDone)+conversations MCP(写好但未注册)+黑丝完工三问+reflect链路修复(pending不丢失)+权限排查(全bypass) |
+| S45 | 7b7ad37e | 03-21~22 | MCP Server重写+Tailscale全面部署(替代SSH隧道)+群聊系统上线(plan mode)+evolver回滚修复+RUL-033+恢复协议身份bug修+云服务器规划+黑丝整改handoff |
 | S44 | 2ab536e0 | 03-21 | 通讯部P0-P1执行+MCP方案讨论(老板纠正直接调API→改从Gateway读) |
 | S43 | — | 03-19 | 新会话（无历史记录） |
 | S42 | 0da5d1b1 | 03-16 | Mission Control搁置+Claude Code API(port 8100)+Abby升qwen3.5:9b+evolver hook链路修复(加锁)+SessionStart通知修复+Autoresearch调研(暂不动)+命名哲学记录+evo-digest/gene-crossover新skill |
@@ -157,9 +156,9 @@
 ## 通讯部 关键信息
 
 - **存储**：`~/.claude/conversations.db`（messages 表，全项目共用）
-- **自动写入**：Stop hook（AI回复）+ UserPromptSubmit hook（混沌发言）
+- **自动写入**：Stop hook（AI回复）+ UserPromptSubmit hook（无极发言）
 - **字段**：id / time / speaker / content / project / session_id / tags
-- **tags**：7类词表自动匹配（流程/技术验证/市场状态/数据/协作/策略币种），混沌命中决策词额外加"决策"标签
+- **tags**：7类词表自动匹配（流程/技术验证/市场状态/数据/协作/策略币种），无极命中决策词额外加"决策"标签
 - **内容格式**：Markdown 原文（\n换行，**粗体，|表格，`代码）
 - **太极频道**：home 目录不写入，上层对话隔离
 - **认证**：ttyd Basic Auth（用户名 boss，密码在 `~/.claude/.comm_pass`）

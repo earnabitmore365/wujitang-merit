@@ -39,7 +39,7 @@ TAG_WORDS = {
                'sol', 'btc', 'eth', 'bnb', 'xrp', 'ada', 'avax', 'link', 'dot', 'trx'],
 }
 
-# 决策组（用于混沌特殊标签）
+# 决策组（用于无极特殊标签）
 DECISION_WORDS = TAG_WORDS['决策词']
 
 # session 目录 → project 名（路径编码：去掉开头/，所有/换-）
@@ -67,8 +67,8 @@ def get_tags(speaker, content):
         for word in words:
             if word.lower() in content_lower:
                 matched.add(word if not word.islower() else word)
-    # 混沌命中决策词 → 加"决策"标签
-    if speaker == '混沌':
+    # 无极命中决策词 → 加"决策"标签
+    if speaker == '无极':
         for word in DECISION_WORDS:
             if word.lower() in content_lower:
                 matched.add('决策')
@@ -219,7 +219,7 @@ def main():
     elif event == 'UserPromptSubmit':
         content = data.get('prompt', '').strip()
         if content:
-            write_message(conn, '混沌', content, project, session_id)
+            write_message(conn, '无极', content, project, session_id)
 
     elif event == 'PreCompact':
         transcript_path = data.get('transcript_path', '')

@@ -75,3 +75,4 @@
 | #0106-12 | 03-22~23 | optimize ×7 (narrative+gene integrity) | ✅ 意图错配修正×6(INNOVATE→OPTIMIZE)，时序乱序修复×3，信号去污×3，retired gene标注+stagnation信号×2(4文件25行)，CONSOLIDATED块合并(-6行)，gene signals_match根因修复(移除force_innovation)，failure抑制标记添加，MEMORY批次合并 |
 | #0113 | 03-23 | optimize (zero change) | ⚠️ gene_gep_optimize_prompt_and_assets 零变更周期，意图错配 INNOVATE→OPTIMIZE + 信号污染(raw user message)，已在#0114合并修正 |
 | #0116 | 03-23 | optimize (narrative+gene integrity) | ✅ 修正2处意图错配(INNOVATE→OPTIMIZE)，信号去污(raw user message→append_only_history)，时序乱序修复(12:24条目恢复到15:21之前)，retired gene标注+scope修正(4→9 files/50→178 lines)，补录genes.json缺失epigenetic mark(cycle_0113)，3文件~20行 |
+| #0117 | 03-24 | optimize (narrative consolidation + gene suppression) | ✅ 合并4条连续失败narrative条目(03-23 11:26~12:53)为1个CONSOLIDATED块（108→97行，-11行），修正4处INNOVATE→OPTIMIZE意图错配，信号去污(raw Chinese→append_only_history)，补录genes.json批次失败抑制标记(boost -0.30)，2文件~15行 |

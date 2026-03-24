@@ -25,7 +25,7 @@
 
 ### 2026-03-05
 
-太极：S29（aa00b2a6续）— 对话种子第二阶段完成：tags词表去噪（删高频噪音词"数据"/"黑丝"/"白纱"/"太极"/"混沌"、删"确认"误伤决策词，8类词表最终版）、/reflect skill（仿OpenClaw self-improving-agent，tags纠错→LEARNINGS.md→出现3次→memory/rules.md）、memory/rules.md机制（系统自带目录存已毕业规则，全局+auto-trading分开放）、stop_points表（PRIMARY KEY speaker+project，每次Stop自动upsert，回来只看不在期间发生的事）、数据库重命名dashboard.db→conversations.db（全文件批量替换）、PreCompact hook实装（settings.json+db_write.py，压缩前写入系统标记+更新stop_points）、SessionStart hook实装（session_start.py，source=compact触发，注入对话+摘要+CHECKPOINT+MEMORY，物理不可跳过）、SessionEnd hook实装（db_write.py新增分支，写[会话结束:reason]）、CLAUDE.md简化（压缩后2步/新会话5步，两个文件同步）、/reflect效果验证（纠错从03-01峰值33条降至03-05的1条，3条规则已毕业）、vibe coding调研（方法论非单skill）、1M context window调研（sonnet[1m]，超200K后2倍定价）。
+太极：S29（aa00b2a6续）— 对话种子第二阶段完成：tags词表去噪（删高频噪音词"数据"/"黑丝"/"白纱"/"太极"/"无极"、删"确认"误伤决策词，8类词表最终版）、/reflect skill（仿OpenClaw self-improving-agent，tags纠错→LEARNINGS.md→出现3次→memory/rules.md）、memory/rules.md机制（系统自带目录存已毕业规则，全局+auto-trading分开放）、stop_points表（PRIMARY KEY speaker+project，每次Stop自动upsert，回来只看不在期间发生的事）、数据库重命名dashboard.db→conversations.db（全文件批量替换）、PreCompact hook实装（settings.json+db_write.py，压缩前写入系统标记+更新stop_points）、SessionStart hook实装（session_start.py，source=compact触发，注入对话+摘要+CHECKPOINT+MEMORY，物理不可跳过）、SessionEnd hook实装（db_write.py新增分支，写[会话结束:reason]）、CLAUDE.md简化（压缩后2步/新会话5步，两个文件同步）、/reflect效果验证（纠错从03-01峰值33条降至03-05的1条，3条规则已毕业）、vibe coding调研（方法论非单skill）、1M context window调研（sonnet[1m]，超200K后2倍定价）。
 **待做**：LRN-20260306-005写入（白纱审计分类问题）
 
 ### 2026-03-04

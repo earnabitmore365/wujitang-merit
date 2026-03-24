@@ -15,7 +15,7 @@ PROJECT_DIR = os.path.expanduser('~/.claude/projects/-Users-allenbot-project-aut
 
 def get_speaker(msg_type, model):
     if msg_type == 'user':
-        return '混沌'
+        return '无极'
     if 'opus' in model:
         return '黑丝'
     if 'sonnet' in model:
@@ -68,7 +68,7 @@ def parse_jsonl(filepath):
             msg = d.get('message', {})
             if msg_type == 'user':
                 content = extract_text(msg.get('content', ''))
-                speaker = '混沌'
+                speaker = '无极'
             else:
                 model = msg.get('model', '')
                 content = extract_text(msg.get('content', []))

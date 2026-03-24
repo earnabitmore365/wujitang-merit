@@ -1,8 +1,8 @@
 {
   "last_run": {
-    "run_id": "run_1774264897025",
-    "created_at": "2026-03-23T11:21:37.059Z",
-    "parent_event_id": "evt_1774254395731",
+    "run_id": "run_1774351679052",
+    "created_at": "2026-03-24T11:27:59.080Z",
+    "parent_event_id": "evt_1774270438435",
     "selected_gene_id": "gene_gep_optimize_prompt_and_assets",
     "selected_capsule_id": null,
     "selector": {
@@ -10,7 +10,7 @@
       "reason": [
         "signals match gene.signals_match",
         "signals: protocol_drift, user_feature_request:更新规则每个成功的周期在此追加不覆盖历史, high_failure_ratio, force_innovation_after_repair_loop",
-        "memory_graph: memory_prefer:gene_gep_optimize_prompt_and_assets | gene_prior:0.864",
+        "memory_graph: memory_prefer:gene_gep_optimize_prompt_and_assets | gene_prior:0.867",
         "drift_intensity: 0.707"
       ],
       "alternatives": []
@@ -23,7 +23,7 @@
     ],
     "mutation": {
       "type": "Mutation",
-      "id": "mut_1774264897024",
+      "id": "mut_1774351679052",
       "category": "innovate",
       "trigger_signals": [
         "protocol_drift",
@@ -35,7 +35,7 @@
       "expected_effect": "explore new strategy combinations to escape local optimum",
       "risk_level": "medium"
     },
-    "mutation_id": "mut_1774264897024",
+    "mutation_id": "mut_1774351679052",
     "personality_state": {
       "type": "PersonalityState",
       "rigor": 0.7,
@@ -61,7 +61,7 @@
       "assets/gep/genes.json",
       "assets/gep/genes.jsonl"
     ],
-    "baseline_git_head": "cb92f02d325138537e8327cc5a0b84b17ea6e79b",
+    "baseline_git_head": "dffea12219a036902aa7f95749a3a0fe416f947b",
     "blast_radius_estimate": {
       "files": 20,
       "lines": 1600
@@ -74,9 +74,9 @@
     "hub_lessons": []
   },
   "last_solidify": {
-    "run_id": "run_1774264897025",
-    "at": "2026-03-23T11:26:10.529Z",
-    "event_id": "evt_1774265170529",
+    "run_id": "run_1774351679052",
+    "at": "2026-03-24T11:32:12.447Z",
+    "event_id": "evt_1774351932447",
     "capsule_id": null,
     "outcome": {
       "status": "failed",

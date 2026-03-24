@@ -445,10 +445,10 @@ python3 gw_query.py EXECUTIONS 10
 - `session_summaries.md` — 会话摘要
 
 **问题：**
-- 只有混沌能看到三方完整全局，黑丝白纱各自孤立
+- 只有无极能看到三方完整全局，黑丝白纱各自孤立
 - 压缩后记忆断，恢复需要读四个文件、几百行、几分钟
 - 每一环靠人工维护，有丢失风险
-- 混沌决策散落在各文件，找一个决定要翻好几个地方
+- 无极决策散落在各文件，找一个决定要翻好几个地方
 
 ---
 
@@ -467,19 +467,19 @@ python3 gw_query.py EXECUTIONS 10
 CREATE TABLE messages (
     id       INTEGER PRIMARY KEY,
     time     DATETIME,
-    speaker  TEXT,        -- '混沌' / '白纱' / '黑丝' / '太极'
+    speaker  TEXT,        -- '无极' / '白纱' / '黑丝' / '太极'
     content  TEXT,
     tags     TEXT,        -- 关键词，逗号分隔
     project  TEXT,        -- 'auto-trading' / 'comms' / 'cashflow' 等
     session_id TEXT       -- 对应的 JSONL 会话 ID
 );
 
--- 混沌决策库（最高优先级，原话原文保留）
+-- 无极决策库（最高优先级，原话原文保留）
 CREATE TABLE decisions (
     id         INTEGER PRIMARY KEY,
     time       DATETIME,
     decision   TEXT,      -- 决策内容
-    raw_quote  TEXT,      -- 混沌原话，一字不改
+    raw_quote  TEXT,      -- 无极原话，一字不改
     project    TEXT,
     status     TEXT       -- 'active' / 'superseded' / 'pending'
 );
@@ -498,7 +498,7 @@ CREATE TABLE tasks (
 CREATE TABLE sessions (
     id           TEXT PRIMARY KEY,   -- JSONL 文件 ID
     date         DATE,
-    participants TEXT,               -- '白纱' / '黑丝' / '混沌+白纱' 等
+    participants TEXT,               -- '白纱' / '黑丝' / '无极+白纱' 等
     summary      TEXT,
     key_decisions TEXT               -- 该次会话决策 ID 列表
 );
@@ -531,11 +531,11 @@ SELECT summary FROM sessions ORDER BY date DESC LIMIT 3;
 | `PreCompact` | 压缩触发前 | 把当前会话写入 SQLite，**零漏洞** |
 | `SessionStart` | 会话开始/恢复时 | 自动跑恢复协议，读 conversations.db |
 | `Stop` | Claude 每轮回复结束 | 批量写入这轮对话 |
-| `UserPromptSubmit` | 混沌发消息前 | 捕获混沌发言写入 |
+| `UserPromptSubmit` | 无极发消息前 | 捕获无极发言写入 |
 
 **写入顺序（每轮对话）：**
 ```
-混沌发消息 → UserPromptSubmit hook → 写入 messages
+无极发消息 → UserPromptSubmit hook → 写入 messages
 Claude 回复结束 → Stop hook → 写入 messages + 更新 tasks
 压缩触发前 → PreCompact hook → 写入当次会话摘要到 sessions
 压缩回来 → SessionStart hook → 读 conversations.db 恢复状态
@@ -560,11 +560,11 @@ Claude 回复结束 → Stop hook → 写入 messages + 更新 tasks
 | 方案设计/分析/战略 | 白纱 | 黑丝确认执行可行性 |
 | 执行/代码/技术细节 | 黑丝 | 白纱补充架构影响 |
 | 两者都有 | 白纱框架 | 黑丝补细节 |
-| 混沌拍板/决策 | 两者都不说，等混沌 | — |
+| 无极拍板/决策 | 两者都不说，等无极 | — |
 
 ---
 
-## 八、待决策（混沌拍板后开工）
+## 八、待决策（无极拍板后开工）
 
 1. **历史迁移** — 现有 MEMORY.md / session_summaries.md 要不要导入？（太极建议：不导，从今天开始记新的）
 2. **快照格式** — dashboard_snapshot.md 的具体格式？
@@ -579,7 +579,7 @@ Claude 回复结束 → Stop hook → 写入 messages + 更新 tasks
 
 ---
 
-**讨论小结**：混沌提出"做成种子"（SQLite），白纱确认方案可行并补充7点细节，太极发现系统自带 PreCompact/SessionStart hook 可原生解决漏数据和自动恢复问题，无需自定义附加方案。
+**讨论小结**：无极提出"做成种子"（SQLite），白纱确认方案可行并补充7点细节，太极发现系统自带 PreCompact/SessionStart hook 可原生解决漏数据和自动恢复问题，无需自定义附加方案。
 
 ---
 
@@ -695,7 +695,7 @@ Claude 回复结束 → Stop hook → 写入 messages + 更新 tasks
 
 ```
 老板发消息
-  → UserPromptSubmit hook → db_write.py → 写入 messages（混沌）✅ 一直正常
+  → UserPromptSubmit hook → db_write.py → 写入 messages（无极）✅ 一直正常
 
 白纱/黑丝回复结束
   → Stop hook → db_write.py

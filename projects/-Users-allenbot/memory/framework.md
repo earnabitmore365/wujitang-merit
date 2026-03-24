@@ -9,7 +9,7 @@
 ## 层级结构
 
 ```
-老板（混沌）— 最终决策
+老板（无极）— 最终决策
     └─ 太极（CEO / home Sonnet）— 管规章、管项目
          ├─ 白纱（auto-trading Sonnet）— 方案架构师
          └─ 黑丝（auto-trading Opus）— 执行工程师

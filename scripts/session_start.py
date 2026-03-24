@@ -69,6 +69,23 @@ def inject_evolver_notifications():
         print(f"[evolver 通知读取失败: {e}]")
 
 
+def inject_reflect_pending():
+    """读取 pending_signals.json，有未处理信号就提醒执行 /reflect"""
+    flag_path = os.path.expanduser('~/.claude/learnings/pending_signals.json')
+    if not os.path.exists(flag_path):
+        return
+    try:
+        with open(flag_path) as f:
+            data = json.load(f)
+        pending = data.get('pending_count', data.get('new_signals', 0))
+        if pending > 0:
+            last_reflect = data.get('last_reflect', data.get('last_check', '未知'))
+            print(f"⚠️ 有 {pending} 条纠错/提升信号待处理（自 {last_reflect} 起），建议执行 /reflect")
+            print("")
+    except Exception:
+        pass
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -83,7 +100,10 @@ def main():
     # 所有会话启动都检查 evolver 通知（不限 compact）
     inject_evolver_notifications()
 
-    # 非压缩来源：只注入 evolver 通知，不做完整压缩注入
+    # 所有会话启动都检查 reflect 待处理信号（不限 compact）
+    inject_reflect_pending()
+
+    # 非压缩来源：只注入 evolver 通知 + reflect 提醒，不做完整压缩注入
     if source != 'compact':
         sys.exit(0)
 
