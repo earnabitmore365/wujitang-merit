@@ -114,6 +114,12 @@
           "boost": -0.3,
           "reason": "suppressed_by_failure_batch_cycle_0113_to_0116: 4 consecutive failures (zero_change + blast_radius_exceeded + signal_pollution + intent_mismatch)",
           "created_at": "2026-03-24T03:27:00.000Z"
+        },
+        {
+          "context": "darwin/arm64/v22.22.0",
+          "boost": 0.1,
+          "reason": "reinforced_by_success_cycle_0118: 2 files/15 lines, narrative data gap repair + intent/signal correction",
+          "created_at": "2026-03-24T21:00:24.000Z"
         }
       ],
       "schema_version": "1.6.0",

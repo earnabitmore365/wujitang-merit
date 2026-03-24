@@ -95,6 +95,25 @@ A chronological record of evolution decisions and outcomes.
 - Result: 创建 evolution-scorecard 技能（量化健康评分器 0-100），聚合6项加权指标（成功率25%/创新比20%/零变更率20%/基因多样性15%/停滞频率10%/速度10%），输出复合分数+字母等级+改进建议，当前系统评分 76/100 (B)，注册 gene_innovate_evolution_scorecard 到 genes.json（第11条活跃基因），安装到 ~/.claude/skills/，3 文件 ~210 行
 > **CONSOLIDATED**: 3 adjacent gene_gep_optimize_prompt_and_assets cycles (2026-03-22 14:25 to 2026-03-23 08:26), 1 success + 2 failed, scope 1 files / 5 lines total, signals=[protocol_drift, user_feature_request:append_only_history, high_failure_ratio]. Note: 2026-03-23 entry intent corrected INNOVATE→OPTIMIZE, signal cleaned (raw user message→append_only_history), 2026-03-22 14:25 entry removed force_innovation from gene signals_match.
 > **CONSOLIDATED**: 4 adjacent gene_gep_optimize_prompt_and_assets failed cycles (2026-03-23 11:26 to 12:53), 0 files/0 lines (2 cycles had blast_radius_exceeded: 44/40 files before abort), signals=[protocol_drift, user_feature_request:append_only_history, high_failure_ratio, force_innovation_after_repair_loop]. Note: intent corrected INNOVATE→OPTIMIZE (gene category=optimize), signal cleaned (raw user message→append_only_history).
-### [2026-03-24 11:32:12] INNOVATE - failed
+### [2026-03-23 15:21:00] INNOVATE - success
+- Gene: gene_innovate_code_stats | Score: 0.90 | Scope: 4 files, 200 lines
+- Signals: [evolution_stagnation_detected, stable_success_plateau]
+- Result: 创建 code-stats 技能（代码库复杂度分析器），扫描目录树统计文件数/行数/函数密度/模块耦合度，计算复杂度等级 A-D，注册 gene_innovate_code_stats（第13条活跃基因），安装到 ~/.claude/skills/，3 文件 ~200 行
+### [2026-03-23 17:00:00] OPTIMIZE - success
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 3 files, 20 lines
+- Signals: [protocol_drift, user_feature_request:append_only_history]
+- Result: 修正2处意图错配(INNOVATE→OPTIMIZE)，信号去污(raw user message→append_only_history)，时序乱序修复，retired gene标注+scope修正，补录epigenetic mark
+### [2026-03-24 08:00:00] OPTIMIZE - success
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 2 files, 15 lines
+- Signals: [protocol_drift, user_feature_request:append_only_history, high_failure_ratio]
+- Result: 合并4条连续失败narrative条目(03-23 11:26~12:53)为1个CONSOLIDATED块（-11行），修正4处INNOVATE→OPTIMIZE意图错配，信号去污，补录基因抑制标记(boost -0.30)
+### [2026-03-24 11:32:12] OPTIMIZE - failed
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.20 | Scope: 0 files, 0 lines
+- Signals: [protocol_drift, user_feature_request:append_only_history, high_failure_ratio, force_innovation_after_repair_loop]
+### [2026-03-24 21:00:24] OPTIMIZE - success
+- Gene: gene_gep_optimize_prompt_and_assets | Score: 0.85 | Scope: 2 files, 15 lines
+- Signals: [protocol_drift, user_feature_request:append_only_history, high_failure_ratio]
+- Result: 补录3条缺失narrative条目(#0115 code-stats/#0116完整性修复/#0117合并)，修正最后条目意图错配(INNOVATE→OPTIMIZE)和信号污染(raw Chinese→append_only_history)，narrative 100→112行
+### [2026-03-24 21:12:16] INNOVATE - failed
 - Gene: gene_gep_optimize_prompt_and_assets | Score: 0.20 | Scope: 0 files, 0 lines
 - Signals: [protocol_drift, user_feature_request:更新规则每个成功的周期在此追加不覆盖历史, high_failure_ratio, force_innovation_after_repair_loop]

@@ -1,7 +1,7 @@
 {
   "agent:main:main": {
     "sessionId": "a64f8bb7-abcc-483b-ac04-d0eb68a4d996",
-    "updatedAt": 1774384668706,
+    "updatedAt": 1774386468876,
     "systemSent": true,
     "abortedLastRun": false,
     "chatType": "direct",
@@ -474,7 +474,7 @@
     "contextTokens": 200000,
     "systemPromptReport": {
       "source": "run",
-      "generatedAt": 1774384655435,
+      "generatedAt": 1774386455454,
       "sessionId": "a64f8bb7-abcc-483b-ac04-d0eb68a4d996",
       "sessionKey": "agent:main:main",
       "provider": "minimax",
@@ -834,11 +834,11 @@
         ]
       }
     },
-    "inputTokens": 30298,
-    "outputTokens": 386,
+    "inputTokens": 31344,
+    "outputTokens": 477,
     "cacheRead": 13226,
     "cacheWrite": 0,
-    "totalTokens": 28424,
+    "totalTokens": 29043,
     "totalTokensFresh": true
   },
   "telegram:slash:6506412244": {
@@ -4050,8 +4050,8 @@
     "sessionFile": "/Users/allenbot/.claude/projects/-Users-allenbot-project-auto-trading/58d34e0d-6ba8-451e-8876-cfe15b359f70.jsonl"
   },
   "agent:main:cron:4e18d84e-1642-4a58-9172-18494064de11": {
-    "sessionId": "83d06f32-1a87-41f8-80e4-47a2ae604beb",
-    "updatedAt": 1774299600032,
+    "sessionId": "7562f35e-40d9-4677-af9e-d8a78fc27c7a",
+    "updatedAt": 1774386000024,
     "systemSent": true,
     "label": "Cron: 市场快讯通",
     "skillsSnapshot": {
@@ -4481,18 +4481,18 @@
       ],
       "version": 0
     },
-    "modelProvider": "mistral",
-    "model": "mistral-large-latest",
+    "modelProvider": "minimax",
+    "model": "MiniMax-M2.5-highspeed",
     "authProfileOverride": "minimax:default",
     "authProfileOverrideSource": "auto",
     "authProfileOverrideCompactionCount": 0,
     "systemPromptReport": {
       "source": "run",
-      "generatedAt": 1774300223093,
-      "sessionId": "83d06f32-1a87-41f8-80e4-47a2ae604beb",
+      "generatedAt": 1774386000105,
+      "sessionId": "7562f35e-40d9-4677-af9e-d8a78fc27c7a",
       "sessionKey": "agent:main:cron:4e18d84e-1642-4a58-9172-18494064de11",
-      "provider": "mistral",
-      "model": "mistral-large-latest",
+      "provider": "minimax",
+      "model": "MiniMax-M2.5-highspeed",
       "workspaceDir": "/Users/allenbot/.openclaw/workspace",
       "bootstrapMaxChars": 20000,
       "bootstrapTotalMaxChars": 150000,
@@ -4508,9 +4508,9 @@
         "sandboxed": false
       },
       "systemPrompt": {
-        "chars": 26206,
-        "projectContextChars": 5178,
-        "nonProjectContextChars": 21028
+        "chars": 26689,
+        "projectContextChars": 5180,
+        "nonProjectContextChars": 21509
       },
       "injectedWorkspaceFiles": [
         {
@@ -4803,7 +4803,7 @@
           },
           {
             "name": "image",
-            "summaryChars": 260,
+            "summaryChars": 201,
             "schemaChars": 342,
             "propertiesCount": 6
           },
@@ -4822,10 +4822,10 @@
         ]
       }
     },
-    "contextTokens": 262144,
-    "inputTokens": 926,
-    "outputTokens": 323,
-    "totalTokens": 12443,
+    "contextTokens": 200000,
+    "inputTokens": 964,
+    "outputTokens": 336,
+    "totalTokens": 12481,
     "totalTokensFresh": true,
     "cacheRead": 11560,
     "cacheWrite": 11703
@@ -5659,9 +5659,9 @@
     "totalTokensFresh": true,
     "verboseLevel": "on"
   },
-  "agent:main:cron:4e18d84e-1642-4a58-9172-18494064de11:run:83d06f32-1a87-41f8-80e4-47a2ae604beb": {
-    "sessionId": "83d06f32-1a87-41f8-80e4-47a2ae604beb",
-    "updatedAt": 1774299600032,
+  "agent:main:cron:4e18d84e-1642-4a58-9172-18494064de11:run:7562f35e-40d9-4677-af9e-d8a78fc27c7a": {
+    "sessionId": "7562f35e-40d9-4677-af9e-d8a78fc27c7a",
+    "updatedAt": 1774386000024,
     "systemSent": true,
     "label": "Cron: 市场快讯通",
     "skillsSnapshot": {
@@ -6091,18 +6091,18 @@
       ],
       "version": 0
     },
-    "modelProvider": "mistral",
-    "model": "mistral-large-latest",
+    "modelProvider": "minimax",
+    "model": "MiniMax-M2.5-highspeed",
     "authProfileOverride": "minimax:default",
     "authProfileOverrideSource": "auto",
     "authProfileOverrideCompactionCount": 0,
     "systemPromptReport": {
       "source": "run",
-      "generatedAt": 1774300223093,
-      "sessionId": "83d06f32-1a87-41f8-80e4-47a2ae604beb",
+      "generatedAt": 1774386000105,
+      "sessionId": "7562f35e-40d9-4677-af9e-d8a78fc27c7a",
       "sessionKey": "agent:main:cron:4e18d84e-1642-4a58-9172-18494064de11",
-      "provider": "mistral",
-      "model": "mistral-large-latest",
+      "provider": "minimax",
+      "model": "MiniMax-M2.5-highspeed",
       "workspaceDir": "/Users/allenbot/.openclaw/workspace",
       "bootstrapMaxChars": 20000,
       "bootstrapTotalMaxChars": 150000,
@@ -6118,9 +6118,9 @@
         "sandboxed": false
       },
       "systemPrompt": {
-        "chars": 26206,
-        "projectContextChars": 5178,
-        "nonProjectContextChars": 21028
+        "chars": 26689,
+        "projectContextChars": 5180,
+        "nonProjectContextChars": 21509
       },
       "injectedWorkspaceFiles": [
         {
@@ -6413,7 +6413,7 @@
           },
           {
             "name": "image",
-            "summaryChars": 260,
+            "summaryChars": 201,
             "schemaChars": 342,
             "propertiesCount": 6
           },
@@ -6432,10 +6432,10 @@
         ]
       }
     },
-    "contextTokens": 262144,
-    "inputTokens": 926,
-    "outputTokens": 323,
-    "totalTokens": 12443,
+    "contextTokens": 200000,
+    "inputTokens": 964,
+    "outputTokens": 336,
+    "totalTokens": 12481,
     "totalTokensFresh": true,
     "cacheRead": 11560,
     "cacheWrite": 11703

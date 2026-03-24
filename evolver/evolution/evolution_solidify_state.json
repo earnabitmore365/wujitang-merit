@@ -1,8 +1,8 @@
 {
   "last_run": {
-    "run_id": "run_1774351679052",
-    "created_at": "2026-03-24T11:27:59.080Z",
-    "parent_event_id": "evt_1774270438435",
+    "run_id": "run_1774386481993",
+    "created_at": "2026-03-24T21:08:02.035Z",
+    "parent_event_id": "evt_1774351932447",
     "selected_gene_id": "gene_gep_optimize_prompt_and_assets",
     "selected_capsule_id": null,
     "selector": {
@@ -10,7 +10,7 @@
       "reason": [
         "signals match gene.signals_match",
         "signals: protocol_drift, user_feature_request:更新规则每个成功的周期在此追加不覆盖历史, high_failure_ratio, force_innovation_after_repair_loop",
-        "memory_graph: memory_prefer:gene_gep_optimize_prompt_and_assets | gene_prior:0.867",
+        "memory_graph: memory_prefer:gene_gep_optimize_prompt_and_assets | gene_prior:0.872",
         "drift_intensity: 0.707"
       ],
       "alternatives": []
@@ -23,7 +23,7 @@
     ],
     "mutation": {
       "type": "Mutation",
-      "id": "mut_1774351679052",
+      "id": "mut_1774386481993",
       "category": "innovate",
       "trigger_signals": [
         "protocol_drift",
@@ -35,7 +35,7 @@
       "expected_effect": "explore new strategy combinations to escape local optimum",
       "risk_level": "medium"
     },
-    "mutation_id": "mut_1774351679052",
+    "mutation_id": "mut_1774386481993",
     "personality_state": {
       "type": "PersonalityState",
       "rigor": 0.7,
@@ -59,9 +59,10 @@
       "assets/gep/events.jsonl",
       "assets/gep/failed_capsules.json",
       "assets/gep/genes.json",
-      "assets/gep/genes.jsonl"
+      "assets/gep/genes.jsonl",
+      "last_night_session.md"
     ],
-    "baseline_git_head": "dffea12219a036902aa7f95749a3a0fe416f947b",
+    "baseline_git_head": "85e910953a448e64c226ca3bf93b59ca920f6418",
     "blast_radius_estimate": {
       "files": 20,
       "lines": 1600
@@ -74,9 +75,9 @@
     "hub_lessons": []
   },
   "last_solidify": {
-    "run_id": "run_1774351679052",
-    "at": "2026-03-24T11:32:12.447Z",
-    "event_id": "evt_1774351932447",
+    "run_id": "run_1774386481993",
+    "at": "2026-03-24T21:12:16.324Z",
+    "event_id": "evt_1774386736324",
     "capsule_id": null,
     "outcome": {
       "status": "failed",
