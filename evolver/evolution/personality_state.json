@@ -24,11 +24,11 @@
       "updated_at": "2026-03-08T15:23:34.548Z"
     },
     "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.5|obedience=0.9": {
-      "success": 83,
+      "success": 84,
       "fail": 30,
-      "avg_score": 0.6774336283185839,
-      "n": 113,
-      "updated_at": "2026-03-26T07:26:43.841Z"
+      "avg_score": 0.6789473684210524,
+      "n": 114,
+      "updated_at": "2026-03-26T13:58:28.598Z"
     }
   },
   "history": [
@@ -857,7 +857,14 @@
       "outcome": "failed",
       "score": 0.2,
       "notes": "event:evt_1774510003759"
+    },
+    {
+      "at": "2026-03-26T13:58:28.598Z",
+      "key": "rigor=0.7|creativity=0.3|verbosity=0.3|risk_tolerance=0.5|obedience=0.9",
+      "outcome": "success",
+      "score": 0.85,
+      "notes": "event:evt_1774533508524"
     }
   ],
-  "updated_at": "2026-03-26T07:26:43.841Z"
+  "updated_at": "2026-03-26T13:58:28.599Z"
 }

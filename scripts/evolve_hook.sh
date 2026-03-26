@@ -9,7 +9,7 @@ CWD=$(echo "$STDIN_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); 
 case "$CWD" in
   "$HOME/.claude"|"$HOME")
     LOG="/tmp/evolve_hook_taiji.log"
-    nohup bash "$HOME/.claude/evolve.sh" taiji > "$LOG" 2>&1 &
+    nohup bash "$HOME/.claude/evolver/evolve.sh" taiji > "$LOG" 2>&1 &
     echo "🧬 evolver 已在后台启动（taiji），日志：$LOG"
     ;;
 esac

@@ -173,17 +173,18 @@ def main():
 
         rows = conn.execute(
             'SELECT time, speaker, content FROM messages '
-            'WHERE id > ? AND project IN (?, ?) ORDER BY id',
+            'WHERE id > ? AND project IN (?, ?) ORDER BY id DESC LIMIT 30',
             (since_id, project, project_encoded)
         ).fetchall()
+        rows = list(reversed(rows))
 
         if rows:
-            out.append(f"【上次压缩后的对话（{len(rows)} 条）】")
+            out.append(f"【上次压缩后的对话（最新 {len(rows)} 条）】")
         else:
-            # fallback：最近 50 条
+            # fallback：最近 30 条
             rows = conn.execute(
                 'SELECT time, speaker, content FROM messages '
-                'WHERE project IN (?, ?) ORDER BY id DESC LIMIT 50',
+                'WHERE project IN (?, ?) ORDER BY id DESC LIMIT 30',
                 (project, project_encoded)
             ).fetchall()
             rows = list(reversed(rows))

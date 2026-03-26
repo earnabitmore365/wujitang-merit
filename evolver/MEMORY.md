@@ -83,3 +83,4 @@
 | #0122 | 03-25 | innovate (todo-manager skill) | ✅ 创建 todo-manager 技能（技术债务追踪器），扫描代码库提取 TODO/FIXME/HACK/XXX/NOTE 标记注释，按优先级排序（FIXME>HACK>XXX>TODO>NOTE），输出文件热点+标签统计+结构化 JSON 报告，注册 gene_innovate_todo_manager（第15条活跃基因），安装到 ~/.claude/skills/，3 文件 ~160 行 |
 | #0123 | 2026-03-25 | innovate (evolution_stagnation_detected, stable_success_plateau) | ✅ 固化：gene_auto_53538cc4 命中信号 evolution_stagnation_detected, stable_success_plateau，6 文件 230 行变更 |
 | #0124 | 2026-03-26 | optimize (narrative+gene integrity) | ✅ 修正3处意图错配(INNOVATE→OPTIMIZE)，时序乱序修复(03-24 21:48条目移到03-25之前)，信号去污(raw Chinese→append_only_history)，截断result补全，scope修正(6/230→9/178)，ghost gene标注(gene_auto_5eb089f2)并注册到retired_genes，补录epigenetic mark(+0.10)，3文件~20行 |
+| #0125 | 2026-03-26 | innovate (evolution_stagnation_detected, stable_success_plateau) | ✅ 固化：gene_auto_53538cc4 命中信号 evolution_stagnation_detected, stable_success_plateau，1 文件 2 行变更 |

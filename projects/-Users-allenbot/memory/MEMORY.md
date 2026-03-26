@@ -1,6 +1,6 @@
 # CEO / 项目管理 记忆
 
-> 太极最后更新：2026-03-26
+> 太极最后更新：2026-03-27
 
 ---
 
@@ -71,9 +71,11 @@
 
 ## 待做清单
 
-1. **PreCompact 效果验证** — `pre_compact_save.py` 已部署，待老板测试 `/compact` 效果
-2. **恢复协议简化已落地** — CLAUDE.md 从 70 行砍到 5 行，CHECKPOINT 已退役
-3. **MEMORY.md 精简** — 砍掉会话索引和上次要点，由 hook 自动处理
+1. ~~**PreCompact 效果验证**~~ — ✅ 已完成（2026-03-27），Haiku 摘要 + 对话种子并行运行，LIMIT 30 已生效
+2. ~~**恢复协议简化已落地**~~ — ✅ CLAUDE.md 从 70 行砍到 5 行，CHECKPOINT 已退役
+3. ~~**MEMORY.md 精简**~~ — ✅ 砍掉会话索引和上次要点，由 hook 自动处理
+4. **Haiku vs 对话种子观察期** — 两套并行运行中，待老板观察后决定取舍
+5. **auto-trading 项目级 rules 重构** — 同全局 3 层处理（待排期）
 
 ---
 
@@ -89,7 +91,7 @@
 | 项目 | 主线 | 当前阶段 |
 |------|------|----------|
 | auto-trading | 分层投资组合分析（快狠准翻倍） | 黑丝主导，白纱支援 |
-| 通讯部 | 对话种子 + 群聊 + MCP + Tailscale | ✅ 全部完成（群聊8080/MCP Server/Tailscale直连/手机远程） |
+| 通讯部 | 对话种子 + 群聊 + MCP + Tailscale + Compact管线 | ✅ 全部完成（群聊8080/MCP Server/Tailscale直连/手机远程/PreCompact Haiku摘要） |
 | cashflowAPP | 澳洲小企业主现金流管理 | 待立项，框架未定 |
 
 ---
@@ -115,6 +117,8 @@
 | `~/.claude/scripts/new_project.sh` | 新项目脚手架（CLAUDE.md/handoff/context/review） |
 | `~/.claude/scripts/db_write.py` | 对话种子写入（hooks 触发） |
 | `~/.claude/scripts/inject_rules.py` | UserPromptSubmit hook 注入 rules.md |
+| `~/.claude/scripts/pre_compact_save.py` | PreCompact hook: Haiku 结构化摘要 + 原始对话保存 |
+| `~/.claude/scripts/session_start.py` | SessionStart hook: 压缩恢复注入（Haiku摘要+对话种子+MEMORY） |
 | `~/.claude/.comm_pass` | ttyd 认证密码（chmod 600） |
 
 ---
