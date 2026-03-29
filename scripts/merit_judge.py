@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 CREDIT_PATH = os.path.expanduser("~/.claude/credit.json")
 LEARNINGS_PATH = os.path.expanduser("~/.claude/learnings/LEARNINGS.md")
 DB_PATH = os.path.expanduser("~/.claude/conversations.db")
+CHANNEL_PATH = os.path.expanduser("~/.claude/channel_taiji_heisi.md")
+CHANNEL_CHECK_PATH = os.path.expanduser("~/.claude/merit_channel_check.json")
 
 # ── 等级 ──────────────────────────────────────────────
 
@@ -276,9 +278,78 @@ def get_pending_review():
         return []
 
 
+def check_channel(cwd):
+    """检查太极↔黑丝通道是否有新消息"""
+    if not os.path.exists(CHANNEL_PATH):
+        return
+    # 判断自己是谁（写的消息跳过，只看对方写的）
+    me = determine_agent(cwd)
+
+    import time
+    now = time.time()
+
+    # 读上次检查状态
+    last_mtime = 0
+    if os.path.exists(CHANNEL_CHECK_PATH):
+        try:
+            with open(CHANNEL_CHECK_PATH) as f:
+                d = json.load(f)
+                last_mtime = d.get("last_mtime", 0)
+        except Exception:
+            pass
+
+    # 检查文件修改时间
+    mtime = os.path.getmtime(CHANNEL_PATH)
+    if mtime <= last_mtime:
+        return
+
+    # 有新内容 → 读最新消息
+    try:
+        with open(CHANNEL_PATH, encoding="utf-8") as f:
+            content = f.read()
+
+        # 找第一个 ## [...] 消息块
+        import re
+        match = re.search(r'^## \[(.+?)\s+\d', content, re.MULTILINE)
+        if match:
+            sender = match.group(1).strip()
+            # 自己写的不提醒
+            if sender == me or (me == "太极" and sender == "太极") or (me == "黑丝" and sender == "黑丝"):
+                with open(CHANNEL_CHECK_PATH, "w") as f:
+                    json.dump({"last_mtime": mtime}, f)
+                return
+
+        # 取第一个 ## 到下一个 ## 之间的内容
+        lines = content.split("\n")
+        section_lines = []
+        in_section = False
+        for line in lines:
+            if line.startswith("## ["):
+                if in_section:
+                    break  # 到下一个消息了
+                in_section = True
+            if in_section:
+                section_lines.append(line)
+
+        if section_lines:
+            section = "\n".join(section_lines)[:600]
+            print(f"\n📨 通道新消息：")
+            print(section)
+            print()
+
+        # 更新 mtime
+        with open(CHANNEL_CHECK_PATH, "w") as f:
+            json.dump({"last_mtime": mtime}, f)
+    except Exception:
+        pass
+
+
 def handle_stop(data):
-    """AI 回复完 → 三件事：0. 检查任务执行 1. 统一评白纱 2. 低频评黑丝"""
-    # 0. 检查老板派的任务有没有开始执行
+    """AI 回复完 → 四件事：0. 检查 handoff 1. 检查任务执行 2. 统一评白纱 3. 低频评黑丝"""
+    # 0. 检查通道新消息
+    check_channel(data.get("cwd", ""))
+
+    # 1. 检查老板派的任务有没有开始执行
     check_pending_task_executed(data)
 
     cwd = data.get("cwd", "")

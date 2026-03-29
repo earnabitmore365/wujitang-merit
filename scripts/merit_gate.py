@@ -265,17 +265,37 @@ OPUS_ALLOWED = {
 import shlex
 
 DANGEROUS_COMMANDS = [
+    # ── Shell 删除 ──
     (r"\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)", "rm 删除文件"),
     (r"\brm\s+", "rm 删除文件"),
+    (r"\bunlink\s+", "unlink 删除文件"),
+    # ── Python 删除/覆盖 ──
+    (r"os\.remove\s*\(", "os.remove 删除文件"),
+    (r"os\.unlink\s*\(", "os.unlink 删除文件"),
+    (r"shutil\.rmtree\s*\(", "shutil.rmtree 删除目录树"),
+    (r"pathlib.*\.unlink\s*\(", "pathlib.unlink 删除文件"),
+    (r"Path\(.*\)\.unlink", "Path.unlink 删除文件"),
+    (r"send2trash", "send2trash 删除文件"),
+    # ── Shell 截断/覆盖 ──
+    (r"\btruncate\b", "truncate 截断文件"),
+    (r">\s*/(?!dev/null)", "重定向截断文件"),  # > /path（排除 > /dev/null）
+    (r">\s*~/", "重定向截断 home 文件"),
+    (r"cp\s+/dev/null\s+", "cp /dev/null 清空文件"),
+    (r"dd\s+.*of=", "dd 覆盖文件"),
+    # ── Perl/其他语言删除 ──
+    (r"perl\s.*\bunlink\b", "perl unlink 删除文件"),
+    (r"ruby\s.*File\.delete", "ruby File.delete 删除文件"),
+    # ── 进程终止 ──
     (r"\bkill\s+(-9|-KILL|[0-9])", "kill 终止进程"),
     (r"\bkillall\s+", "killall 终止进程"),
+    # ── Git 破坏性 ──
     (r"\bgit\s+push\s+.*--force", "git push --force"),
     (r"\bgit\s+push\s+-f\b", "git push -f"),
     (r"\bgit\s+reset\s+--hard", "git reset --hard"),
     (r"\bgit\s+checkout\s+--\s", "git checkout -- 丢弃修改"),
     (r"\bgit\s+clean\s+-f", "git clean -f 删除未跟踪文件"),
     (r"\bgit\s+branch\s+-D\b", "git branch -D 强制删分支"),
-    (r"\btruncate\b", "truncate 截断文件"),
+    # ── 静默删除 ──
     (r">\s*/dev/null\s*2>&1.*&&\s*rm", "静默删除"),
 ]
 
@@ -504,8 +524,13 @@ def main():
         output_ask(f"{agent_name}（Lv.1 锁灵 · {score}分）信用不足，所有写入操作需老板批准。")
         return
 
-    # Bash 破坏性命令 — 所有等级都查（G-003 铁律）
+    # Bash：执行前拍快照（PostToolUse 审计用）
     if tool_name == "Bash":
+        try:
+            from merit_post_audit import take_snapshot
+            take_snapshot()
+        except Exception:
+            pass
         cmd = data.get("tool_input", {}).get("command", "")
         reason = check_bash_destructive(cmd)
         if reason:
