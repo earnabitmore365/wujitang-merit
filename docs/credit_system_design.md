@@ -45,7 +45,7 @@ type: project
 - A. 破坏性操作 → **deny**（写 .db/.sqlite/.parquet 等数据文件）
 - B. Read-before-Write → **deny**（改文件前必须先读过）
 - C. Grep-before-Edit → **deny**（改代码前必须搜索过引用）
-- D. 方案格式 → **deny**（plan 文件必须含三准则评估）
+- D. 方案格式 → **deny**（plan 文件必须含三准则+第一性原理评估）
 - E. 新文件创建 → **deny**（创建不存在的文件需确认必要性）
 - Agent 调用 → 非决策类必须 Sonnet
 - Haiku 队长智能判断 + 自动加减分
@@ -120,10 +120,10 @@ type: project
 |--------|------|------|--------|
 | **老板表扬** | UserPromptSubmit → merit_judge.py | 老板说"好/不错/完美" | +1 到 +3 |
 | **老板批评** | UserPromptSubmit → merit_judge.py | 老板说"不对/错了/搞什么" | -1 到 -5 |
-| **AI 操作合规** | PreToolUse → haiku_gate.py | Write/Edit/Agent 之前 | +1 到 +3（Haiku 队长） |
-| **AI 操作违规** | PreToolUse → haiku_gate.py | Write/Edit/Agent 之前 | -1 到 -5（Haiku 队长） |
+| **AI 操作合规** | PreToolUse → merit_gate.py | Write/Edit/Agent 之前 | +1 到 +3（Haiku 队长） |
+| **AI 操作违规** | PreToolUse → merit_gate.py | Write/Edit/Agent 之前 | -1 到 -5（Haiku 队长） |
 | **AI 回复质量** | Stop → merit_judge.py | 每 5 次 AI 回复后 | ±1 到 ±3（后台 Haiku） |
-| **硬规则拦截** | PreToolUse → haiku_gate.py | 破坏性操作 | -5（自动） |
+| **硬规则拦截** | PreToolUse → merit_gate.py | 破坏性操作 | -5（自动） |
 
 ### 手动触发（太极用）
 
@@ -159,7 +159,7 @@ type: project
   │
   └── 权限层（三个 hook 联动）
         │
-        ├── haiku_gate.py（PreToolUse: Write|Edit|Agent）
+        ├── merit_gate.py（PreToolUse: Write|Edit|Agent）
         │     ├── 队员：硬规则秒回（破坏性/Read前/Grep前/方案格式/新文件/Agent限制）
         │     └── 队长：Haiku 智能判断 + 自动加减分（Lv.1-3）
         │
@@ -177,7 +177,7 @@ type: project
 
 | 文件 | 用途 |
 |------|------|
-| `~/.claude/scripts/haiku_gate.py` | 门卫（PreToolUse hook，硬规则+Haiku 队长） |
+| `~/.claude/scripts/merit_gate.py` | 门卫（PreToolUse hook，硬规则+Haiku 队长） |
 | `~/.claude/scripts/merit_judge.py` | 自动判官（UserPromptSubmit 语气识别 + Stop 后台 Haiku 评估） |
 | `~/.claude/scripts/credit_manager.py` | 手动加减分 CLI + Haiku 自动反思 |
 | `~/.claude/credit.json` | 积分存储（角色/分数/等级/称号/变更历史） |

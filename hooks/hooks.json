@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${PLUGIN_DIR}/scripts/haiku_gate.py"
+            "command": "python3 ${PLUGIN_DIR}/scripts/merit_gate.py"
           }
         ]
       }

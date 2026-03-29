@@ -207,9 +207,10 @@ def check_plan_format(data):
     if "/plans/" not in file_path and "/plan" not in os.path.basename(file_path).lower():
         return None
     content = data.get("tool_input", {}).get("content", "")
-    missing = [r for r in ["完整性", "真实性", "有效性"] if r not in content]
+    required = ["完整性", "真实性", "有效性", "第一性原理"]
+    missing = [r for r in required if r not in content]
     if missing:
-        return f"门卫拦截：方案文件缺少三准则评估 [{', '.join(missing)}]。方案必须按三准则评估（有效性-1）。"
+        return f"门卫拦截：方案缺少 [{', '.join(missing)}]。方案必须按三准则+第一性原理评估。"
     return None
 
 
@@ -274,12 +275,19 @@ DANGEROUS_COMMANDS = [
 ]
 
 
+SAFE_RM_PATHS = {"/tmp/", "/tmp ", "/private/tmp/", "/private/tmp ", "/var/tmp/", "/var/tmp ", "cd /tmp"}
+
+
 def check_bash_destructive(cmd):
     """检查 Bash 命令是否包含破坏性操作"""
     if not cmd:
         return None
     for pattern, desc in DANGEROUS_COMMANDS:
         if re.search(pattern, cmd):
+            # rm 在 /tmp/ 下豁免（清理临时文件是正常操作）
+            if "rm" in desc:
+                if any(safe in cmd for safe in SAFE_RM_PATHS):
+                    return None
             return f"门卫拦截：Bash 命令包含破坏性操作 [{desc}]。G-003 铁律。需要老板明确同意。"
     return None
 
@@ -347,7 +355,8 @@ def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context)
 - 改文件前必须先 Read（完整性-1）
 - 改代码前必须查影响链路（完整性-1）
 - 不留残、新建文件要有必要性（完整性-2）
-- 方案要三准则评估（有效性-1）
+- 改动后必须同步更新文档（完整性-6）
+- 方案要三准则+第一性原理评估（有效性-1 + 第一性原理）
 - 写代码用专业 agent（有效性-2）
 - 非决策 agent 用 Sonnet 省配额（纪律-5）
 

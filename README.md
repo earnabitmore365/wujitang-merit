@@ -115,11 +115,11 @@ bash install.sh
 |-----------|--------|------|
 | **角色名** | `credit.json` | 改成你的团队成员名 |
 | **起始分数** | `credit.json` | 每个角色的初始积分 |
-| **等级称号** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认锁灵/筑基/金丹/元婴/化神 |
-| **分数阈值** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认 0/20/50/80/95 |
-| **检查项** | `haiku_gate.py` 的 `handle_write_edit()` | 每个等级查什么 |
-| **受保护路径** | `haiku_gate.py` 的 `PROTECTED_*` | 哪些文件不让写 |
-| **角色判断** | `haiku_gate.py` 的 `determine_agent()` | 按你的目录结构判断角色 |
+| **等级称号** | `merit_gate.py` 的 `LEVEL_THRESHOLDS` | 默认锁灵/筑基/金丹/元婴/化神 |
+| **分数阈值** | `merit_gate.py` 的 `LEVEL_THRESHOLDS` | 默认 0/20/50/80/95 |
+| **检查项** | `merit_gate.py` 的 `handle_write_edit()` | 每个等级查什么 |
+| **受保护路径** | `merit_gate.py` 的 `PROTECTED_*` | 哪些文件不让写 |
+| **角色判断** | `merit_gate.py` 的 `determine_agent()` | 按你的目录结构判断角色 |
 | **加减分值** | `credit_manager.py` 或 Haiku prompt | 调整严厉/宽松程度 |
 
 ---
@@ -145,7 +145,7 @@ bash install.sh
   │
   ├── 等级层：锁灵 → 筑基 → 金丹 → 元婴 → 化神
   │
-  └── 权限层：haiku_gate.py（PreToolUse hook）
+  └── 权限层：merit_gate.py（PreToolUse hook）
         ├── 第一层：队员巡逻（硬规则，毫秒级）
         │     ├── Lv.1 全锁 → ask 用户
         │     ├── 破坏性操作 → deny + 自动扣分
@@ -161,7 +161,7 @@ bash install.sh
 
 | 文件 | 用途 |
 |------|------|
-| `scripts/haiku_gate.py` | 门卫主脚本（PreToolUse hook） |
+| `scripts/merit_gate.py` | 门卫主脚本（PreToolUse hook） |
 | `scripts/credit_manager.py` | 积分管理 CLI（加减分 + Haiku 自动反思） |
 | `scripts/inject_credit_status.py` | SessionStart 注入片段 |
 | `commands/credit.md` | `/credit` slash command |

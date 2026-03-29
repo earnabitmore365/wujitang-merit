@@ -19,9 +19,9 @@ echo ""
 # 1. 复制脚本
 echo "→ 复制脚本到 $SCRIPTS_DIR/"
 mkdir -p "$SCRIPTS_DIR"
-cp scripts/haiku_gate.py "$SCRIPTS_DIR/"
+cp scripts/merit_gate.py "$SCRIPTS_DIR/"
 cp scripts/credit_manager.py "$SCRIPTS_DIR/"
-echo "  ✅ haiku_gate.py"
+echo "  ✅ merit_gate.py"
 echo "  ✅ credit_manager.py"
 
 # 2. 初始化积分（不覆盖已有）
@@ -38,14 +38,14 @@ echo "  ✅ learnings/ 目录就绪"
 
 # 4. 更新 settings.json — 添加 PreToolUse hook
 if [ -f "$SETTINGS" ]; then
-    if grep -q "haiku_gate.py" "$SETTINGS"; then
+    if grep -q "merit_gate.py" "$SETTINGS"; then
         echo "  ⏭️  settings.json 已包含 haiku_gate hook"
     else
         echo ""
         echo "⚠️  请手动在 settings.json 的 PreToolUse 数组中添加："
         echo '  {'
         echo '    "matcher": "Write|Edit|Agent",'
-        echo '    "hooks": [{"type": "command", "command": "python3 ~/.claude/scripts/haiku_gate.py"}]'
+        echo '    "hooks": [{"type": "command", "command": "python3 ~/.claude/scripts/merit_gate.py"}]'
         echo '  }'
         echo ""
         echo "  （自动修改 settings.json 有风险，手动更安全）"
