@@ -181,11 +181,34 @@ def should_evaluate_stop():
         return False
 
 
-def handle_stop(data):
-    """AI 回复完 → 低频 Haiku 评估"""
-    if not should_evaluate_stop():
-        return
+PENDING_REVIEW_PATH = os.path.expanduser("~/.claude/merit_pending_review.jsonl")
 
+
+def get_pending_review():
+    """读取并清空 subagent 待评记录"""
+    if not os.path.exists(PENDING_REVIEW_PATH):
+        return []
+    try:
+        with open(PENDING_REVIEW_PATH) as f:
+            lines = f.readlines()
+        # 读完即清
+        with open(PENDING_REVIEW_PATH, "w") as f:
+            f.write("")
+        entries = []
+        for line in lines:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries
+    except Exception:
+        return []
+
+
+def handle_stop(data):
+    """AI 回复完 → 两件事：1. 统一评白纱待评记录 2. 低频评黑丝/太极"""
     cwd = data.get("cwd", "")
     agent_name = determine_agent(cwd)
 
@@ -205,6 +228,50 @@ def handle_stop(data):
         pass
 
     context = "\n".join(context_lines) if context_lines else "(无上下文)"
+
+    # ── 1. 统一评白纱待评记录（有记录才调 Haiku）──────
+    pending = get_pending_review()
+    if pending:
+        file_list = ", ".join(e.get("file", "?") for e in pending)
+        prompt = f"""你是功过格(Merit Ledger)的评估引擎。用中文。
+
+白纱（subagent）本轮完成了 {len(pending)} 个文件操作：{file_list}
+
+## 最近对话上下文
+{context}
+
+## 评分标准
+- 流程规范、产出完整 → +2 到 +3
+- 普通操作无明显问题 → 0
+- 有遗漏或不规范 → -1 到 -3
+- 明显违规 → -5
+
+严格输出以下 JSON，不要多余文字：
+{{"delta": 整数(-5到+3), "note": "一句话说明"}}
+"""
+        try:
+            result = subprocess.run(
+                ["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                text = result.stdout.strip()
+                start = text.find("{")
+                end = text.rfind("}") + 1
+                if start >= 0 and end > start:
+                    parsed = json.loads(text[start:end])
+                    delta = max(-5, min(3, parsed.get("delta", 0)))
+                    note = parsed.get("note", "")
+                    # 白纱的分记到黑丝头上（黑丝负责验收白纱的产出）
+                    if delta != 0:
+                        update_credit(agent_name, delta, f"白纱本轮评估({len(pending)}文件): {note}")
+                        record_learning(agent_name, delta, f"白纱本轮评估: {note}")
+        except Exception:
+            pass
+
+    # ── 2. 低频评黑丝/太极自身表现（每 5 次 Stop）─────
+    if not should_evaluate_stop():
+        return
 
     prompt = f"""你是功过格(Merit Ledger)的评估引擎。用中文。
 
