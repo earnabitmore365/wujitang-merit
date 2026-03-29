@@ -1,0 +1,8 @@
+{
+  "agents": {
+    "黑丝": {"score": 60, "level": 3, "title": "金丹"},
+    "白纱": {"score": 40, "level": 2, "title": "筑基"},
+    "太极": {"score": 60, "level": 3, "title": "金丹"}
+  },
+  "history": []
+}
