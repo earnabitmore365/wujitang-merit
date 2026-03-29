@@ -195,7 +195,25 @@ type: project
 - ✅ taiji-audit 审查联动（/audit 打分后自动写入 credit.json）
 - ✅ merit_judge.py（UserPromptSubmit 语气 + Stop 后台 Haiku 评估）
 
-## 待做（v4）
+## v4 已完成（2026-03-29）
 
-- Haiku 队长 prompt 精调（根据运行效果优化）
-- Bash 误拦优化（echo/grep 中的 rm 不应被拦）
+- ✅ /reflect 命令打包（从对话提炼规则→升级 rules.md）
+- ✅ rules.md 模板（用户填入规则即刻生效）
+- ✅ inject_rules.py 打包（hook 自动注入规则）
+- ✅ 完整闭环：规则→执行→反馈→学习→规则更新
+
+## v4.1 补充（2026-03-29）
+
+- ✅ CLAUDE.md 最高优先级声明：全局 G-014 + 项目级"功过格生效中"
+- ✅ 项目级 rules.md 加 INJECT 区域（34条精简父类，hook 每次注入）
+
+## v4.2 补充（2026-03-29）
+
+- ✅ Haiku 队长读 LEARNINGS.md 历史 PENALTY → 重复犯错自动 deny（软规则→硬拦截升级机制）
+- ✅ 代码文件（.py 等）豁免路径模式检查（修复 /data/ /seed_ 误拦）
+- ✅ /tmp 路径 rm 豁免
+
+## 待做（v5）
+
+- 白纱交代码后强制验证检查点（PostToolUse Agent 提醒+积分押金）
+- merit_judge 语气识别调优（实战数据积累后）

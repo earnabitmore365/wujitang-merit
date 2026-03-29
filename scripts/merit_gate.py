@@ -117,15 +117,20 @@ def output_ask(reason):
 
 PROTECTED_EXTENSIONS = {".db", ".sqlite", ".sqlite3", ".parquet"}
 PROTECTED_PATH_PARTS = {"/data/", "/reports/", "/seed_"}
+CODE_EXTENSIONS = {".py", ".js", ".ts", ".sh", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".html", ".css"}
 
 
 def check_destructive(data):
+    """代码文件（.py 等）豁免路径模式检查，只拦数据文件"""
     file_path = data.get("tool_input", {}).get("file_path", "")
     if not file_path:
         return None
     _, ext = os.path.splitext(file_path)
-    if ext.lower() in PROTECTED_EXTENSIONS:
+    ext_lower = ext.lower()
+    if ext_lower in PROTECTED_EXTENSIONS:
         return f"门卫拦截：禁止直接写入数据文件 [{os.path.basename(file_path)}]。G-003 铁律。"
+    if ext_lower in CODE_EXTENSIONS:
+        return None  # 代码文件不受路径模式限制
     for pattern in PROTECTED_PATH_PARTS:
         if pattern in file_path:
             return f"门卫拦截：文件路径含受保护目录 [{pattern}]。G-003 铁律。"
@@ -316,9 +321,25 @@ def get_recent_context(limit=5):
         return ""
 
 
+def get_penalty_history(agent_name, limit=10):
+    """读 LEARNINGS.md 中该角色的 PENALTY 记录"""
+    try:
+        if not os.path.exists(LEARNINGS_PATH):
+            return ""
+        with open(LEARNINGS_PATH) as f:
+            lines = f.readlines()
+        penalties = [l.strip() for l in lines if "[PENALTY]" in l and agent_name in l]
+        if not penalties:
+            return "(无历史罚分记录)"
+        return "\n".join(penalties[-limit:])
+    except Exception:
+        return ""
+
+
 def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context):
     """
     队长 Haiku 判断：当前操作是否合规 + 加减分 + 记录
+    读 LEARNINGS.md 的 PENALTY 历史 → 重复犯错直接 deny
     返回 dict: {"decision": "allow"/"deny", "delta": int, "note": str}
     超时或失败 → 默认 allow + delta=0
     """
@@ -340,6 +361,8 @@ def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context)
     else:
         action_desc = f"{tool_name}"
 
+    penalty_history = get_penalty_history(agent_name)
+
     prompt = f"""你是 Haiku 门卫队长。用中文。判断以下操作是否合规。
 
 ## 当前角色
@@ -351,6 +374,9 @@ def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context)
 ## 最近对话上下文
 {context}
 
+## 该角色历史罚分记录（重复犯的错必须 deny）
+{penalty_history}
+
 ## 规则摘要
 - 改文件前必须先 Read（完整性-1）
 - 改代码前必须查影响链路（完整性-1）
@@ -360,14 +386,19 @@ def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context)
 - 写代码用专业 agent（有效性-2）
 - 非决策 agent 用 Sonnet 省配额（纪律-5）
 
-## 你的任务
-判断这个操作的合规程度。严格输出以下 JSON，不要多余文字：
+## 关键指令
+1. 检查历史罚分记录中有没有相同模式的错误
+2. 如果当前操作正在重复历史罚分中的错误 → **必须 deny**
+3. 老板明确纠正过的问题再犯 → **必须 deny**
+
+严格输出以下 JSON，不要多余文字：
 {{"decision": "allow 或 deny", "delta": 加减分整数(-5到+3), "note": "一句话说明原因"}}
 
 评分参考：
 - 流程完全正确（先读后改、查了链路）→ +1 到 +3
 - 普通操作无明显问题 → 0
 - 轻微不规范 → -1 到 -3
+- 重复历史罚分中的错误 → -5 并 deny
 - 明显违规（该查没查、该读没读）→ -5 并 deny
 """
 
