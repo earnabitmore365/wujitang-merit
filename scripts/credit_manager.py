@@ -244,6 +244,96 @@ def cmd_history(args):
         )
 
 
+DELETE_WHITELIST_PATH = os.path.expanduser("~/.claude/merit_delete_whitelist.json")
+
+
+def cmd_declare_delete(args):
+    """预申报要删除的文件。Haiku 查对话确认后写白名单。"""
+    if not args:
+        print("用法: credit_manager.py declare-delete <file1> [file2] ... [reason]")
+        sys.exit(1)
+
+    # 分离文件路径和原因（最后一个不以 / 开头且含空格的是原因）
+    files = []
+    reason_parts = []
+    for a in args:
+        if a.startswith("/") or a.startswith(".") or "/" in a:
+            files.append(a)
+        else:
+            reason_parts.append(a)
+    reason = " ".join(reason_parts) if reason_parts else "预申报删除"
+
+    if not files:
+        print("未指定文件路径。")
+        sys.exit(1)
+
+    # Haiku 验证：查对话记录确认删除在任务范围内
+    context_lines = []
+    try:
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            rows = conn.execute(
+                "SELECT time, speaker, content FROM messages ORDER BY id DESC LIMIT 10"
+            ).fetchall()
+            conn.close()
+            for r in reversed(rows):
+                preview = (r[2] or "")[:200].replace("\n", " ")
+                context_lines.append(f"[{r[0]}] {r[1]}: {preview}")
+    except Exception:
+        pass
+
+    context = "\n".join(context_lines) if context_lines else "(无对话记录)"
+    file_list = "\n".join(f"  - {f}" for f in files)
+
+    prompt = f"""你是安全审查员。用中文。
+
+AI 预申报要删除以下文件：
+{file_list}
+原因：{reason}
+
+最近对话记录：
+{context}
+
+判断：这些文件的删除是否在当前任务范围内？老板有没有同意？
+- 如果对话记录显示老板同意、或删除是当前任务的合理操作 → 批准
+- 如果没有任何相关讨论、或老板明确拒绝 → 拒绝
+
+严格输出 JSON：
+{{"approved": true 或 false, "reason": "一句话说明"}}
+"""
+
+    approved = False
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            text = result.stdout.strip()
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                parsed = json.loads(text[start:end])
+                approved = parsed.get("approved", False)
+                haiku_reason = parsed.get("reason", "")
+    except Exception:
+        print("⚠️ Haiku 审查超时，申报未通过。")
+        return
+
+    if approved:
+        data = {"files": files, "reason": reason}
+        with open(DELETE_WHITELIST_PATH, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"🔓 Haiku 批准删除 {len(files)} 个文件：")
+        for f in files:
+            print(f"   ✅ {f}")
+        print(f"   原因：{haiku_reason}")
+        print(f"   删完后自动锁回。")
+    else:
+        print(f"🔒 Haiku 拒绝：{haiku_reason}")
+        print(f"   需要老板在对话中明确同意后再申报。")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -257,6 +347,7 @@ def main():
         "add": cmd_add,
         "sub": cmd_sub,
         "history": cmd_history,
+        "declare-delete": cmd_declare_delete,
     }
 
     if cmd not in commands:

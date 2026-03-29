@@ -223,9 +223,11 @@ type: project
 
 ## v4.5 补充（2026-03-29）
 
-- ✅ 破坏性操作授权机制：Haiku 查对话记录验证老板授权 → AI 不能给自己放权
-  - 老板说"可以" → Haiku 读 conversations.db 确认 → 放行一次 → 自动锁回
-  - 删除旧的 `allow` 命令（AI 可作弊的漏洞）
+- ✅ 预申报删除制度：AI 先声明要删什么文件 → Haiku 查对话验证 → 写白名单 → rm 放行 → 删完自动锁
+  - `credit_manager.py declare-delete /path/file1.py /path/file2.py "原因"`
+  - Haiku 查对话确认在任务范围内 → 批准写白名单 / 拒绝
+  - 白名单文件都删完 → 自动销毁 → 恢复锁权
+  - AI 不能给自己放权（Haiku 独立审查）
 
 ## 待做（v5）
 
