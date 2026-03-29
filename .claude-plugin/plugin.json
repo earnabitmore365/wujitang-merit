@@ -1,6 +1,6 @@
 {
-  "name": "haiku-gate",
-  "version": "2.0.0",
-  "description": "Haiku Gate — AI 信用积分门卫系统。用 hook 拦截 + 信用积分动态管控 AI 行为。",
+  "name": "merit-ledger",
+  "version": "2.1.0",
+  "description": "功过格 (Merit Ledger) — AI 积分+等级+权限 三合一行为管控系统",
   "commands": ["./commands/credit.md"]
 }

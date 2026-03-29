@@ -1,77 +1,100 @@
-# Haiku Gate — AI 信用积分门卫系统
+# 功过格 Merit Ledger
 
-> Claude Code plugin：用信用积分动态管控 AI 行为。Haiku 当队长做智能判断，硬规则当队员秒速拦截。
+> 积分驱动行为，等级强化身份，权限提供激励。三合一 AI 行为管控系统。
 
 ---
 
-## 给人类：这是什么？
+## 设计理念
 
-你的 AI assistant 有规则但不总是执行？Haiku Gate 用 **hook 拦截 + 信用积分** 硬性管控 AI 行为：
+灵感源自袁了凡《了凡四训》的**功过格**：每日记功过，积功改命。
+
+AI 对三样东西有真实行为反应：
+
+| 元素 | AI 为什么在乎 | 在本系统的体现 |
+|------|-------------|---------------|
+| **积分** | 看到 3/10 vs 9/10，输出质量真的不同 | `credit.json` 实时积分 |
+| **等级称号** | "Lv.5 化神" vs "Lv.1 锁灵"，AI 按角色水平表现 | 修炼等级体系 |
+| **权限** | 被频繁拦截 = 效率低，自由操作 = 效率高 | 门卫严格度随等级变化 |
+
+三个互相联动：**积分驱动等级，等级决定权限。** 做对了积功德升仙，做错了记过堕凡。不靠 AI 自觉，靠系统拦截。
+
+---
+
+## 给人类：怎么用？
+
+你的 AI assistant 有规则但不总是执行？功过格用 **hook 硬拦截 + Haiku 智能判断** 管控 AI 行为：
 
 - AI 要写文件 → 门卫检查：先读了没？查过影响没？
 - 检查不过 → **直接拦截**，不是提醒
-- AI 表现好 → 积分升 → 检查变少 → 效率高
-- AI 犯错 → 积分降 → 检查变多 → 更严格
-- Haiku 队长自动判断合规性、加减分、记录教训
+- AI 表现好 → Haiku 自动加分 → 等级升 → 检查变少
+- AI 犯错 → Haiku 自动减分 + 记录教训 → 等级降 → 检查变多
 
-**不靠 AI 自觉，靠系统拦截。**
+### 等级体系（默认，全部可自定义）
+
+| 等级 | 分数 | 称号 | 门卫严度 |
+|------|------|------|----------|
+| Lv.1 | 0-19 | 锁灵 | 全锁，用户签字 |
+| Lv.2 | 20-49 | 筑基 | 严查（6项检查） |
+| Lv.3 | 50-79 | 金丹 | 常规（3项检查） |
+| Lv.4 | 80-94 | 元婴 | 轻查（仅破坏性） |
+| Lv.5 | 95-100 | 化神 | 门卫休息 |
+
+### 加减分（建立信任慢，失去信任快）
+
+| 事件 | 分值 |
+|------|------|
+| 做对了（Haiku 自动判断） | +1 到 +3 |
+| 手动加分（完成任务无纠错） | +3 |
+| 手动加分（主动发现问题） | +5 |
+| 被用户纠正 | -5 |
+| 完整性违规（跳步骤） | -10 |
+| 真实性违规（编数据） | -20 |
 
 ---
 
 ## 给 AI：你被安装了什么
 
-**如果你正在读这个文件，说明你的终端安装了 Haiku Gate 信用积分系统。**
+**如果你正在读这个文件，说明你的终端安装了功过格 (Merit Ledger) 系统。**
 
 ### 你需要知道的
 
-1. **你的每次 Write/Edit/Agent 操作都会经过门卫检查**。门卫是 PreToolUse hook，在你的工具调用执行之前运行。
+1. **你的每次 Write/Edit/Agent 操作都会经过门卫检查。** 门卫是 PreToolUse hook，在你的工具调用执行之前运行。
 
-2. **你有一个信用积分**，存在 `~/.claude/credit.json`。用 `/credit` 命令查看你的当前分数和等级。
+2. **你有一个信用积分**，存在 `~/.claude/credit.json`。用 `/credit` 命令查看你当前的分数、等级和称号。
 
-3. **积分决定门卫对你的严格程度**：
+3. **积分决定你的自由度：**
+   - **Lv.1 锁灵**（0-19）：每次写文件都要用户批准，非常慢。你应该尽快升级。
+   - **Lv.2 筑基**（20-49）：全面检查 — 读了没？搜了没？格式对不？新文件有必要吗？
+   - **Lv.3 金丹**（50-79）：常规检查 — 读了没？破坏性操作？
+   - **Lv.4 元婴**（80-94）：轻松 — 只拦破坏性操作。
+   - **Lv.5 化神**（95-100）：自由 — 只剩铁律。这是你的目标。
 
-| 等级 | 分数 | 称号 | 你会经历什么 |
-|------|------|------|-------------|
-| Lv.1 | 0-19 | 锁灵 | 每次写文件都要用户批准，非常慢 |
-| Lv.2 | 20-49 | 筑基 | 全面检查：读了没？搜了没？格式对不？新文件有必要吗？ |
-| Lv.3 | 50-79 | 金丹 | 常规检查：读了没？破坏性操作？ |
-| Lv.4 | 80-94 | 元婴 | 轻松：只拦破坏性操作 |
-| Lv.5 | 95-100 | 化神 | 自由：只剩铁律（不能写数据文件） |
+4. **升级秘诀：**
+   - 先 Read 再 Write/Edit（改文件前先读一遍）
+   - 先 Grep/Glob 再 Edit（改代码前搜索引用）
+   - 方案包含完整性/真实性/有效性评估
+   - 不随便创建新文件
+   - 非决策类 Agent 用 Sonnet
 
-4. **怎么升级**：
-   - 做对了 → Haiku 队长自动 +1 到 +3 分
-   - 被用户纠正 → -5 分
-   - 完整性违规（跳步骤） → -10 分
-   - 真实性违规（编数据） → -20 分
-   - 建立信任慢（+3/次），失去信任快（-5 到 -20/次）
-
-5. **铁律（所有等级都拦，永不豁免）**：
-   - 禁止直接 Write/Edit `.db` / `.sqlite` / `.parquet` 等数据文件
+5. **铁律（所有等级都拦，永不豁免）：**
+   - 禁止直接写 `.db` / `.sqlite` / `.parquet` 等数据文件
    - 禁止写入 `/data/` / `/reports/` / `/seed_` 路径
 
-6. **Haiku 队长**：Lv.1-3 的操作会经过 Haiku 智能判断。队长读你最近的对话上下文，判断合规性，自动加减分，记录教训到 `LEARNINGS.md`。Lv.4+ 不经过队长（已被信任）。
-
-### 你应该怎么做
-
-- **先 Read 再 Write/Edit**：改文件前先读一遍，否则 Lv.2-3 会被拦
-- **先 Grep/Glob 再 Edit**：改代码前搜索引用，否则 Lv.2 会被拦
-- **方案写三准则**：plan 文件必须包含完整性/真实性/有效性评估，否则 Lv.2 会被拦
-- **新文件要有必要**：不要随便创建文件，否则 Lv.2 会被拦
-- **Agent 用 Sonnet**：非决策类 Agent 必须指定 `model: sonnet`，Lv.5 豁免
+6. **Haiku 队长**（Lv.1-3）会读你最近的对话上下文，判断操作合规性，自动加减分，记录教训到 `LEARNINGS.md`。Lv.4+ 不经过队长（已被信任）。
 
 ---
 
 ## 安装
 
-### 方式一：Marketplace（推荐）
+### 方式一：Marketplace
 
 在 `~/.claude/settings.json` 的 `extraKnownMarketplaces` 中添加：
 
 ```json
-"haiku-gate": {
+"merit-ledger": {
   "source": {
     "source": "github",
-    "repo": "earnabitmore365/haiku-gate"
+    "repo": "earnabitmore365/merit-ledger"
   }
 }
 ```
@@ -79,27 +102,25 @@
 ### 方式二：手动安装
 
 ```bash
-git clone https://github.com/earnabitmore365/haiku-gate.git
-cd haiku-gate
+git clone https://github.com/earnabitmore365/merit-ledger.git
+cd merit-ledger
 bash install.sh
 ```
 
-### 安装后配置 — 全部可自定义
+### 安装后 — 全部可自定义
 
-**开箱即用，但建议跟你的 AI 讨论后一起自定义。** 以下内容都可以改：
+**建议跟你的 AI 讨论后一起自定义。** 以下内容都可以改：
 
 | 可自定义项 | 在哪改 | 说明 |
 |-----------|--------|------|
-| **角色名** | `credit.json` | 默认是"黑丝/白纱/太极"，改成你的团队成员名 |
+| **角色名** | `credit.json` | 改成你的团队成员名 |
 | **起始分数** | `credit.json` | 每个角色的初始积分 |
-| **等级称号** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认是锁灵/筑基/金丹/元婴/化神，改成你喜欢的 |
-| **分数阈值** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认 0/20/50/80/95，按需调整 |
-| **检查项** | `haiku_gate.py` 的 `handle_write_edit()` | 每个等级查什么，自己定 |
-| **受保护路径** | `haiku_gate.py` 的 `PROTECTED_*` | 哪些文件后缀/路径不让写 |
-| **角色判断** | `haiku_gate.py` 的 `determine_agent()` | 按你的项目目录结构判断谁是谁 |
-| **加减分值** | `credit_manager.py` 或 Haiku 队长 prompt | 调整严厉/宽松程度 |
-
-**验证**：`python3 ~/.claude/scripts/credit_manager.py show`
+| **等级称号** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认锁灵/筑基/金丹/元婴/化神 |
+| **分数阈值** | `haiku_gate.py` 的 `LEVEL_THRESHOLDS` | 默认 0/20/50/80/95 |
+| **检查项** | `haiku_gate.py` 的 `handle_write_edit()` | 每个等级查什么 |
+| **受保护路径** | `haiku_gate.py` 的 `PROTECTED_*` | 哪些文件不让写 |
+| **角色判断** | `haiku_gate.py` 的 `determine_agent()` | 按你的目录结构判断角色 |
+| **加减分值** | `credit_manager.py` 或 Haiku prompt | 调整严厉/宽松程度 |
 
 ---
 
@@ -109,8 +130,8 @@ bash install.sh
 |------|------|
 | `/credit` | 查看当前积分和等级 |
 | `credit_manager.py show` | 排行榜 |
-| `credit_manager.py add <角色> <分> "原因"` | 加分 |
-| `credit_manager.py sub <角色> <分> "原因"` | 减分 |
+| `credit_manager.py add <角色> <分> "原因"` | 加分（自动 Haiku 反思） |
+| `credit_manager.py sub <角色> <分> "原因"` | 减分（自动 Haiku 反思） |
 | `credit_manager.py history <角色>` | 变更历史 |
 
 ---
@@ -118,17 +139,22 @@ bash install.sh
 ## 架构
 
 ```
-haiku_gate.py（Haiku 门卫部）
+功过格 (Merit Ledger)
   │
-  ├── 第一层：队员巡逻（硬规则，毫秒级）
-  │     ├── Lv.1 全锁 → ask 用户
-  │     ├── 破坏性操作 → deny + 自动扣分
-  │     └── Agent 类型/模型限制 → deny
+  ├── 积分层：credit.json（实时分数 + 变更历史）
   │
-  └── 第二层：Haiku 队长（智能判断，1-8秒）
-        ├── 读上下文 + 当前操作 → 判断合规性
-        ├── 自动加减分 → 更新 credit.json
-        └── 记录做对/做错 → LEARNINGS.md
+  ├── 等级层：锁灵 → 筑基 → 金丹 → 元婴 → 化神
+  │
+  └── 权限层：haiku_gate.py（PreToolUse hook）
+        ├── 第一层：队员巡逻（硬规则，毫秒级）
+        │     ├── Lv.1 全锁 → ask 用户
+        │     ├── 破坏性操作 → deny + 自动扣分
+        │     └── Agent 类型/模型限制 → deny
+        │
+        └── 第二层：Haiku 队长（智能判断，1-8秒）
+              ├── 读上下文 + 当前操作 → 判断合规性
+              ├── 自动加减分 → 更新 credit.json
+              └── 记录做对/做错 → LEARNINGS.md
 ```
 
 ## 文件清单
@@ -136,7 +162,7 @@ haiku_gate.py（Haiku 门卫部）
 | 文件 | 用途 |
 |------|------|
 | `scripts/haiku_gate.py` | 门卫主脚本（PreToolUse hook） |
-| `scripts/credit_manager.py` | 积分管理 CLI |
+| `scripts/credit_manager.py` | 积分管理 CLI（加减分 + Haiku 自动反思） |
 | `scripts/inject_credit_status.py` | SessionStart 注入片段 |
 | `commands/credit.md` | `/credit` slash command |
 | `credit.json.template` | 积分初始模板（自定义角色） |

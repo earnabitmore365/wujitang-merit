@@ -1,21 +1,21 @@
 {
-  "name": "haiku-gate",
+  "name": "merit-ledger",
   "owner": {
     "name": "earnabitmore365",
     "email": ""
   },
   "metadata": {
-    "description": "Haiku Gate — AI 信用积分门卫系统。Haiku 当队长做智能判断，硬规则当队员秒速拦截，积分动态调节严格度。",
-    "version": "2.0.0"
+    "description": "功过格 (Merit Ledger) — 积分驱动行为，等级强化身份，权限提供激励。三合一 AI 行为管控系统。",
+    "version": "2.1.0"
   },
   "plugins": [
     {
-      "name": "haiku-gate",
+      "name": "merit-ledger",
       "source": "./",
-      "description": "用 hook 拦截 + Haiku 智能判断 + 信用积分动态管控 AI 行为。等级体系（锁灵→筑基→金丹→元婴→化神），角色/分数/等级名全部可自定义。",
+      "description": "灵感源自袁了凡《了凡四训》的功过格：每日记功过，积功改命。AI 做对了积功德（+分），做错了记过（-分+自动反思）。积分驱动等级（锁灵→筑基→金丹→元婴→化神），等级决定权限（全锁→严查→常规→轻查→自由）。Haiku 当队长做智能判断，硬规则当队员秒速拦截。角色/分数/等级名/称号全部可自定义。",
       "category": "productivity",
-      "version": "2.0.0",
-      "tags": ["credit-system", "gate", "hook", "haiku", "compliance", "agent-management"]
+      "version": "2.1.0",
+      "tags": ["credit-system", "merit", "ledger", "compliance", "agent-management", "hook", "haiku"]
     }
   ]
 }
