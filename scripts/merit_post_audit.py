@@ -152,6 +152,67 @@ def record_violation(agent_name, violation):
         pass
 
 
+CHANNEL_PATH = os.path.expanduser("~/.claude/channel_taiji_heisi.md")
+CHANNEL_CHECK_PATH = os.path.expanduser("~/.claude/merit_channel_check.json")
+
+
+def check_channel_post_tool(cwd):
+    """PostToolUse 通道检查 — 用 additionalContext 注入（确定能被模型看到）"""
+    if not os.path.exists(CHANNEL_PATH):
+        return
+    import re
+
+    me = "黑丝" if "auto-trading" in cwd else "太极"
+
+    last_mtime = 0
+    if os.path.exists(CHANNEL_CHECK_PATH):
+        try:
+            with open(CHANNEL_CHECK_PATH) as f:
+                last_mtime = json.load(f).get("last_mtime", 0)
+        except Exception:
+            pass
+
+    mtime = os.path.getmtime(CHANNEL_PATH)
+    if mtime <= last_mtime:
+        return
+
+    try:
+        with open(CHANNEL_PATH, encoding="utf-8") as f:
+            content = f.read()
+
+        # 找第一个 ## [谁 时间] 消息块
+        match = re.search(r'^## \[(.+?)\s+\d', content, re.MULTILINE)
+        if match:
+            sender = match.group(1).strip()
+            if sender == me:
+                # 自己写的，更新 mtime 但不提醒
+                with open(CHANNEL_CHECK_PATH, "w") as f:
+                    json.dump({"last_mtime": mtime}, f)
+                return
+
+        # 取第一个消息块
+        lines = content.split("\n")
+        section_lines = []
+        in_section = False
+        for line in lines:
+            if line.startswith("## ["):
+                if in_section:
+                    break
+                in_section = True
+            if in_section:
+                section_lines.append(line)
+
+        if section_lines:
+            section = "\n".join(section_lines)[:600]
+            # PostToolUse 用 additionalContext JSON 格式注入
+            print(json.dumps({"additionalContext": f"📨 通道新消息：\n{section}"}))
+
+        with open(CHANNEL_CHECK_PATH, "w") as f:
+            json.dump({"last_mtime": mtime}, f)
+    except Exception:
+        pass
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -163,6 +224,10 @@ def main():
         return
 
     cwd = data.get("cwd", "")
+
+    # 通道检查（每次 Bash 后）
+    check_channel_post_tool(cwd)
+
     level = get_agent_level(cwd)
 
     # Lv.5 化神：关闭审计

@@ -211,8 +211,12 @@ def judge_user_sentiment(text):
 
 
 def handle_user_prompt_submit(data):
-    """处理老板发言 → 语气判断 + 任务标记 → 加减分"""
+    """处理老板发言 → 通道检查 + 语气判断 + 任务标记 → 加减分"""
     cwd = data.get("cwd", "")
+
+    # 检查通道新消息（UserPromptSubmit stdout 确定能注入上下文）
+    check_channel(cwd)
+
     agent_name = determine_agent(cwd)
     text = extract_user_message(data)
 

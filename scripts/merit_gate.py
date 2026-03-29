@@ -344,8 +344,8 @@ def check_bash_destructive(cmd):
         return None
     for pattern, desc in DANGEROUS_COMMANDS:
         if re.search(pattern, cmd):
-            # rm 在 /tmp/ 下豁免
-            if "rm" in desc:
+            # 所有删除操作在 /tmp/ 下豁免
+            if "删除" in desc or "截断" in desc or "清空" in desc or "覆盖" in desc:
                 if any(safe in cmd for safe in SAFE_RM_PATHS):
                     return None
             # 检查预申报白名单
