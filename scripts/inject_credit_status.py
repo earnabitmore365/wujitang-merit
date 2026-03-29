@@ -118,7 +118,7 @@ def inject_compact_context(cwd):
         pass
 
 
-DECAY_RATE = 2  # 每天扣 2 分（房租）
+DECAY_RATE = 2  # 每天扣 2 分（灵气消散）
 
 LEVEL_THRESHOLDS = [
     (95, 5, "化神"), (80, 4, "元婴"), (50, 3, "金丹"),
@@ -134,7 +134,7 @@ def _get_level(score):
 
 
 def apply_daily_decay(credit_path):
-    """积分自然衰减 — 每天 -2 分（房租）。干活赚分对抗衰减。"""
+    """积分自然衰减 — 每天 -2 分（灵气消散）。干活赚分对抗衰减。"""
     from datetime import datetime, timezone
     try:
         with open(credit_path) as f:
@@ -171,7 +171,7 @@ def apply_daily_decay(credit_path):
                     'ts': now.strftime('%Y-%m-%dT%H:%M:%S'),
                     'agent': name,
                     'delta': -deduct,
-                    'reason': f'房租（{days}天×{DECAY_RATE}分）',
+                    'reason': f'灵气消散（{days}天×{DECAY_RATE}分）',
                     'score_after': new_score,
                 })
 
@@ -182,7 +182,7 @@ def apply_daily_decay(credit_path):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
         if deduct > 0:
-            print(f"💸 房租扣款：全员 -{deduct}分（{days}天）")
+            print(f"💸 灵气消散扣款：全员 -{deduct}分（{days}天）")
     except Exception:
         pass
 
@@ -193,7 +193,7 @@ def inject_credit_status(cwd):
     if not os.path.exists(credit_path):
         return
 
-    # 先扣房租
+    # 先扣灵气消散
     apply_daily_decay(credit_path)
 
     try:
