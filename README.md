@@ -133,6 +133,16 @@ bash install.sh
 | **角色判断** | `merit_gate.py` 的 `determine_agent()` | 按你的目录结构判断角色 |
 | **加减分值** | `credit_manager.py` 或 Haiku prompt | 调整严厉/宽松程度 |
 
+### 多角色 / subagent 场景
+
+如果你用 Claude Code 的 subagent 模式（主 agent 派 `Agent model: sonnet` 做任务），门卫会自动识别：
+
+- **有 `agent_id`** → subagent（如白纱），独立计分
+- **无 `agent_id` + 项目目录** → 主 agent（如黑丝）
+- **无 `agent_id` + home 目录** → 管理者（如太极）
+
+subagent 并行写文件时，Haiku 队长自动进入**批量模式**——每 5 次 Write/Edit 才调一次 Haiku，避免白纱改 20 个文件调 20 次 Haiku。硬规则（破坏性操作等）每次都查，不受批量模式影响。
+
 ### 填入你自己的规则
 
 1. 复制 `templates/rules.md` 到 `~/.claude/projects/<你的项目编码>/memory/rules.md`

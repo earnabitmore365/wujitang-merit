@@ -514,6 +514,23 @@ def main():
     if level >= 4:
         return
 
+    # 批量模式：subagent（白纱）并行写文件时，每 5 次 Write/Edit 才调一次 Haiku
+    # 避免白纱改 20 个文件调 20 次 Haiku
+    if data.get("agent_id") and tool_name in ("Write", "Edit"):
+        batch_path = os.path.expanduser("~/.claude/merit_batch_counter.json")
+        try:
+            count = 0
+            if os.path.exists(batch_path):
+                with open(batch_path) as f:
+                    count = json.load(f).get("count", 0)
+            count += 1
+            with open(batch_path, "w") as f:
+                json.dump({"count": count}, f)
+            if count % 5 != 0:
+                return  # 跳过 Haiku，硬规则已通过
+        except Exception:
+            pass
+
     context = get_recent_context(5)
     result = haiku_judge(
         agent_name, level, title, score,
