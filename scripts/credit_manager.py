@@ -42,8 +42,7 @@ def load_credit():
     if not os.path.exists(CREDIT_PATH):
         return {
             "agents": {
-                "黑丝": {"score": 10, "level": 1, "title": "锁灵"},
-                "白纱": {"score": 40, "level": 2, "title": "筑基"},
+                "两仪": {"score": 50, "level": 3, "title": "金丹"},
                 "太极": {"score": 60, "level": 3, "title": "金丹"},
             },
             "history": [],

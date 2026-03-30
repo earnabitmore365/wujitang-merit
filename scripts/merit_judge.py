@@ -325,7 +325,7 @@ def check_channel(cwd):
         if match:
             sender = match.group(1).strip()
             # 自己写的不提醒
-            if sender == me or (me == "太极" and sender == "太极") or (me == "黑丝" and sender == "黑丝"):
+            if sender == me or (me == "太极" and sender == "太极") or (me == "两仪" and sender == "两仪"):
                 with open(CHANNEL_CHECK_PATH, "w") as f:
                     json.dump({"last_mtime": mtime}, f)
                 return
