@@ -35,7 +35,7 @@ def get_level(score):
 
 def determine_agent(cwd):
     if "auto-trading" in cwd:
-        return "黑丝"
+        return "两仪"
     return "太极"
 
 
@@ -233,8 +233,15 @@ def handle_user_prompt_submit(data):
 
 
 # ══════════════════════════════════════════════════════
-#  Stop — 后台 Haiku 评估 AI 回复（低频）
+#  Stop — 异步评估 AI 回复（v6: 从 PreToolUse 移到这里）
 # ══════════════════════════════════════════════════════
+
+# v6: 关键场景用 Sonnet 保质量，日常用 Haiku 省成本
+JUDGE_MODEL = {
+    "daily_scoring": "haiku",
+    "appeal_review": "sonnet",
+    "major_violation": "sonnet",
+}
 
 STOP_COUNTER_PATH = os.path.expanduser("~/.claude/merit_stop_counter.json")
 STOP_EVAL_INTERVAL = 5  # 每 5 次 Stop 评估一次

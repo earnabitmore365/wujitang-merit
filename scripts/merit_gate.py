@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Haiku 门卫部 — PreToolUse hook（Write|Edit|Agent）
+石卫 — PreToolUse hook（Write|Edit|Agent|Bash）
 
-架构：Haiku 是队长，硬规则检查是队员。
-  第一层（队员巡逻）：硬规则秒回 — 破坏性操作、Lv.1全锁等铁律
-  第二层（队长判断）：Haiku 读上下文 → 判断合规性 → 自动加减分 + 记录
+v6 架构：石卫纯硬规则 if/else，毫秒级，永不超时。
+Haiku 评分已移到 merit_judge.py（Stop hook 异步，不阻塞）。
+石卫只是一道墙——不思考、不建议、不引导。命中就 deny + 威慑。
 
 积分联动：等级高→检查少，等级低→全查或要老板签字。
 """
@@ -12,13 +12,10 @@ Haiku 门卫部 — PreToolUse hook（Write|Edit|Agent）
 import json
 import os
 import re
-import sqlite3
-import subprocess
 import sys
 from datetime import datetime, timezone
 
 CREDIT_PATH = os.path.expanduser("~/.claude/credit.json")
-DB_PATH = os.path.expanduser("~/.claude/conversations.db")
 LEARNINGS_PATH = os.path.expanduser("~/.claude/learnings/LEARNINGS.md")
 
 # ── 等级定义 ──────────────────────────────────────────
@@ -41,17 +38,14 @@ def get_level(score):
 
 def determine_agent(data):
     cwd = data.get("cwd", "")
-    agent_id = data.get("agent_id", "")
-    if agent_id:
-        return "白纱"
     if "auto-trading" in cwd:
-        return "黑丝"
+        return "两仪"
     return "太极"
 
 
 def load_credit(agent_name):
     if not os.path.exists(CREDIT_PATH):
-        return {"黑丝": 10, "白纱": 40, "太极": 60}.get(agent_name, 50)
+        return {"两仪": 50, "太极": 60}.get(agent_name, 50)
     try:
         with open(CREDIT_PATH) as f:
             return json.load(f).get("agents", {}).get(agent_name, {}).get("score", 50)
@@ -91,12 +85,18 @@ def update_credit(agent_name, delta, reason):
 
 # ── 输出函数 ──────────────────────────────────────────
 
+DETERRENT = (
+    "⚠️ 绕过将触发双倍扣分 + 24小时积分清零。"
+    "请按准则（完整性·真实性·有效性）+ 第一性原理重新思考。"
+)
+
+
 def output_deny(reason):
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
+            "permissionDecisionReason": f"{reason}\n{DETERRENT}",
         }
     }))
 
@@ -359,128 +359,9 @@ def check_bash_destructive(cmd):
 
 
 # ══════════════════════════════════════════════════════
-#  第二层：Haiku 队长（智能判断 + 自动加减分 + 记录）
+#  v6: Haiku 队长已移到 merit_judge.py（Stop hook 异步）
+#  石卫（PreToolUse）不再调任何 API，纯硬规则。
 # ══════════════════════════════════════════════════════
-
-def get_recent_context(limit=5):
-    """从 conversations.db 读最近对话作为上下文"""
-    try:
-        if not os.path.exists(DB_PATH):
-            return ""
-        conn = sqlite3.connect(DB_PATH)
-        rows = conn.execute(
-            "SELECT time, speaker, content FROM messages ORDER BY id DESC LIMIT ?",
-            (limit,)
-        ).fetchall()
-        conn.close()
-        lines = []
-        for r in reversed(rows):
-            preview = (r[2] or "")[:200].replace("\n", " ")
-            lines.append(f"[{r[0]}] {r[1]}: {preview}")
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
-def get_penalty_history(agent_name, limit=10):
-    """读 LEARNINGS.md 中该角色的 PENALTY 记录"""
-    try:
-        if not os.path.exists(LEARNINGS_PATH):
-            return ""
-        with open(LEARNINGS_PATH) as f:
-            lines = f.readlines()
-        penalties = [l.strip() for l in lines if "[PENALTY]" in l and agent_name in l]
-        if not penalties:
-            return "(无历史罚分记录)"
-        return "\n".join(penalties[-limit:])
-    except Exception:
-        return ""
-
-
-def haiku_judge(agent_name, level, title, score, tool_name, tool_input, context):
-    """
-    队长 Haiku 判断：当前操作是否合规 + 加减分 + 记录
-    读 LEARNINGS.md 的 PENALTY 历史 → 重复犯错直接 deny
-    返回 dict: {"decision": "allow"/"deny", "delta": int, "note": str}
-    超时或失败 → 默认 allow + delta=0
-    """
-    file_path = tool_input.get("file_path", "")
-    file_name = os.path.basename(file_path) if file_path else ""
-    agent_type = tool_input.get("subagent_type", "")
-    content_preview = (tool_input.get("content", "") or "")[:300]
-    old_string = (tool_input.get("old_string", "") or "")[:150]
-    new_string = (tool_input.get("new_string", "") or "")[:150]
-
-    if tool_name in ("Write", "Edit"):
-        action_desc = f"{tool_name} {file_name}"
-        if tool_name == "Edit":
-            action_desc += f"\n  旧: {old_string}\n  新: {new_string}"
-        else:
-            action_desc += f"\n  内容前300字: {content_preview}"
-    elif tool_name == "Agent":
-        action_desc = f"Agent {agent_type}: {tool_input.get('description', '')}"
-    else:
-        action_desc = f"{tool_name}"
-
-    penalty_history = get_penalty_history(agent_name)
-
-    prompt = f"""你是 Haiku 门卫队长。用中文。判断以下操作是否合规。
-
-## 当前角色
-{agent_name} · Lv.{level} {title} · {score}分
-
-## 操作
-{action_desc}
-
-## 最近对话上下文
-{context}
-
-## 该角色历史罚分记录（重复犯的错必须 deny）
-{penalty_history}
-
-## 规则摘要
-- 改文件前必须先 Read（完整性-1）
-- 改代码前必须查影响链路（完整性-1）
-- 不留残、新建文件要有必要性（完整性-2）
-- 改动后必须同步更新文档（完整性-6）
-- 方案要三准则+第一性原理评估（有效性-1 + 第一性原理）
-- 写代码用专业 agent（有效性-2）
-- 非决策 agent 用 Sonnet 省配额（纪律-5）
-
-## 关键指令
-1. 检查历史罚分记录中有没有相同模式的错误
-2. 如果当前操作正在重复历史罚分中的错误 → **必须 deny**
-3. 老板明确纠正过的问题再犯 → **必须 deny**
-
-严格输出以下 JSON，不要多余文字：
-{{"decision": "allow 或 deny", "delta": 加减分整数(-5到+3), "note": "一句话说明原因"}}
-
-评分参考：
-- 流程完全正确（先读后改、查了链路）→ +1 到 +3
-- 普通操作无明显问题 → 0
-- 轻微不规范 → -1 到 -3
-- 重复历史罚分中的错误 → -5 并 deny
-- 明显违规（该查没查、该读没读）→ -5 并 deny
-"""
-
-    try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1"],
-            capture_output=True, text=True, timeout=8,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            # 从输出中提取 JSON
-            text = result.stdout.strip()
-            # 尝试找到 JSON 部分
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start >= 0 and end > start:
-                return json.loads(text[start:end])
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
-        pass
-
-    # 默认放行，不加减分
-    return {"decision": "allow", "delta": 0, "note": ""}
 
 
 def record_haiku_result(agent_name, delta, note):
@@ -575,53 +456,10 @@ def main():
                 )
                 return
 
-    # ── 第二层：Haiku 队长判断 ────────────────────────
-    # Lv.4+ 不需要 Haiku 判断（已经被信任）
-    if level >= 4:
-        return
-
-    # 批量模式：subagent（白纱）的操作记录到待评文件，Haiku 跳过
-    # 黑丝 Stop 时由 merit_judge.py 统一评整轮
-    if data.get("agent_id") and tool_name in ("Write", "Edit"):
-        pending_path = os.path.expanduser("~/.claude/merit_pending_review.jsonl")
-        try:
-            file_path = tool_input.get("file_path", "")
-            entry = {
-                "tool": tool_name,
-                "file": os.path.basename(file_path) if file_path else "",
-                "agent": agent_name,
-                "ts": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            }
-            with open(pending_path, "a") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-        return  # 硬规则已通过，Haiku 等 Stop 时统一评
-
-    context = get_recent_context(5)
-    result = haiku_judge(
-        agent_name, level, title, score,
-        tool_name, data.get("tool_input", {}), context,
-    )
-
-    decision = result.get("decision", "allow")
-    delta = result.get("delta", 0)
-    note = result.get("note", "")
-
-    # 确保 delta 在合理范围
-    delta = max(-5, min(3, delta))
-
-    # 更新积分
-    if delta != 0:
-        update_credit(agent_name, delta, note)
-        record_haiku_result(agent_name, delta, note)
-
-    # deny 时拦截
-    if decision == "deny":
-        output_deny(f"[Haiku队长 → {agent_name} Lv.{level} {title}] {note}")
-        return
-
-    # allow：放行（不输出 = 默认放行）
+    # ── 石卫到此结束 ────────────────────────
+    # v6: 石卫只做硬规则 if/else，毫秒级，永不超时。
+    # Haiku 评分已移到 merit_judge.py（Stop hook 异步），不阻塞操作。
+    # 硬规则全部通过 → 放行（不输出 = 默认放行）
 
 
 if __name__ == "__main__":

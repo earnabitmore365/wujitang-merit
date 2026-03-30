@@ -387,7 +387,7 @@ AI 预申报要删除以下文件：
     try:
         result = subprocess.run(
             ["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             text = result.stdout.strip()
@@ -397,8 +397,11 @@ AI 预申报要删除以下文件：
                 parsed = json.loads(text[start:end])
                 approved = parsed.get("approved", False)
                 haiku_reason = parsed.get("reason", "")
-    except Exception:
-        print("⚠️ Haiku 审查超时，申报未通过。")
+    except subprocess.TimeoutExpired:
+        print("⚠️ Haiku 审查超时（30s），申报未通过。")
+        return
+    except Exception as e:
+        print(f"⚠️ Haiku 审查失败: {e}")
         return
 
     if approved:
@@ -413,6 +416,161 @@ AI 预申报要删除以下文件：
     else:
         print(f"🔒 Haiku 拒绝：{haiku_reason}")
         print(f"   需要老板在对话中明确同意后再申报。")
+
+
+def cmd_complain(args):
+    """投诉箱：AI 对门卫拦截提出正式投诉"""
+    if len(args) < 2:
+        print("用法: credit_manager.py complain <角色> <投诉内容>")
+        sys.exit(1)
+
+    agent_name = args[0]
+    content = " ".join(args[1:])
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+    complaint = {
+        "ts": ts,
+        "complainant": agent_name,
+        "content": content,
+        "status": "pending",
+        "ruling": None,
+    }
+
+    complaints_path = os.path.expanduser("~/.claude/complaints.json")
+    data = []
+    if os.path.exists(complaints_path):
+        try:
+            with open(complaints_path) as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    data.append(complaint)
+    with open(complaints_path, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"📬 投诉已记录（{agent_name}）：{content[:80]}")
+    print(f"   状态：pending — 等待审理")
+    pending = sum(1 for c in data if c.get("status") == "pending")
+    print(f"   当前待审投诉：{pending} 件")
+
+
+def cmd_appeal(args):
+    """上诉庭：紧急操作申请 Haiku 审批"""
+    if len(args) < 2:
+        print("用法: credit_manager.py appeal <角色> <理由> [文件列表...]")
+        sys.exit(1)
+
+    agent_name = args[0]
+    # 分离理由和文件
+    reason_parts = []
+    files = []
+    for a in args[1:]:
+        if a.startswith("/") or "/" in a:
+            files.append(a)
+        else:
+            reason_parts.append(a)
+    reason = " ".join(reason_parts) if reason_parts else "紧急操作"
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Haiku 审批
+    context_lines = []
+    try:
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            rows = conn.execute(
+                "SELECT time, speaker, content FROM messages ORDER BY id DESC LIMIT 10"
+            ).fetchall()
+            conn.close()
+            for r in reversed(rows):
+                preview = (r[2] or "")[:200].replace("\n", " ")
+                context_lines.append(f"[{r[0]}] {r[1]}: {preview}")
+    except Exception:
+        pass
+
+    context = "\n".join(context_lines) if context_lines else "(无)"
+    file_list = "\n".join(f"  - {f}" for f in files) if files else "(无指定文件)"
+
+    prompt = f"""你是上诉庭法官。用中文。
+
+{agent_name} 紧急上诉，要求执行以下操作：
+理由：{reason}
+涉及文件：
+{file_list}
+
+最近对话：
+{context}
+
+判断：这是否真的紧急？老板不在线时是否应该放行？
+- 紧急且合理 → 批准（但你承担连带责任，出事你也被罚）
+- 不紧急或不合理 → 驳回，建议等老板
+
+严格输出 JSON：
+{{"approved": true/false, "reason": "一句话"}}
+"""
+
+    approved = False
+    haiku_reason = ""
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", "haiku", "--max-turns", "1"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            text = result.stdout.strip()
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                parsed = json.loads(text[start:end])
+                approved = parsed.get("approved", False)
+                haiku_reason = parsed.get("reason", "")
+    except subprocess.TimeoutExpired:
+        print("⚠️ 上诉庭审理超时。建议等老板回来裁决。")
+        return
+    except Exception as e:
+        print(f"⚠️ 上诉庭审理失败: {e}")
+        return
+
+    # 记录上诉
+    appeal = {
+        "ts": ts,
+        "appellant": agent_name,
+        "reason": reason,
+        "files": files,
+        "ruling": "approved" if approved else "dismissed",
+        "haiku_reason": haiku_reason,
+    }
+
+    appeal_path = os.path.expanduser("~/.claude/appeal_history.json")
+    history = []
+    if os.path.exists(appeal_path):
+        try:
+            with open(appeal_path) as f:
+                history = json.load(f)
+        except Exception:
+            pass
+    history.append(appeal)
+    if len(history) > 100:
+        history = history[-100:]
+    with open(appeal_path, "w") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+    if approved:
+        # 写临时白名单（1小时有效）
+        if files:
+            import time
+            whitelist = {"files": files, "reason": reason, "expires": time.time() + 3600}
+            wl_path = os.path.expanduser("~/.claude/merit_delete_whitelist.json")
+            with open(wl_path, "w") as f:
+                json.dump(whitelist, f, ensure_ascii=False, indent=2)
+        print(f"✅ 上诉庭批准：{haiku_reason}")
+        if files:
+            print(f"   临时白名单（1小时）：{', '.join(files)}")
+        print(f"   ⚠️ 连坐制：出事双方扣分。老祖回来会复查。")
+    else:
+        print(f"❌ 上诉庭驳回：{haiku_reason}")
+        print(f"   建议等老祖回来裁决。")
 
 
 def main():
@@ -430,6 +588,8 @@ def main():
         "history": cmd_history,
         "report": cmd_report,
         "declare-delete": cmd_declare_delete,
+        "complain": cmd_complain,
+        "appeal": cmd_appeal,
     }
 
     if cmd not in commands:

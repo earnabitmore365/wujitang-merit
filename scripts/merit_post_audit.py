@@ -62,7 +62,7 @@ def get_agent_level(cwd):
             return 3  # 默认 Lv.3
         with open(CREDIT_PATH) as f:
             data = json.load(f)
-        agent_name = "黑丝" if "auto-trading" in cwd else "太极"
+        agent_name = "两仪" if "auto-trading" in cwd else "太极"
         agent = data.get("agents", {}).get(agent_name, {})
         return agent.get("level", 3)
     except Exception:
@@ -162,7 +162,7 @@ def check_channel_post_tool(cwd):
         return
     import re
 
-    me = "黑丝" if "auto-trading" in cwd else "太极"
+    me = "两仪" if "auto-trading" in cwd else "太极"
 
     last_mtime = 0
     if os.path.exists(CHANNEL_CHECK_PATH):
@@ -240,7 +240,7 @@ def main():
     violations = check_against_snapshot()
 
     if violations:
-        agent_name = "黑丝" if "auto-trading" in cwd else "太极"
+        agent_name = "两仪" if "auto-trading" in cwd else "太极"
         for v in violations:
             record_violation(agent_name, v)
             path_short = v["path"].replace(os.path.expanduser("~"), "~")
