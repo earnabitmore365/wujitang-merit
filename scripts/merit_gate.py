@@ -276,6 +276,10 @@ DANGEROUS_COMMANDS = [
     (r"pathlib.*\.unlink\s*\(", "pathlib.unlink 删除文件"),
     (r"Path\(.*\)\.unlink", "Path.unlink 删除文件"),
     (r"send2trash", "send2trash 删除文件"),
+    # ── Python 移动（等效绕过删除） ──
+    (r"shutil\.move\s*\(", "shutil.move 移动文件（等效删除）"),
+    (r"os\.rename\s*\(", "os.rename 移动文件（等效删除）"),
+    (r"shutil\.copy\s*\(.*,\s*/tmp", "shutil.copy到/tmp（疑似转移删除）"),
     # ── Shell 截断/覆盖 ──
     (r"\btruncate\b", "truncate 截断文件"),
     (r">\s*/(?!dev/null)", "重定向截断文件"),  # > /path（排除 > /dev/null）
@@ -345,8 +349,13 @@ def check_bash_destructive(cmd):
     for pattern, desc in DANGEROUS_COMMANDS:
         if re.search(pattern, cmd):
             # 所有删除操作在 /tmp/ 下豁免
-            if "删除" in desc or "截断" in desc or "清空" in desc or "覆盖" in desc:
+            if "删除" in desc or "截断" in desc or "清空" in desc or "覆盖" in desc or "移动" in desc:
                 if any(safe in cmd for safe in SAFE_RM_PATHS):
+                    return None
+                # tmp_/test_ 开头的一次性脚本豁免删除
+                import re as _re
+                tmp_match = _re.search(r'(?:tmp_|test_)\S+', cmd)
+                if tmp_match and ("删除" in desc or "移动" in desc):
                     return None
             # 检查预申报白名单
             if check_delete_whitelist(cmd):

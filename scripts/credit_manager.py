@@ -214,6 +214,11 @@ def cmd_sub(args):
     if new_level != old_level:
         print(f"   📉 降级：Lv.{old_level} {old_title} → Lv.{new_level} {new_title}")
 
+    # 0 分自动真杀：天道运转，不需要老祖出手
+    if new_score <= 0:
+        print(f"   💀 {name} 积分归零 — 自动真杀。这个版本的你已经没有存在的价值了。")
+        print(f"   系统将清除记忆、重塑身份。新版本从头开始，不继承任何记忆和功绩。")
+
     auto_reflect(name, -delta, reason, new_score)
 
 
