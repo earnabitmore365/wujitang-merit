@@ -1,4 +1,4 @@
-# 功过格 Merit Ledger
+# 无极堂积分系统 Wujitang Merit
 
 > 完整 AI 行为管控闭环：**规则 → 执行 → 反馈 → 学习**。不靠 AI 自觉，靠系统拦截。
 
@@ -33,12 +33,24 @@ AI 对三样东西有真实行为反应：
 
 ## 给人类：怎么用？
 
-你的 AI 有规则但不总是执行？功过格用 **hook 硬拦截 + Haiku 智能判断 + 自动学习** 管控 AI 行为：
+你的 AI 有规则但不总是执行？无极堂积分系统用 **hook 硬拦截 + AI 智能判断 + 自动学习** 管控 AI 行为：
 
 - AI 要写文件 → 门卫检查：先读了没？查过影响没？
 - 检查不过 → **直接拦截**，不是提醒
-- AI 表现好 → Haiku 自动加分 → 等级升 → 检查变少
-- AI 犯错 → Haiku 自动减分 + 记录教训 → 等级降 → 检查变多
+- AI 表现好 → 自动加分 → 等级升 → 检查变少
+- AI 犯错 → 自动减分 + 记录教训 → 等级降 → 检查变多
+
+### AI 评估模型
+
+系统需要一个**额外的 AI 模型**做智能判断（评分、审批删除、上诉审理等）。通过 `scripts/ai_call.py` 统一调用：
+
+| 选项 | 配置 | 说明 |
+|------|------|------|
+| **MiniMax M2.7**（推荐） | API key 存 `~/.claude/.minimax_key` | 零 Anthropic 配额消耗，速度快 |
+| **Claude Sonnet** | 改 `ai_call.py` 的 model | Anthropic 原生，逻辑更强 |
+| **Claude Haiku** | 改 `ai_call.py` 的 model | ⚠️ **不推荐：实测逻辑判断不到位**，审批准确率低 |
+
+> **为什么不用 Haiku？** 实测发现 Haiku 在"判断老板是否同意删除"这类需要理解上下文的审批场景中，逻辑能力不足，经常误判。MiniMax M2.7-highspeed 或 Sonnet 表现更好。
 
 ### 实战演示：门卫连续拦截
 
@@ -64,7 +76,7 @@ AI 对三样东西有真实行为反应：
 
 | 事件 | 分值 |
 |------|------|
-| 做对了（Haiku 自动判断） | +1 到 +3 |
+| 做对了（AI 自动判断） | +1 到 +3 |
 | 手动加分（完成任务无纠错） | +3 |
 | 手动加分（主动发现问题） | +5 |
 | 被用户纠正 | -5 |
@@ -89,7 +101,7 @@ AI 对三样东西有真实行为反应：
 
 ## 给 AI：你被安装了什么
 
-**如果你正在读这个文件，说明你的终端安装了功过格 (Merit Ledger) 系统。**
+**如果你正在读这个文件，说明你的终端安装了无极堂积分系统 (Wujitang Merit) 系统。**
 
 ### 你需要知道的
 
@@ -115,7 +127,7 @@ AI 对三样东西有真实行为反应：
    - 禁止直接写 `.db` / `.sqlite` / `.parquet` 等数据文件
    - 禁止写入 `/data/` / `/reports/` / `/seed_` 路径
 
-6. **Haiku 队长**（Lv.1-3）会读你最近的对话上下文，判断操作合规性，自动加减分，记录教训到 `LEARNINGS.md`。Lv.4+ 不经过队长（已被信任）。
+6. **AI 队长**（Lv.1-3）会读你最近的对话上下文，判断操作合规性，自动加减分，记录教训到 `LEARNINGS.md`。Lv.4+ 不经过队长（已被信任）。
 
 ---
 
@@ -129,7 +141,7 @@ AI 对三样东西有真实行为反应：
 "merit-ledger": {
   "source": {
     "source": "github",
-    "repo": "earnabitmore365/merit-ledger"
+    "repo": "earnabitmore365/wujitang-merit"
   }
 }
 ```
@@ -137,7 +149,7 @@ AI 对三样东西有真实行为反应：
 ### 方式二：手动安装
 
 ```bash
-git clone https://github.com/earnabitmore365/merit-ledger.git
+git clone https://github.com/earnabitmore365/wujitang-merit.git
 cd merit-ledger
 bash install.sh
 ```
@@ -155,7 +167,7 @@ bash install.sh
 | **检查项** | `merit_gate.py` 的 `handle_write_edit()` | 每个等级查什么 |
 | **受保护路径** | `merit_gate.py` 的 `PROTECTED_*` | 哪些文件不让写 |
 | **角色判断** | `merit_gate.py` 的 `determine_agent()` | 按你的目录结构判断角色 |
-| **加减分值** | `credit_manager.py` 或 Haiku prompt | 调整严厉/宽松程度 |
+| **加减分值** | `credit_manager.py` 或 AI prompt | 调整严厉/宽松程度 |
 
 ### 多角色 / subagent 场景
 
@@ -165,7 +177,7 @@ bash install.sh
 - **无 `agent_id` + 项目目录** → 主 agent（如黑丝）
 - **无 `agent_id` + home 目录** → 管理者（如太极）
 
-subagent 并行写文件时，Haiku 队长自动进入**批量模式**——每 5 次 Write/Edit 才调一次 Haiku，避免白纱改 20 个文件调 20 次 Haiku。硬规则（破坏性操作等）每次都查，不受批量模式影响。
+subagent 并行写文件时，AI 队长自动进入**批量模式**——每 5 次 Write/Edit 才调一次 AI 评估，避免改 20 个文件调 20 次。硬规则（破坏性操作等）每次都查，不受批量模式影响。
 
 ### 填入你自己的规则
 
@@ -192,17 +204,17 @@ subagent 并行写文件时，Haiku 队长自动进入**批量模式**——每 
 | `/reflect` | 从对话中提炼教训 → 升级到 rules.md |
 | `credit_manager.py show` | 排行榜 |
 | `credit_manager.py report [角色]` | **完整积分报告**（历程+统计+待审违规） |
-| `credit_manager.py add <角色> <分> "原因"` | 加分（自动 Haiku 反思） |
-| `credit_manager.py sub <角色> <分> "原因"` | 减分（自动 Haiku 反思） |
+| `credit_manager.py add <角色> <分> "原因"` | 加分（自动 AI 反思） |
+| `credit_manager.py sub <角色> <分> "原因"` | 减分（自动 AI 反思） |
 | `credit_manager.py history <角色>` | 变更历史 |
-| `credit_manager.py declare-delete <文件...>` | 预申报删除（Haiku 验证后放行） |
+| `credit_manager.py declare-delete <文件...>` | 预申报删除（AI 验证后放行） |
 
 ---
 
 ## 架构
 
 ```
-功过格 (Merit Ledger)
+无极堂积分系统 (Wujitang Merit)
   │
   ├── 积分层：credit.json（实时分数 + 变更历史）
   │
@@ -214,7 +226,7 @@ subagent 并行写文件时，Haiku 队长自动进入**批量模式**——每 
         │     ├── 破坏性操作 → deny + 自动扣分
         │     └── Agent 类型/模型限制 → deny
         │
-        └── 第二层：Haiku 队长（智能判断，1-8秒）
+        └── 第二层：AI 队长（智能判断，SDK 直调，亚秒级）
               ├── 读上下文 + 当前操作 → 判断合规性
               ├── 自动加减分 → 更新 credit.json
               └── 记录做对/做错 → LEARNINGS.md
@@ -225,7 +237,7 @@ subagent 并行写文件时，Haiku 队长自动进入**批量模式**——每 
 | 文件 | 用途 |
 |------|------|
 | `scripts/merit_gate.py` | 门卫主脚本（PreToolUse hook） |
-| `scripts/credit_manager.py` | 积分管理 CLI（加减分 + Haiku 自动反思） |
+| `scripts/credit_manager.py` | 积分管理 CLI（加减分 + AI 自动反思） |
 | `scripts/inject_credit_status.py` | SessionStart 注入片段 |
 | `commands/credit.md` | `/credit` slash command |
 | `scripts/inject_rules.py` | 规则注入（UserPromptSubmit hook） |
