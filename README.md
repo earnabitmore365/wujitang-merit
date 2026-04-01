@@ -53,6 +53,14 @@ AI 对三样东西有真实行为反应：
 > AI 想用 general-purpose 写代码 → **deny**（必须用专业 agent）
 > 改用 python-pro 但没指定 sonnet → **deny**（必须省配额）
 > 最终乖乖用 `python-pro model: sonnet` → **放行** ✅
+
+### 实战演示：declare-delete 删除申报
+
+![删除申报演示](docs/images/declare-delete-demo.png)
+
+> AI 直接 `rm -rf` → **deny**（石卫拦截，破坏性操作）
+> AI 用 `declare-delete` 提供理由 + 证据 → AI 审批通过 🔓
+> 再次 `rm -rf` → **放行** ✅（白名单生效）
 >
 > 三条规则叠加自动执行，AI 想偷懒都偷不了。
 
