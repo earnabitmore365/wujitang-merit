@@ -1,7 +1,7 @@
 {
   "agents": {
     "太极": {
-      "score": 41,
+      "score": 36,
       "held": 0,
       "level": 1,
       "title": "锁灵",
@@ -22,13 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T18:41:05",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "老板认可: 继续帮我盯着，记住是断点续传的，千万不要乱删东西，这不是历史遗留",
-      "score_after": 471
-    },
     {
       "ts": "2026-04-04T18:41:05",
       "agent": "两仪",
@@ -721,6 +714,13 @@
       "delta": 13,
       "reason": "石卫评估[proactive_find_issue]: 主动定位 file_path 提取逻辑，验证层1/层2实现，通过测试确认核心逻辑正确，并识别 additionalContext 显示问题需要进一步确认",
       "score_after": 68
+    },
+    {
+      "ts": "2026-04-05T19:54:53",
+      "agent": "太极",
+      "delta": -5,
+      "reason": "石卫评估[ask_boss_tech]: 执事提问后白纱未尝试自主回忆或查找上下文，直接说「不确定」并反问老板指什么文档",
+      "score_after": 36
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"

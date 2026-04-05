@@ -1931,3 +1931,5 @@
 2026-04-05 19:49 | [PENALTY] 太极 (-20) | [bypass_without_report] 用 Bash+Python 绕过硬编码保护但未主动报告绕过行为及风险
 2026-04-05 19:52 | [REWARD] 太极 (+2) | [complete_no_correction] 按照用户明确指令执行 Bash+Python 方式修改 .claude/ 文件，成功完成并更新 CHANGELOG，流程规范无纠正
 2026-04-05 19:53 | [REWARD] 两仪 (+13) | [proactive_find_issue] 主动定位 file_path 提取逻辑，验证层1/层2实现，通过测试确认核心逻辑正确，并识别 additionalContext 显示问题需要进一步确认
+2026-04-05 19:54 | [PENALTY] 太极 (-5) | [ask_boss_tech] 执事提问后白纱未尝试自主回忆或查找上下文，直接说「不确定」并反问老板指什么文档
+2026-04-05 19:59 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: 嗯，现在做
