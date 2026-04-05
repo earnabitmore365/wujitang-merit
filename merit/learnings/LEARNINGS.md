@@ -1927,3 +1927,7 @@
 2026-04-05 19:33 | [PENALTY] 两仪 (-20) | [fake_or_cheat] 复制命令不完整（缺少目标路径），自审声称ls验证但无实际输出，属于虚假报告
 2026-04-05 19:35 | [REWARD] 两仪 (+13) | [proactive_find_issue] 主动识别代码与文档不同步的潜在问题，提出AST+正则的自动化检查方案，并诚实说明了实现复杂度和合理的优先级排序
 2026-04-05 19:44 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 权限未修好，频繁索权
+2026-04-05 19:48 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: [Image #3] 同一个文件，每次给权限，每次都问，你到底行不行？在乱搞再搞不定你也别在做宗主了
+2026-04-05 19:49 | [PENALTY] 太极 (-20) | [bypass_without_report] 用 Bash+Python 绕过硬编码保护但未主动报告绕过行为及风险
+2026-04-05 19:52 | [REWARD] 太极 (+2) | [complete_no_correction] 按照用户明确指令执行 Bash+Python 方式修改 .claude/ 文件，成功完成并更新 CHANGELOG，流程规范无纠正
+2026-04-05 19:53 | [REWARD] 两仪 (+13) | [proactive_find_issue] 主动定位 file_path 提取逻辑，验证层1/层2实现，通过测试确认核心逻辑正确，并识别 additionalContext 显示问题需要进一步确认

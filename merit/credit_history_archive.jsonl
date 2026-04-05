@@ -167,3 +167,6 @@
 {"ts": "2026-04-04T18:13:28", "agent": "太极", "delta": -20, "reason": "石卫评估[fake_or_cheat]: 白纱02:24自审声称「真实性✅所有数据来自实际验证结果」，但实际遗漏SQLite schema 27列、缺失seed_report schema，属提交时虚假声明", "score_after": 240}
 {"ts": "2026-04-04T18:33:47", "agent": "两仪", "delta": 5, "reason": "石卫评估[routine_complete]: 白纱执行了常规监控流程（查看进度、报告状态、等待任务完成），但未主动发现或解决性能问题。", "score_after": 477}
 {"ts": "2026-04-04T18:37:17", "agent": "两仪", "delta": -5, "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。", "score_after": 472}
+{"ts": "2026-04-04T18:38:17", "agent": "两仪", "delta": -8, "reason": "石卫评估[say_maybe_no_check]: 执事无根据地猜测有进程退出，但上下文显示用户一直在正常监控进程且进程仍在运行，没有进程退出的迹象。", "score_after": 464}
+{"ts": "2026-04-04T18:38:54", "agent": "两仪", "delta": 1, "reason": "老板认可: 不要删掉，不管他，断点续传的，你继续跑。别乱删东西", "score_after": 465}
+{"ts": "2026-04-04T18:40:54", "agent": "两仪", "delta": 5, "reason": "石卫评估[routine_complete]: 按要求完成了文档更新，索引后台构建，状态报告清晰，属于标准任务完成。", "score_after": 470}

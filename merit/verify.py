@@ -19,6 +19,40 @@ import sys
 
 REGISTRY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verify_registry.json")
 
+_MERIT = os.path.dirname(os.path.abspath(__file__))
+_HOME = os.path.expanduser("~")
+_PROJ_MEM = os.path.join(_HOME, ".claude/projects/-Users-allenbot/memory")
+_LIANGYI_MEM = os.path.join(_HOME, ".claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory")
+
+# 代码-文档绑定（太极域）
+FILE_DOCS = {
+    # 核心引擎 → 石卫设计文档
+    f"{_MERIT}/merit_gate.py": f"{_PROJ_MEM}/stone_guard_v7_design.md",
+    f"{_MERIT}/credit_manager.py": f"{_PROJ_MEM}/stone_guard_v7_design.md",
+    f"{_MERIT}/evolve.py": f"{_MERIT}/EVOLVE_README.md",
+    # 质检 → 注册表
+    f"{_MERIT}/verify.py": f"{_MERIT}/verify_registry.json",
+    f"{_MERIT}/wuji-verify.py": f"{_MERIT}/verify_registry.json",
+    # 自审协议 → 宪法
+    f"{_MERIT}/self_audit_protocol.md": f"{_HOME}/.claude/wuji-world/constitution.md",
+    # 脚本 → MEMORY
+    f"{_HOME}/.claude/scripts/db_write.py": f"{_PROJ_MEM}/MEMORY.md",
+    f"{_HOME}/.claude/scripts/session_start.py": f"{_PROJ_MEM}/MEMORY.md",
+    f"{_HOME}/.claude/scripts/daily_digest.py": f"{_PROJ_MEM}/MEMORY.md",
+    f"{_HOME}/.claude/scripts/pre_compact_save.py": f"{_PROJ_MEM}/MEMORY.md",
+    # 世界观 → 宪法
+    f"{_HOME}/.claude/wuji-world/constitution.md": f"{_MERIT}/self_audit_protocol.md",
+    f"{_HOME}/.claude/wuji-world/identity_taiji.md": f"{_PROJ_MEM}/MEMORY.md",
+    f"{_HOME}/.claude/wuji-world/identity_liangyi.md": f"{_LIANGYI_MEM}/MEMORY.md",
+    # CLAUDE.md → rules
+    f"{_HOME}/.claude/CLAUDE.md": f"{_PROJ_MEM}/MEMORY.md",
+    # settings → MEMORY
+    f"{_HOME}/.claude/settings.json": f"{_PROJ_MEM}/MEMORY.md",
+    # rules → 自审协议
+    f"{_PROJ_MEM}/rules.md": f"{_MERIT}/self_audit_protocol.md",
+    f"{_LIANGYI_MEM}/rules.md": f"{_MERIT}/self_audit_protocol.md",
+}
+
 
 def load_registry():
     with open(REGISTRY_PATH) as f:

@@ -1101,6 +1101,25 @@ def handle_post_tool_use(data):
                         print(json.dumps({"additionalContext": f"❌语法失败 [{os.path.basename(file_path)}]: {err}"}))
                 except Exception:
                     pass
+        # 代码-文档绑定提醒（太极+两仪通用）
+        if file_path:
+            try:
+                from importlib.util import spec_from_file_location, module_from_spec
+                home = os.path.expanduser("~")
+                is_taiji = (cwd == home or cwd.startswith(home + "/.claude"))
+                vf = "verify.py" if is_taiji else "wuji-verify.py"
+                vf_path = os.path.join(MERIT_DIR, vf)
+                spec = spec_from_file_location("verify_mod", vf_path)
+                vm = module_from_spec(spec)
+                spec.loader.exec_module(vm)
+                file_docs = getattr(vm, "FILE_DOCS", {})
+                abs_fp = os.path.abspath(os.path.expanduser(file_path))
+                doc = file_docs.get(abs_fp)
+                if doc:
+                    print(json.dumps({"additionalContext":
+                        f"⚠️ 你改了 {os.path.basename(file_path)}，关联文档 {os.path.basename(doc)} 需要同步检查"}))
+            except Exception:
+                pass
         # mission 标记完成
         mark_mission_item_done(tool_name, data)
 
