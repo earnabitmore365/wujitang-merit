@@ -1,16 +1,31 @@
 {
-  "mission": "build_seed_report.py 按 handoff 完整重做（paired_trades 26列 + combo_summary 38列）",
+  "mission": "种子报告全链路文档同步",
   "agent": "两仪",
-  "started": "2026-04-05T00:14:29",
+  "started": "2026-04-05T21:40:16",
   "status": "completed",
   "estimated_reward": 0,
-  "held_points": 1,
+  "held_points": 4,
   "items": [
     {
       "type": "modify",
       "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/backtest/build_seed_report.py",
       "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/文档/种子/duckdb.md",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/README_KLINES_SEED.md",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Users/allenbot/.claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory/MEMORY.md",
+      "done": true
     }
   ],
-  "completed": "2026-04-05T21:36:49"
+  "completed": "2026-04-05T21:44:21"
 }

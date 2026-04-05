@@ -1,3 +1,8 @@
 ⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md）：
+- CREATE/EDIT `/Users/allenbot/.claude/plans/shimmying-foraging-treehouse.md`
+- EDIT `/Volumes/SSD-2TB/project/wuji-auto-trading/backtest/build_seed_report.py`
+- EDIT `/Volumes/SSD-2TB/文档/种子/duckdb.md`
+- EDIT `/Volumes/SSD-2TB/project/wuji-auto-trading/data/README_KLINES_SEED.md`
+- EDIT `/Users/allenbot/.claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory/MEMORY.md`
 - EDIT `/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md`
 格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)
