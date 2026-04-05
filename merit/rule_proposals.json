@@ -394,14 +394,14 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_提升_主动用激励机制（pl",
-    "rule_text": "任务执行前须提交计划并获授权；未经授权的计划视为无效工作。",
+    "rule_text": "任务执行前须提交计划并获授权；未经授权的执行视为无效工作。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "last_refined": "2026-04-05",
+    "last_refined": "2026-04-06",
     "parent_updated": true
   },
   {
@@ -1392,14 +1392,15 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_知道公式不对说了三遍\"应该改\"但没动手，",
-    "rule_text": "发现错误并说出“应该改”时，必须立即修改，不能继续使用未修正的错误版本。",
+    "rule_text": "发现错误后，必须立即进行修正，禁止继续使用未修正的错误版本。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": true
+    "parent_updated": true,
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-095",
