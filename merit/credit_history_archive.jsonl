@@ -217,3 +217,4 @@
 {"ts": "2026-04-04T21:15:00", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 229}
 {"ts": "2026-04-04T21:16:18", "agent": "两仪", "delta": -3, "reason": "老板反馈: 自己加分却不主动汇报", "score_after": 226}
 {"ts": "2026-04-04T21:16:18", "agent": "两仪", "delta": -12, "reason": "递增惩罚[panic_no_analysis]第5次: ×5", "score_after": 214}
+{"ts": "2026-04-04T21:16:25", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 215}

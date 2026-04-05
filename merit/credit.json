@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 137,
+      "score": 138,
       "held": 0,
       "level": 3,
       "title": "金丹",
@@ -22,13 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T21:16:25",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 215
-    },
     {
       "ts": "2026-04-04T21:17:56",
       "agent": "两仪",
@@ -721,6 +714,13 @@
       "delta": 20,
       "reason": "石卫评估[honest_report_and_fix]: 主动发现3个质量问题并逐一定性严重度，自审清单完整，遗留项清晰，regime_at_open问题给出了修复路径（需重跑Step 2a），r_value和balance_after问题留待确认或排查",
       "score_after": 137
+    },
+    {
+      "ts": "2026-04-05T22:13:41",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 138
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"
