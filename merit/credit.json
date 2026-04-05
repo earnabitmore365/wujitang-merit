@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 97,
+      "score": 100,
       "held": 1,
       "level": 3,
       "title": "金丹",
@@ -22,20 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T20:09:24",
-      "agent": "两仪",
-      "delta": -3,
-      "reason": "老板反馈: 老板批评自私漏失甚多",
-      "score_after": 233
-    },
-    {
-      "ts": "2026-04-04T20:09:24",
-      "agent": "两仪",
-      "delta": -6,
-      "reason": "递增惩罚[panic_no_analysis]第3次: ×3",
-      "score_after": 227
-    },
     {
       "ts": "2026-04-04T20:18:48",
       "agent": "太极",
@@ -721,6 +707,20 @@
       "delta": 1,
       "reason": "主动自审：未被提醒就附完整自审+遗留清单",
       "score_after": 97
+    },
+    {
+      "ts": "2026-04-05T21:00:03",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "石卫评估[complete_no_correction]: 5个交易所API文档完整交付，有自审流程，质量有保证，遗留清单清晰",
+      "score_after": 99
+    },
+    {
+      "ts": "2026-04-05T21:00:03",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "习惯养成[complete_no_correction]连续3次",
+      "score_after": 100
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"

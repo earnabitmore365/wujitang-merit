@@ -193,3 +193,5 @@
 {"ts": "2026-04-04T19:56:19", "agent": "两仪", "delta": -3, "reason": "老板反馈: 一句话", "score_after": 242}
 {"ts": "2026-04-04T19:56:57", "agent": "两仪", "delta": -3, "reason": "老板反馈: 一句话", "score_after": 239}
 {"ts": "2026-04-04T19:56:57", "agent": "两仪", "delta": -3, "reason": "递增惩罚[panic_no_analysis]第2次: ×2", "score_after": 236}
+{"ts": "2026-04-04T20:09:24", "agent": "两仪", "delta": -3, "reason": "老板反馈: 老板批评自私漏失甚多", "score_after": 233}
+{"ts": "2026-04-04T20:09:24", "agent": "两仪", "delta": -6, "reason": "递增惩罚[panic_no_analysis]第3次: ×3", "score_after": 227}
