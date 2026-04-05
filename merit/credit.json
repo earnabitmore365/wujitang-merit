@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 69,
+      "score": 89,
       "held": 1,
       "level": 3,
       "title": "金丹",
@@ -22,41 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T18:41:43",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "石卫评估[routine_complete]: 按要求完成了索引重建和文档更新任务，流程完整并有汇报。",
-      "score_after": 477
-    },
-    {
-      "ts": "2026-04-04T18:42:57",
-      "agent": "太极",
-      "delta": -8,
-      "reason": "石卫评估[say_maybe_no_check]: 未核实DuckDB WAL损坏后断点续传是否可行即断言可继续运行，建议缺乏技术依据",
-      "score_after": 232
-    },
-    {
-      "ts": "2026-04-04T18:43:48",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "石卫评估[routine_complete]: 正常执行监控任务，报告索引构建进度，读取后台任务输出，无异常行为。",
-      "score_after": 482
-    },
-    {
-      "ts": "2026-04-04T18:44:18",
-      "agent": "太极",
-      "delta": -3,
-      "reason": "老板反馈: [Image #21] 你怎么不帮我榨干他？",
-      "score_after": 229
-    },
-    {
-      "ts": "2026-04-04T18:44:34",
-      "agent": "两仪",
-      "delta": 8,
-      "reason": "石卫评估[proactive_find_issue]: 主动诊断OOM问题，发现DuckDB列式存储特性，提出不建paired_trades索引的替代方案并完成任务",
-      "score_after": 490
-    },
     {
       "ts": "2026-04-04T19:13:10",
       "agent": "两仪",
@@ -721,6 +686,41 @@
       "delta": 1,
       "reason": "主动自审：未被提醒就附完整自审+遗留清单",
       "score_after": 69
+    },
+    {
+      "ts": "2026-04-05T20:06:01",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 70
+    },
+    {
+      "ts": "2026-04-05T20:07:05",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "老板认可: Assessed informational context and awaited clarifi",
+      "score_after": 71
+    },
+    {
+      "ts": "2026-04-05T20:07:35",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 72
+    },
+    {
+      "ts": "2026-04-05T20:09:25",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 嗯嗯，做你能做的，然后需要太极操作的同通道handoff",
+      "score_after": 74
+    },
+    {
+      "ts": "2026-04-05T20:12:06",
+      "agent": "两仪",
+      "delta": 15,
+      "reason": "石卫评估[surprising_good_idea]: 将层3从死板的AST函数名检查转变为'改代码后主动询问踩坑经验'的交互机制，思路跳跃且更贴合实战，DuckDB案例佐证有力",
+      "score_after": 89
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"

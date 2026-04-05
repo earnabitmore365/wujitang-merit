@@ -47,7 +47,7 @@ FILE_DOCS = {
     # CLAUDE.md → rules
     f"{_HOME}/.claude/CLAUDE.md": f"{_PROJ_MEM}/MEMORY.md",
     # settings → MEMORY
-    f"{_HOME}/.claude/settings.json": f"{_PROJ_MEM}/MEMORY.md",
+    f"{_HOME}/.claude/settings.json": "/Volumes/SSD-2TB/文档/claude_code.md",
     # rules → 自审协议
     f"{_PROJ_MEM}/rules.md": f"{_MERIT}/self_audit_protocol.md",
     f"{_LIANGYI_MEM}/rules.md": f"{_MERIT}/self_audit_protocol.md",

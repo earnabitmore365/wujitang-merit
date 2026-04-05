@@ -24,7 +24,8 @@
       "/Volumes/SSD-2TB/project/auto-trading/CLAUDE.md",
       "~/.claude/projects/-Users-allenbot/memory/credit_system_design.md",
       "~/.claude/projects/-Users-allenbot/memory/stone_guard_v7_design.md",
-      "~/.claude/projects/-Users-allenbot/memory/MEMORY.md"
+      "~/.claude/projects/-Users-allenbot/memory/MEMORY.md",
+      "/Volumes/SSD-2TB/文档/claude_code.md"
     ],
     "test_script": "~/.claude/merit/test_merit.py",
     "known_duplicates": {}
