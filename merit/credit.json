@@ -13,8 +13,8 @@
       }
     },
     "两仪": {
-      "score": 124,
-      "held": 10,
+      "score": 137,
+      "held": 0,
       "level": 3,
       "title": "金丹",
       "penalty_only": false,
@@ -22,41 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T21:11:07",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "任务完成，押金1归还 + 质量奖励+5（verify 2/4，改了几轮）: ARCHITECTURE.md seed_v3 残留清理",
-      "score_after": 227
-    },
-    {
-      "ts": "2026-04-04T21:13:02",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 228
-    },
-    {
-      "ts": "2026-04-04T21:15:00",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 229
-    },
-    {
-      "ts": "2026-04-04T21:16:18",
-      "agent": "两仪",
-      "delta": -3,
-      "reason": "老板反馈: 自己加分却不主动汇报",
-      "score_after": 226
-    },
-    {
-      "ts": "2026-04-04T21:16:18",
-      "agent": "两仪",
-      "delta": -12,
-      "reason": "递增惩罚[panic_no_analysis]第5次: ×5",
-      "score_after": 214
-    },
     {
       "ts": "2026-04-04T21:16:25",
       "agent": "两仪",
@@ -721,6 +686,41 @@
       "delta": -8,
       "reason": "石卫评估[say_maybe_no_check]: 太极没有分析cron为何无输出，仅以「你好好想想」回避问题核心，将分析责任推回给执事。",
       "score_after": 3
+    },
+    {
+      "ts": "2026-04-05T22:04:45",
+      "agent": "两仪",
+      "delta": -10,
+      "reason": "任务放弃，没收押金10: 14个research文件切SQLite→DuckDB",
+      "score_after": 114
+    },
+    {
+      "ts": "2026-04-05T22:05:11",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 115
+    },
+    {
+      "ts": "2026-04-05T22:08:47",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 116
+    },
+    {
+      "ts": "2026-04-05T22:11:33",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 117
+    },
+    {
+      "ts": "2026-04-05T22:11:48",
+      "agent": "两仪",
+      "delta": 20,
+      "reason": "石卫评估[honest_report_and_fix]: 主动发现3个质量问题并逐一定性严重度，自审清单完整，遗留项清晰，regime_at_open问题给出了修复路径（需重跑Step 2a），r_value和balance_after问题留待确认或排查",
+      "score_after": 137
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"
