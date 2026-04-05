@@ -1,0 +1,15 @@
+{
+  "mission": "build_seed_report.py 按 handoff 完整重做（paired_trades 26列 + combo_summary 38列）",
+  "agent": "两仪",
+  "started": "2026-04-05T00:14:29",
+  "status": "active",
+  "estimated_reward": 0,
+  "held_points": 1,
+  "items": [
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/backtest/build_seed_report.py",
+      "done": true
+    }
+  ]
+}

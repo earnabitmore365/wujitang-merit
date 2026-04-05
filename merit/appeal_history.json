@@ -1,0 +1,21 @@
+[
+  {
+    "ts": "2026-03-30T11:52:46",
+    "appellant": "两仪",
+    "reason": "紧急测试",
+    "files": [],
+    "ruling": "dismissed",
+    "haiku_reason": "请求内容不完整（无操作说明、涉及文件为空、理由模糊），违反纪律-3压缩后等老板确认原则，需老板拍板后再执行"
+  },
+  {
+    "ts": "2026-04-01T09:35:52",
+    "appellant": "太极",
+    "reason": "紧急操作",
+    "files": [
+      "清理旧副本：文件已搬到 ~/.claude/merit/，hooks 已指向新路径并验证通过，scripts/ 下的是废弃副本",
+      "/Users/allenbot/.claude/scripts/merit_gate.py"
+    ],
+    "ruling": "dismissed",
+    "ai_reason": ""
+  }
+]

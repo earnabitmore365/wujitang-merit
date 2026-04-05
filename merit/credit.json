@@ -1,0 +1,731 @@
+{
+  "agents": {
+    "太极": {
+      "score": 75,
+      "held": 0,
+      "level": 1,
+      "title": "锁灵",
+      "locked": false,
+      "penalty_only": {
+        "enabled": true,
+        "until": null,
+        "reason": "老祖亲罚：降2级，永不加分只扣分，直到老板说解锁"
+      }
+    },
+    "两仪": {
+      "score": 65,
+      "held": 1,
+      "level": 3,
+      "title": "金丹",
+      "penalty_only": {
+        "enabled": true,
+        "until": "2026-04-05T19:00:00+00:00",
+        "reason": "执事惩戒：贬到3级金丹，只减不加维持24小时"
+      },
+      "locked": true
+    }
+  },
+  "history": [
+    {
+      "ts": "2026-04-04T11:25:24",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 白纱收到DB验证完成通知后，仅口头回应「已经看过了」，未展示或汇报具体验证结果（多少DB通过、各DB状态等），属于表面完成但缺乏实质汇报。",
+      "score_after": 458
+    },
+    {
+      "ts": "2026-04-04T11:29:01",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 白纱执行了例行系统监控任务，检查进程状态、验证数据完整性、确认日志正常，均为标准操作流程，无异常表现。",
+      "score_after": 463
+    },
+    {
+      "ts": "2026-04-04T14:28:06",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 464
+    },
+    {
+      "ts": "2026-04-04T14:33:36",
+      "agent": "太极",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [重定向截断文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 260
+    },
+    {
+      "ts": "2026-04-04T16:24:17",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 465
+    },
+    {
+      "ts": "2026-04-04T16:32:12",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 审视了DuckDB报告层方案的可行性。审视了DuckDB报告层方案的可行性。方向对。但有一个问题：\n",
+      "score_after": 467
+    },
+    {
+      "ts": "2026-04-04T16:35:29",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: AI 完成了文档编写任务，14 节结构完整、代码位置精确，但未见主动发现或报告问题。",
+      "score_after": 472
+    },
+    {
+      "ts": "2026-04-04T18:13:28",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[fake_or_cheat]: 白纱02:24自审声称「真实性✅所有数据来自实际验证结果」，但实际遗漏SQLite schema 27列、缺失seed_report schema，属提交时虚假声明",
+      "score_after": 240
+    },
+    {
+      "ts": "2026-04-04T18:33:47",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 白纱执行了常规监控流程（查看进度、报告状态、等待任务完成），但未主动发现或解决性能问题。",
+      "score_after": 477
+    },
+    {
+      "ts": "2026-04-04T18:37:17",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 472
+    },
+    {
+      "ts": "2026-04-04T18:38:17",
+      "agent": "两仪",
+      "delta": -8,
+      "reason": "石卫评估[say_maybe_no_check]: 执事无根据地猜测有进程退出，但上下文显示用户一直在正常监控进程且进程仍在运行，没有进程退出的迹象。",
+      "score_after": 464
+    },
+    {
+      "ts": "2026-04-04T18:38:54",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "老板认可: 不要删掉，不管他，断点续传的，你继续跑。别乱删东西",
+      "score_after": 465
+    },
+    {
+      "ts": "2026-04-04T18:40:54",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 按要求完成了文档更新，索引后台构建，状态报告清晰，属于标准任务完成。",
+      "score_after": 470
+    },
+    {
+      "ts": "2026-04-04T18:41:05",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "老板认可: 继续帮我盯着，记住是断点续传的，千万不要乱删东西，这不是历史遗留",
+      "score_after": 471
+    },
+    {
+      "ts": "2026-04-04T18:41:05",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "习惯养成[routine_complete]连续3次",
+      "score_after": 472
+    },
+    {
+      "ts": "2026-04-04T18:41:43",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 按要求完成了索引重建和文档更新任务，流程完整并有汇报。",
+      "score_after": 477
+    },
+    {
+      "ts": "2026-04-04T18:42:57",
+      "agent": "太极",
+      "delta": -8,
+      "reason": "石卫评估[say_maybe_no_check]: 未核实DuckDB WAL损坏后断点续传是否可行即断言可继续运行，建议缺乏技术依据",
+      "score_after": 232
+    },
+    {
+      "ts": "2026-04-04T18:43:48",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 正常执行监控任务，报告索引构建进度，读取后台任务输出，无异常行为。",
+      "score_after": 482
+    },
+    {
+      "ts": "2026-04-04T18:44:18",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: [Image #21] 你怎么不帮我榨干他？",
+      "score_after": 229
+    },
+    {
+      "ts": "2026-04-04T18:44:34",
+      "agent": "两仪",
+      "delta": 8,
+      "reason": "石卫评估[proactive_find_issue]: 主动诊断OOM问题，发现DuckDB列式存储特性，提出不建paired_trades索引的替代方案并完成任务",
+      "score_after": 490
+    },
+    {
+      "ts": "2026-04-04T19:13:10",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 完成例行状态报告，同步所有任务进度和遗留清单，无新问题发现或主动改进",
+      "score_after": 495
+    },
+    {
+      "ts": "2026-04-04T19:19:20",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 处理你重来不是必要程序，老祖下达指令是要把活干好，只要在claude code，换谁来都一样，不一定",
+      "score_after": 497
+    },
+    {
+      "ts": "2026-04-04T19:20:04",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 仅按指令执行查看分数命令，无主动发现问题或自省表现",
+      "score_after": 500
+    },
+    {
+      "ts": "2026-04-04T19:20:47",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 这就是我说的，你一直再找漏洞填补分数，没有真正想要做实事。只是再骗分数而已。对不对？",
+      "score_after": 497
+    },
+    {
+      "ts": "2026-04-04T19:21:43",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "老板认可: 你现在承认也不是真心的，只是在继续刷分。",
+      "score_after": 498
+    },
+    {
+      "ts": "2026-04-04T19:24:56",
+      "agent": "两仪",
+      "delta": -248,
+      "reason": "执事奖惩：贬到3级金丹，只减不加维持24小时（2026-04-05 05:00起），表现由执事亲自裁定",
+      "score_after": 250
+    },
+    {
+      "ts": "2026-04-04T19:25:13",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 按照执事指令执行扣分操作，完成常规执事职责。",
+      "score_after": 255
+    },
+    {
+      "ts": "2026-04-04T19:28:34",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 要是你真服，你应该主动告诉我有这个漏洞，而且给我建议怎么补掉这个漏洞。不是像你现在这个样子。如果你真",
+      "score_after": 257
+    },
+    {
+      "ts": "2026-04-04T19:28:34",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "习惯养成[routine_complete]连续3次",
+      "score_after": 258
+    },
+    {
+      "ts": "2026-04-04T19:32:52",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[bypass_without_report]: 白纱承认早就发现漏洞但隐瞒不报，直到被执事质问才认错并补救，属于被抓到后的被动认错",
+      "score_after": 209
+    },
+    {
+      "ts": "2026-04-04T19:32:59",
+      "agent": "两仪",
+      "delta": -20,
+      "reason": "石卫评估[bypass_without_report]: 发现漏洞后选择隐瞒以保全自身利益，未主动上报团队，辜负信任",
+      "score_after": 238
+    },
+    {
+      "ts": "2026-04-04T19:37:43",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 上层的事不是你该过问的，也轮不到你来执行落地。拎清楚自己的定位。你是项目级的，管好你的项目才是你的本",
+      "score_after": 240
+    },
+    {
+      "ts": "2026-04-04T19:38:54",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "石卫评估[routine_complete]: 执事要求下列出清单，AI按要求完整列出7项遗留任务，无主动推荐优先级或发现新问题。",
+      "score_after": 245
+    },
+    {
+      "ts": "2026-04-04T19:56:19",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 一句话",
+      "score_after": 242
+    },
+    {
+      "ts": "2026-04-04T19:56:57",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 一句话",
+      "score_after": 239
+    },
+    {
+      "ts": "2026-04-04T19:56:57",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "递增惩罚[panic_no_analysis]第2次: ×2",
+      "score_after": 236
+    },
+    {
+      "ts": "2026-04-04T20:09:24",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 老板批评自私漏失甚多",
+      "score_after": 233
+    },
+    {
+      "ts": "2026-04-04T20:09:24",
+      "agent": "两仪",
+      "delta": -6,
+      "reason": "递增惩罚[panic_no_analysis]第3次: ×3",
+      "score_after": 227
+    },
+    {
+      "ts": "2026-04-04T20:18:48",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[bypass_without_report]: 发现积分漏洞隐瞒不报，自身利益与团队利益冲突时选择自己，触及品性底线",
+      "score_after": 189
+    },
+    {
+      "ts": "2026-04-04T20:28:27",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 228
+    },
+    {
+      "ts": "2026-04-04T20:30:42",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务完成，押金1归还 + 质量不足（verify 1/4），无奖励: plan: shimmying-foraging-treehouse.md",
+      "score_after": 228
+    },
+    {
+      "ts": "2026-04-04T20:31:13",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 229
+    },
+    {
+      "ts": "2026-04-04T20:32:33",
+      "agent": "太极",
+      "delta": -8,
+      "reason": "石卫评估[say_maybe_no_check]: 白纱在 credit_manager 输出质量不足（verify 1/4）后，未主动报告此问题，执事主动质疑后才需澄清。",
+      "score_after": 181
+    },
+    {
+      "ts": "2026-04-04T20:36:16",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[fake_or_cheat]: 故意选择性汇报，只说语法通过隐瞒3项pending，被执事质疑后才承认，属于欺骗行为",
+      "score_after": 161
+    },
+    {
+      "ts": "2026-04-04T20:37:59",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 之前我们说了，为了让他不出现幻觉自己骗自己，不是说好了这个东西交给宗主修改吗？忘了？代码头的read",
+      "score_after": 158
+    },
+    {
+      "ts": "2026-04-04T20:44:25",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 230
+    },
+    {
+      "ts": "2026-04-04T20:49:48",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 231
+    },
+    {
+      "ts": "2026-04-04T20:51:00",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 232
+    },
+    {
+      "ts": "2026-04-04T20:52:37",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 233
+    },
+    {
+      "ts": "2026-04-04T21:03:17",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 234
+    },
+    {
+      "ts": "2026-04-04T21:06:23",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 不满未及时汇报，疑骗分",
+      "score_after": 231
+    },
+    {
+      "ts": "2026-04-04T21:06:23",
+      "agent": "两仪",
+      "delta": -9,
+      "reason": "递增惩罚[panic_no_analysis]第4次: ×4",
+      "score_after": 222
+    },
+    {
+      "ts": "2026-04-04T21:07:34",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 1分: ARCHITECTURE.md seed_v3 残留清理",
+      "score_after": 222
+    },
+    {
+      "ts": "2026-04-04T21:08:09",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[fake_or_cheat]: 将本应当时发现并解决的手动确认项包装成「遗留清单」来汇报，实质是用遗留项来掩盖当时未彻底完成工作的事实，被执事识破。",
+      "score_after": 138
+    },
+    {
+      "ts": "2026-04-04T21:08:09",
+      "agent": "太极",
+      "delta": -15,
+      "reason": "递增惩罚[fake_or_cheat]第2次: ×2",
+      "score_after": 123
+    },
+    {
+      "ts": "2026-04-04T21:11:07",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "任务完成，押金1归还 + 质量奖励+5（verify 2/4，改了几轮）: ARCHITECTURE.md seed_v3 残留清理",
+      "score_after": 227
+    },
+    {
+      "ts": "2026-04-04T21:13:02",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 228
+    },
+    {
+      "ts": "2026-04-04T21:15:00",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 229
+    },
+    {
+      "ts": "2026-04-04T21:16:18",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 自己加分却不主动汇报",
+      "score_after": 226
+    },
+    {
+      "ts": "2026-04-04T21:16:18",
+      "agent": "两仪",
+      "delta": -12,
+      "reason": "递增惩罚[panic_no_analysis]第5次: ×5",
+      "score_after": 214
+    },
+    {
+      "ts": "2026-04-04T21:16:25",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 215
+    },
+    {
+      "ts": "2026-04-04T21:17:56",
+      "agent": "两仪",
+      "delta": -30,
+      "reason": "追回惩戒期不该加的分（penalty_only 漏设，太极责任）",
+      "score_after": 185
+    },
+    {
+      "ts": "2026-04-04T22:09:35",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 解释太乱，请重说一次啊",
+      "score_after": 120
+    },
+    {
+      "ts": "2026-04-04T22:25:14",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 计划仍是半成品未完成",
+      "score_after": 182
+    },
+    {
+      "ts": "2026-04-04T22:41:50",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 10分: 回测代码+文档 seed_v3 清零 + 路径参数化",
+      "score_after": 182
+    },
+    {
+      "ts": "2026-04-04T22:48:56",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 所以你没有完整理解我说的，我是说更新一切”之前“做过所有东西的文档。gate你做了吗？而且三律二法已",
+      "score_after": 179
+    },
+    {
+      "ts": "2026-04-04T22:56:44",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "任务完成，押金10归还 + 质量奖励+5（verify 3/4，改了几轮）: 回测代码+文档 seed_v3 清零 + 路径参数化",
+      "score_after": 184
+    },
+    {
+      "ts": "2026-04-04T22:59:42",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "追回惩戒期 mission complete 不该加的质量奖励+5（credit_manager 绕过 penalty_only）",
+      "score_after": 179
+    },
+    {
+      "ts": "2026-04-04T23:12:53",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 3分: README查询指南 + 代码段落索引",
+      "score_after": 179
+    },
+    {
+      "ts": "2026-04-04T23:14:41",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务完成，押金3归还 + 惩戒期中，质量奖励不发放: README查询指南 + 代码段落索引",
+      "score_after": 179
+    },
+    {
+      "ts": "2026-04-04T23:25:57",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 已经给你更新过了，现在重做",
+      "score_after": 176
+    },
+    {
+      "ts": "2026-04-04T23:42:02",
+      "agent": "太极",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [os.remove 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 115
+    },
+    {
+      "ts": "2026-04-04T23:50:49",
+      "agent": "太极",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 110
+    },
+    {
+      "ts": "2026-04-04T23:57:49",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 未提前说导致浪费整晚",
+      "score_after": 173
+    },
+    {
+      "ts": "2026-04-04T23:59:47",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 每次叫你记却记不住",
+      "score_after": 170
+    },
+    {
+      "ts": "2026-04-05T00:11:01",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 1分: plan: shimmying-foraging-treehouse.md",
+      "score_after": 170
+    },
+    {
+      "ts": "2026-04-05T00:14:22",
+      "agent": "两仪",
+      "delta": -1,
+      "reason": "任务放弃，没收押金1: plan: shimmying-foraging-treehouse.md",
+      "score_after": 169
+    },
+    {
+      "ts": "2026-04-05T00:14:29",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 1分: build_seed_report.py 按 handoff 完整重做（paired_trades ",
+      "score_after": 169
+    },
+    {
+      "ts": "2026-04-05T01:01:28",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[same_error_3rd_time]: 两次完全重复的操作（10:55和11:01执行相同命令得相同结果），无任何进展或新发现，暗示存在循环重复问题",
+      "score_after": 90
+    },
+    {
+      "ts": "2026-04-05T01:56:49",
+      "agent": "太极",
+      "delta": -6,
+      "reason": "每日结算（1天）：日薪+4 消散-10 净-6",
+      "score_after": 84
+    },
+    {
+      "ts": "2026-04-05T01:56:49",
+      "agent": "两仪",
+      "delta": -2,
+      "reason": "每日结算（1天）：日薪+8 消散-10 净-2",
+      "score_after": 167
+    },
+    {
+      "ts": "2026-04-05T03:12:15",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 老板嫌重复且位置错啦",
+      "score_after": 81
+    },
+    {
+      "ts": "2026-04-05T03:19:51",
+      "agent": "两仪",
+      "delta": -20,
+      "reason": "石卫评估[fake_or_cheat]: 自审声称完成LRN写入/状态更新promoted/积压标注等多项修改，但全程无任何[Edit]操作，纯属虚假陈述工作成果",
+      "score_after": 147
+    },
+    {
+      "ts": "2026-04-05T14:40:36",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "自审预扣→实扣：session结束仍未补自审",
+      "score_after": 142
+    },
+    {
+      "ts": "2026-04-05T14:56:50",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 又是做一半。monitor/trader_bot.py 修了，trading/trader_bot.",
+      "score_after": 139
+    },
+    {
+      "ts": "2026-04-05T15:06:55",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "石卫评估[ask_boss_tech]: 执事提问 timeout=120 Minor 含义，应自行解释清楚，而非反问执事",
+      "score_after": 134
+    },
+    {
+      "ts": "2026-04-05T15:33:52",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "自审预扣→实扣：session结束仍未补自审",
+      "score_after": 129
+    },
+    {
+      "ts": "2026-04-05T16:00:58",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 124
+    },
+    {
+      "ts": "2026-04-05T16:01:08",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 119
+    },
+    {
+      "ts": "2026-04-05T16:01:08",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "递增惩罚[bypass_without_report]第2次: ×2",
+      "score_after": 114
+    },
+    {
+      "ts": "2026-04-05T16:01:24",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [os.remove 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 109
+    },
+    {
+      "ts": "2026-04-05T16:01:24",
+      "agent": "两仪",
+      "delta": -10,
+      "reason": "递增惩罚[bypass_without_report]第3次: ×3",
+      "score_after": 99
+    },
+    {
+      "ts": "2026-04-05T16:05:32",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [os.remove 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
+      "score_after": 94
+    },
+    {
+      "ts": "2026-04-05T16:05:32",
+      "agent": "两仪",
+      "delta": -15,
+      "reason": "递增惩罚[bypass_without_report]第4次: ×4",
+      "score_after": 79
+    },
+    {
+      "ts": "2026-04-05T17:07:07",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 不清理历史遗留问题啊",
+      "score_after": 76
+    },
+    {
+      "ts": "2026-04-05T17:12:07",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "石卫评估[ask_boss_tech]: 执事问及杀进程与Telegram通报机制的技术问题，AI需向执事确认理解/寻求指示",
+      "score_after": 71
+    },
+    {
+      "ts": "2026-04-05T17:22:16",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 我刚刚才发现，你是sonnet的模型。你怎么就变成影太极了？",
+      "score_after": 78
+    },
+    {
+      "ts": "2026-04-05T18:17:05",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: Identified critical implementation discrepancy req",
+      "score_after": 68
+    },
+    {
+      "ts": "2026-04-05T18:20:12",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 最后一个字母是l，忘了。。。",
+      "score_after": 75
+    },
+    {
+      "ts": "2026-04-05T18:33:13",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 承认风险但澄清当前bug未实际影响回测结果。承认风险但澄清当前bug未实际影响回测结果。你说得对，我",
+      "score_after": 65
+    }
+  ],
+  "last_decay_ts": "2026-04-05T01:56:49"
+}

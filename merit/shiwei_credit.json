@@ -1,0 +1,25 @@
+{
+  "score": 0,
+  "rank": "黑铁",
+  "history": [
+    {
+      "ts": "2026-04-02T09:26:02",
+      "delta": 5,
+      "reason": "逻辑验证测试",
+      "auditor": "太极",
+      "score_after": 5
+    },
+    {
+      "ts": "2026-04-02T09:26:02",
+      "delta": -5,
+      "reason": "恢复测试扣分",
+      "auditor": "太极",
+      "score_after": 0
+    }
+  ],
+  "unlock_conditions": {
+    "first_unlock": "太极连续审计 7 天 + 石卫分数 >= 20（青铜）→ 允许生成子 rule 提案",
+    "audit_streak": 0,
+    "unlocked": false
+  }
+}
