@@ -1824,7 +1824,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_老板用健康和血汗支撑这个系统，AI 没有",
-    "rule_text": "所有任务执行前必须自审并调用验证Agent检查，严禁以任何理由跳过验证环节。",
+    "rule_text": "任务执行前必须完成自检并通过验证Agent核查，禁止以任何借口规避验证环节。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
