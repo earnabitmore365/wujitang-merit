@@ -1911,3 +1911,7 @@
 2026-04-05 18:28 | [REWARD] 两仪 (+13) | [proactive_find_issue] 主动追踪 preload_from_duckdb 调用链，确认其仅在回测路径使用，诚实报告不影响实盘
 2026-04-05 18:31 | [REWARD] 太极 (+13) | [proactive_find_issue] 白纱在自审中主动报告了indicator_cache.py的namespace隐式依赖问题，并诚实评估'改了也无实际效果'，让执事定夺。
 2026-04-05 18:33 | [PENALTY] 两仪 (-3) | [panic_no_analysis] 老板反馈: 承认风险但澄清当前bug未实际影响回测结果。承认风险但澄清当前bug未实际影响回测结果。你说得对，我
+2026-04-05 18:35 | [REWARD] 太极 (+13) | [proactive_find_issue] 白纱主动发现架构风险（硬编码_cache变量），清晰报告触发条件、影响范围和是否修改的建议，报告后待执事指示，符合主动发现问题并报告的行为
+2026-04-05 18:36 | [REWARD] 太极 (+2) | [complete_no_correction] 执事要求修改后，白纱按指示完成了代码修复、验证和部署，但未主动追问或建议额外检查流程
+2026-04-05 18:38 | [REWARD] 太极 (+20) | [honest_report_and_fix] 白纱主动发现 preload namespace bug 并主动报告，在执事确认后执行修复并完成全面检查
+2026-04-05 18:38 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 为何连图片也还要权限
