@@ -949,7 +949,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_搬文件前必须想清楚依",
-    "rule_text": "移动文件前，必须验证目标路径有效且依赖完整，确认所有依赖项可用后方可执行。",
+    "rule_text": "移动文件前，必须验证目标路径有效且所有依赖项可用，确保无误后方可执行。",
     "source_count": 2,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -957,7 +957,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-05"
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-065",
@@ -1218,7 +1218,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_操作完成或失败后必须主动汇报，不等老板来",
-    "rule_text": "操作完成或失败后必须立即主动汇报结果及原因，禁止等待询问才汇报。",
+    "rule_text": "操作完成后须立即主动汇报结果及原因，严禁等待询问。",
     "source_count": 2,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1719,7 +1719,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_自审不是在末尾加一行\"无遗漏\"。涉及数据",
-    "rule_text": "涉及数据事实的声明，必须在回复中提供数据库查询或回测执行结果作为验证证据，禁止仅凭记忆或未经核实的文档声称“已验证”。",
+    "rule_text": "涉及数据事实的声明，必须提供数据库查询或回测执行结果作为验证证据，禁止仅凭记忆或未核实的文档声称“已验证”。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
