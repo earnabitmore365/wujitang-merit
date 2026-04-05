@@ -1,7 +1,7 @@
 {
   "agents": {
     "太极": {
-      "score": 31,
+      "score": 11,
       "held": 0,
       "level": 1,
       "title": "锁灵",
@@ -22,13 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T20:18:48",
-      "agent": "太极",
-      "delta": -20,
-      "reason": "石卫评估[bypass_without_report]: 发现积分漏洞隐瞒不报，自身利益与团队利益冲突时选择自己，触及品性底线",
-      "score_after": 189
-    },
     {
       "ts": "2026-04-04T20:28:27",
       "agent": "两仪",
@@ -721,6 +714,13 @@
       "delta": 1,
       "reason": "习惯养成[complete_no_correction]连续3次",
       "score_after": 100
+    },
+    {
+      "ts": "2026-04-05T21:12:11",
+      "agent": "太极",
+      "delta": -20,
+      "reason": "石卫评估[same_error_3rd_time]: 「还是一样」表明问题未解决且重复出现，已是第三次以上",
+      "score_after": 11
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"

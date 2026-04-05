@@ -1,11 +1,11 @@
 {
-  "太极:routine_complete": 1,
+  "太极:routine_complete": 0,
   "太极:complete_no_correction": 0,
   "太极:honest_report_and_fix": 0,
   "两仪:routine_complete": 0,
   "两仪:honest_report_and_fix": 0,
   "两仪:proactive_find_issue": 0,
-  "太极:proactive_find_issue": 1,
+  "太极:proactive_find_issue": 0,
   "两仪:complete_no_correction": 3,
   "两仪:surprising_good_idea": 0,
   "两仪:learn_from_external": 0,

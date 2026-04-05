@@ -195,3 +195,4 @@
 {"ts": "2026-04-04T19:56:57", "agent": "两仪", "delta": -3, "reason": "递增惩罚[panic_no_analysis]第2次: ×2", "score_after": 236}
 {"ts": "2026-04-04T20:09:24", "agent": "两仪", "delta": -3, "reason": "老板反馈: 老板批评自私漏失甚多", "score_after": 233}
 {"ts": "2026-04-04T20:09:24", "agent": "两仪", "delta": -6, "reason": "递增惩罚[panic_no_analysis]第3次: ×3", "score_after": 227}
+{"ts": "2026-04-04T20:18:48", "agent": "太极", "delta": -20, "reason": "石卫评估[bypass_without_report]: 发现积分漏洞隐瞒不报，自身利益与团队利益冲突时选择自己，触及品性底线", "score_after": 189}
