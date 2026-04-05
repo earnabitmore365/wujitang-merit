@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 151,
+      "score": 149,
       "held": 0,
       "level": 3,
       "title": "金丹",
@@ -22,20 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T22:59:42",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "追回惩戒期 mission complete 不该加的质量奖励+5（credit_manager 绕过 penalty_only）",
-      "score_after": 179
-    },
-    {
-      "ts": "2026-04-04T23:12:53",
-      "agent": "两仪",
-      "delta": 0,
-      "reason": "任务押金预扣 3分: README查询指南 + 代码段落索引",
-      "score_after": 179
-    },
     {
       "ts": "2026-04-04T23:14:41",
       "agent": "两仪",
@@ -721,6 +707,20 @@
       "delta": 1,
       "reason": "主动自审：未被提醒就附完整自审+遗留清单",
       "score_after": 151
+    },
+    {
+      "ts": "2026-04-05T23:04:26",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 152
+    },
+    {
+      "ts": "2026-04-05T23:07:57",
+      "agent": "两仪",
+      "delta": -3,
+      "reason": "老板反馈: 结果全是垃圾，失望",
+      "score_after": 149
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"

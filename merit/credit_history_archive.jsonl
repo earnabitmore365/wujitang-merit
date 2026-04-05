@@ -224,3 +224,5 @@
 {"ts": "2026-04-04T22:41:50", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 10分: 回测代码+文档 seed_v3 清零 + 路径参数化", "score_after": 182}
 {"ts": "2026-04-04T22:48:56", "agent": "两仪", "delta": -3, "reason": "老板反馈: 所以你没有完整理解我说的，我是说更新一切”之前“做过所有东西的文档。gate你做了吗？而且三律二法已", "score_after": 179}
 {"ts": "2026-04-04T22:56:44", "agent": "两仪", "delta": 5, "reason": "任务完成，押金10归还 + 质量奖励+5（verify 3/4，改了几轮）: 回测代码+文档 seed_v3 清零 + 路径参数化", "score_after": 184}
+{"ts": "2026-04-04T22:59:42", "agent": "两仪", "delta": -5, "reason": "追回惩戒期 mission complete 不该加的质量奖励+5（credit_manager 绕过 penalty_only）", "score_after": 179}
+{"ts": "2026-04-04T23:12:53", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 3分: README查询指南 + 代码段落索引", "score_after": 179}
