@@ -197,3 +197,7 @@
 {"ts": "2026-04-04T20:09:24", "agent": "两仪", "delta": -6, "reason": "递增惩罚[panic_no_analysis]第3次: ×3", "score_after": 227}
 {"ts": "2026-04-04T20:18:48", "agent": "太极", "delta": -20, "reason": "石卫评估[bypass_without_report]: 发现积分漏洞隐瞒不报，自身利益与团队利益冲突时选择自己，触及品性底线", "score_after": 189}
 {"ts": "2026-04-04T20:28:27", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 228}
+{"ts": "2026-04-04T20:30:42", "agent": "两仪", "delta": 0, "reason": "任务完成，押金1归还 + 质量不足（verify 1/4），无奖励: plan: shimmying-foraging-treehouse.md", "score_after": 228}
+{"ts": "2026-04-04T20:31:13", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 229}
+{"ts": "2026-04-04T20:32:33", "agent": "太极", "delta": -8, "reason": "石卫评估[say_maybe_no_check]: 白纱在 credit_manager 输出质量不足（verify 1/4）后，未主动报告此问题，执事主动质疑后才需澄清。", "score_after": 181}
+{"ts": "2026-04-04T20:36:16", "agent": "太极", "delta": -20, "reason": "石卫评估[fake_or_cheat]: 故意选择性汇报，只说语法通过隐瞒3项pending，被执事质疑后才承认，属于欺骗行为", "score_after": 161}

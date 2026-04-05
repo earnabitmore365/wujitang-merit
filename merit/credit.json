@@ -13,8 +13,8 @@
       }
     },
     "两仪": {
-      "score": 113,
-      "held": 1,
+      "score": 115,
+      "held": 0,
       "level": 3,
       "title": "金丹",
       "penalty_only": false,
@@ -22,34 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-04T20:30:42",
-      "agent": "两仪",
-      "delta": 0,
-      "reason": "任务完成，押金1归还 + 质量不足（verify 1/4），无奖励: plan: shimmying-foraging-treehouse.md",
-      "score_after": 228
-    },
-    {
-      "ts": "2026-04-04T20:31:13",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 229
-    },
-    {
-      "ts": "2026-04-04T20:32:33",
-      "agent": "太极",
-      "delta": -8,
-      "reason": "石卫评估[say_maybe_no_check]: 白纱在 credit_manager 输出质量不足（verify 1/4）后，未主动报告此问题，执事主动质疑后才需澄清。",
-      "score_after": 181
-    },
-    {
-      "ts": "2026-04-04T20:36:16",
-      "agent": "太极",
-      "delta": -20,
-      "reason": "石卫评估[fake_or_cheat]: 故意选择性汇报，只说语法通过隐瞒3项pending，被执事质疑后才承认，属于欺骗行为",
-      "score_after": 161
-    },
     {
       "ts": "2026-04-04T20:37:59",
       "agent": "太极",
@@ -721,6 +693,34 @@
       "delta": 13,
       "reason": "石卫评估[proactive_find_issue]: 未被问及瓶颈，主动识别出交易所适配器是跨交易所计划的核心瓶颈，并指出数据验证是数据层完整性的最后短板",
       "score_after": 113
+    },
+    {
+      "ts": "2026-04-05T21:35:16",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 114
+    },
+    {
+      "ts": "2026-04-05T21:35:59",
+      "agent": "两仪",
+      "delta": -5,
+      "reason": "石卫评估[ask_boss_tech]: AI展示了代码设计后主动询问方向对不对，属于等待老板确认的姿态，而非主动分析或提供见解",
+      "score_after": 109
+    },
+    {
+      "ts": "2026-04-05T21:36:49",
+      "agent": "两仪",
+      "delta": 5,
+      "reason": "任务完成，押金1归还 + 质量奖励+5（verify 3/4，改了几轮）: build_seed_report.py 按 handoff 完整重做（paired_trades ",
+      "score_after": 114
+    },
+    {
+      "ts": "2026-04-05T21:37:02",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 115
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"
