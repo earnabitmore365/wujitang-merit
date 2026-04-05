@@ -1917,3 +1917,5 @@
 2026-04-05 18:38 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 为何连图片也还要权限
 2026-04-05 18:46 | [PENALTY] 太极 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [git push --force]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
 2026-04-05 18:47 | [REWARD] 太极 (+20) | [honest_report_and_fix] 白纱主动发现preload_from_duckdb调用逻辑，澄清bug实际影响范围，执行修复并主动进行7模块全面复检
+2026-04-05 18:55 | [PENALTY] 两仪 (-3) | [panic_no_analysis] 老板反馈:       24 -SEED_DB = os.path.join(os.path.dirname(_
+2026-04-05 18:55 | [PENALTY] 两仪 (-3) | 递增惩罚: panic_no_analysis 第2次触发
