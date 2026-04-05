@@ -1,12 +1,12 @@
 {
-  "file": "sentinel_scan.py",
-  "time": "2026-04-06T04:53:43",
+  "file": "merit_gate.py",
+  "time": "2026-04-06T05:13:45",
   "results": {
     "syntax": "pass",
     "logic": "pass",
-    "chain": "pass",
-    "docs": "pass"
+    "chain": "pending",
+    "docs": "fail"
   },
-  "pass_count": 4,
+  "pass_count": 2,
   "total": 4
 }

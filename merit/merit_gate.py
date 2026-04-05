@@ -1698,6 +1698,9 @@ def handle_stop(data):
     # 规则自进化（每 5 分钟跑一次 evolve.py）
     _try_evolve()
 
+    # 自动 git push（每次 Stop 后，有变更就 commit+push）
+    _auto_git_push(cwd)
+
 
 EVOLVE_LAST_RUN_PATH = os.path.join(MERIT_DIR, "evolve_last_run.txt")
 EVOLVE_INTERVAL = 300  # 5 分钟
@@ -1726,6 +1729,46 @@ def _try_evolve():
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 cwd=MERIT_DIR,
             )
+    except Exception:
+        pass
+
+
+GIT_PUSH_INTERVAL = 300  # 5 分钟内不重复 push
+GIT_PUSH_LAST_PATH = os.path.join(MERIT_DIR, "git_push_last.txt")
+
+def _auto_git_push(cwd):
+    """Stop 后自动 git commit+push（有变更才推，5分钟内不重复）"""
+    import subprocess as sp
+    try:
+        now = time.time()
+        if os.path.exists(GIT_PUSH_LAST_PATH):
+            with open(GIT_PUSH_LAST_PATH) as f:
+                last = float(f.read().strip())
+            if now - last < GIT_PUSH_INTERVAL:
+                return
+        # 找 cwd 所在的 git repo
+        result = sp.run(["git", "rev-parse", "--show-toplevel"],
+                        cwd=cwd or os.path.expanduser("~"),
+                        capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            return
+        repo_root = result.stdout.strip()
+        # 检查有没有 remote
+        result = sp.run(["git", "remote"], cwd=repo_root,
+                        capture_output=True, text=True, timeout=5)
+        if not result.stdout.strip():
+            return
+        # 检查有没有变更
+        result = sp.run(["git", "status", "--porcelain"],
+                        cwd=repo_root, capture_output=True, text=True, timeout=10)
+        if not result.stdout.strip():
+            return
+        # 后台 commit+push（不阻塞）
+        script = f'cd "{repo_root}" && git add . && git commit -m "auto-sync $(date +%Y-%m-%d\\ %H:%M)" && git push'
+        sp.Popen(["bash", "-c", script],
+                 stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        with open(GIT_PUSH_LAST_PATH, "w") as f:
+            f.write(str(now))
     except Exception:
         pass
 

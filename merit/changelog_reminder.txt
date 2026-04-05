@@ -1,0 +1,5 @@
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md）：
+- EDIT `/Users/allenbot/.claude/merit/merit_gate.py`
+- BASH `cd /Volumes/SSD-2TB/project/auto-trading && git add . && git commit -m "10天欠债推送：CLAUDE.md重构+CHANGELOG+assets" && git push origin main 2>&1`
+- EDIT `/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md`
+格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)
