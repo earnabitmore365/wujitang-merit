@@ -1,0 +1,3 @@
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md）：
+- EDIT `/Volumes/SSD-2TB/project/wuji-auto-trading/src/exchange/bitmex/auth.py`
+格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)
