@@ -1,0 +1,2 @@
+{"op": "BASH", "cmd": "mkdir -p /Volumes/SSD-2TB/文档/交易所 && mv /Volumes/SSD-2TB/文档/bitmex_api.md /Volumes/SSD-2TB/文档/交易所/bitmex.md && echo \"✅ 目录创建 + bitmex 移入\"", "ts": "06:44", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}
+{"op": "BASH", "cmd": "cp /Volumes/SSD-2TB/project/wuji-auto-trading/src/exchange/hyperliquid/README.md /Volumes/SSD-2TB/文档/交易所/hyperliquid.md && echo \"✅ hyperliquid 复制\"", "ts": "06:44", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}

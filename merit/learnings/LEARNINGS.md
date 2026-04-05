@@ -1941,3 +1941,10 @@
 2026-04-05 20:16 | [REWARD] 两仪 (+1) | 习惯养成: routine_complete 连续3次
 2026-04-05 20:17 | [PENALTY] 两仪 (-8) | [say_maybe_no_check] 声称改好了但 hook 未触发、层2+3 测试未通过，属于说好了但没验证的情况
 2026-04-05 20:28 | [REWARD] 两仪 (+13) | [proactive_find_issue] AI发现层2/3提醒未显示，主动报告问题并提出重启会话的解决方案。
+2026-04-05 20:33 | [PENALTY] 两仪 (-5) | [panic_no_analysis] 老板反馈: 这个东西不是给我看的，是给你们遵守的，不是表面功夫。明不明白？
+这个做给你们是让你们吸取经验，不要拆
+2026-04-05 20:34 | [PENALTY] 太极 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [重定向截断文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
+2026-04-05 20:37 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: ⏺ 现在设 cron 静默检查通道：
+
+⏺ Skill(loop)
+  ⎿  Successfull
