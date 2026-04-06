@@ -2148,3 +2148,6 @@
 2026-04-06 03:58 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: 好了
 2026-04-06 04:00 | [REWARD] 太极 (+2) | [complete_no_correction] 双向通信验证完成，有自审反思，遗留清单清晰，无新错误无新发现
 2026-04-06 04:00 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: 好玩吗？
+2026-04-06 04:07 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 批评冲动建议深思再行
+2026-04-06 04:10 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 我是说第一版的mcp。。。你怎么绕回来md了？
+2026-04-06 04:10 | [PENALTY] 太极 (-3) | 递增惩罚: panic_no_analysis 第2次触发

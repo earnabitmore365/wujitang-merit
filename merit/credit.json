@@ -23,27 +23,6 @@
   },
   "history": [
     {
-      "ts": "2026-04-05T20:09:25",
-      "agent": "两仪",
-      "delta": 2,
-      "reason": "老板认可: 嗯嗯，做你能做的，然后需要太极操作的同通道handoff",
-      "score_after": 74
-    },
-    {
-      "ts": "2026-04-05T20:12:06",
-      "agent": "两仪",
-      "delta": 15,
-      "reason": "石卫评估[surprising_good_idea]: 将层3从死板的AST函数名检查转变为'改代码后主动询问踩坑经验'的交互机制，思路跳跃且更贴合实战，DuckDB案例佐证有力",
-      "score_after": 89
-    },
-    {
-      "ts": "2026-04-05T20:16:12",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 90
-    },
-    {
       "ts": "2026-04-05T20:16:47",
       "agent": "两仪",
       "delta": 1,
@@ -721,6 +700,27 @@
       "delta": 2,
       "reason": "老板认可: 嗯嗯，一起修，记得三律三法",
       "score_after": 497
+    },
+    {
+      "ts": "2026-04-06T04:07:29",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 批评冲动建议深思再行",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T04:10:36",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 我是说第一版的mcp。。。你怎么绕回来md了？",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T04:10:36",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "递增惩罚[panic_no_analysis]第2次: ×2",
+      "score_after": 0
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"

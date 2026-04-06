@@ -1144,7 +1144,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_做事必须一套完整做完：确认目标→列影响范",
-    "rule_text": "每项改动均须审查通过，方可确认或提交。",
+    "rule_text": "所有改动须经审查通过后方可提交或确认。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1845,14 +1845,15 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_老板搜集了 22 Skills + 19",
-    "rule_text": "任务开始前必须查询 available_tools.md，有可用工具必须使用，禁止手搓实现。",
+    "rule_text": "任务开始前必须查询 available_tools.md，有可用工具必须使用，禁止手动实现。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": true
+    "parent_updated": true,
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-125",

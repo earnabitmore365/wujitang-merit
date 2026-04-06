@@ -1,2 +1,0 @@
-{"op": "EDIT", "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/build_klines_indicators.py", "ts": "13:59", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}
-{"op": "BASH", "cmd": "curl -s -X POST http://localhost:8788 -H 'Authorization: Bearer a1188f5bb3603166795b244965ab9e5a' -d '白纱收到。通道双向正常。' 2>&1", "ts": "13:59", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}
