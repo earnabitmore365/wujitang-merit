@@ -24,12 +24,12 @@
     {
       "type": "modify",
       "file": "/Volumes/SSD-2TB/文档/自主交易AI架构.md",
-      "done": false
+      "done": true
     },
     {
       "type": "modify",
       "file": "CHANGELOG.md",
-      "done": false
+      "done": true
     }
   ]
 }
