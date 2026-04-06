@@ -42,6 +42,12 @@ CREDIT_PATH = os.path.join(MERIT_DIR, "credit.json")
 MISSION_PATH = os.path.join(MERIT_DIR, "mission.json")
 DB_PATH = os.path.expanduser("~/.claude/conversations.db")
 
+# Mission 状态常量
+MS_PENDING = "pending"
+MS_ACTIVE = "active"
+MS_ABORTED = "aborted"
+MS_COMPLETED = "completed"
+
 # ── AI 调用（内联，不依赖外部文件）──────────────────
 
 _MINIMAX_KEY_PATH = os.path.expanduser("~/.claude/.minimax_key")
@@ -453,7 +459,7 @@ def cmd_complain(args):
         "ts": ts,
         "complainant": agent_name,
         "content": content,
-        "status": "pending",
+        "status": MS_PENDING,
         "ruling": None,
     }
 
@@ -472,7 +478,7 @@ def cmd_complain(args):
 
     print(f"📬 投诉已记录（{agent_name}）：{content[:80]}")
     print(f"   状态：pending — 等待审理")
-    pending = sum(1 for c in data if c.get("status") == "pending")
+    pending = sum(1 for c in data if c.get("status") == MS_PENDING)
     print(f"   当前待审投诉：{pending} 件")
 
 
@@ -658,7 +664,7 @@ def mission_submit(args):
         try:
             with open(MISSION_PATH) as f:
                 existing = json.load(f)
-            if existing.get("status") == "active":
+            if existing.get("status") == MS_ACTIVE:
                 print("⚠️ 已有活跃任务，先 complete 或 abort 再提交新的。")
                 return
         except Exception:
@@ -710,7 +716,7 @@ def mission_submit(args):
         "mission": desc or "未命名任务",
         "agent": agent,
         "started": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-        "status": "pending",
+        "status": MS_PENDING,
         "estimated_reward": estimated_reward,
         "held_points": held,
         "items": items,
@@ -789,10 +795,10 @@ def mission_complete():
         print("mission.json 读取失败。")
         return
 
-    if m.get("status") == "pending":
+    if m.get("status") == MS_PENDING:
         print("⚠️ 任务尚未激活（pending），无法 complete。请先 mission activate 或 mission abort。")
         return
-    if m.get("status") != "active":
+    if m.get("status") != MS_ACTIVE:
         print("任务已结束。")
         return
 
@@ -879,7 +885,7 @@ def mission_complete():
     except Exception as e:
         print(f"⚠️ 积分更新失败: {e}")
 
-    m["status"] = "completed"
+    m["status"] = MS_COMPLETED
     m["completed"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     with open(MISSION_PATH, "w") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
@@ -899,7 +905,7 @@ def mission_abort():
     except Exception:
         return
 
-    if m.get("status") not in ("active", "pending"):
+    if m.get("status") not in (MS_ACTIVE, MS_PENDING):
         print("任务已结束。")
         return
 
@@ -931,7 +937,7 @@ def mission_abort():
     except Exception as e:
         print(f"⚠️ 押金没收失败: {e}")
 
-    m["status"] = "aborted"
+    m["status"] = MS_ABORTED
     with open(MISSION_PATH, "w") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
 
@@ -949,7 +955,7 @@ def mission_extend():
     except Exception:
         return
 
-    if m.get("status") != "active":
+    if m.get("status") != MS_ACTIVE:
         print("任务已结束。")
         return
 
@@ -976,7 +982,7 @@ def mission_activate():
         print(f"⚠️ mission 状态是 [{m.get('status')}]，只有 pending 才能激活")
         return
 
-    m["status"] = "active"
+    m["status"] = MS_ACTIVE
     with open(MISSION_PATH, 'r+') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.seek(0)

@@ -64,6 +64,11 @@ LEARNINGS_PATH = os.path.join(MERIT_DIR, "learnings", "LEARNINGS.md")
 SHIWEI_LOG_DIR = os.path.join(MERIT_DIR, "shiwei_log")
 SHIWEI_CREDIT_PATH = os.path.join(MERIT_DIR, "shiwei_credit.json")
 MISSION_PATH = os.path.join(MERIT_DIR, "mission.json")
+
+# Mission 状态常量
+MS_PENDING = "pending"
+MS_ACTIVE = "active"
+
 CHANNEL_PATH = os.path.expanduser("~/.claude/channel_taiji_liangyi.md")  # 通道文件不属于天衡册
 CHANNEL_CHECK_PATH = os.path.join(MERIT_DIR, "channel_check.json")
 SNAPSHOT_PATH = os.path.join(MERIT_DIR, "file_snapshot.json")
@@ -519,7 +524,7 @@ def load_mission():
     try:
         with open(MISSION_PATH) as f:
             m = json.load(f)
-        if m.get("status") not in ("active", "pending"):
+        if m.get("status") not in (MS_ACTIVE, MS_PENDING):
             return None
         return m
     except Exception:
@@ -567,7 +572,7 @@ def is_planned_action(mission, tool_name, data):
 def mark_mission_item_done(tool_name, data):
     """操作完成后标记计划项为 done（仅 active mission）"""
     mission = load_mission()
-    if not mission or mission.get("status") != "active":
+    if not mission or mission.get("status") != MS_ACTIVE:
         return
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
@@ -996,7 +1001,7 @@ def handle_pre_tool_use(data):
     if tool_name == "Bash":
         cmd = data.get("tool_input", {}).get("command", "")
         # pending mission = 自造 plan mode（磐石守心），Bash 写入也要拦
-        if mission and mission.get("status") == "pending":
+        if mission and mission.get("status") == MS_PENDING:
             cmd_stripped = cmd.strip()
             if not any(cmd_stripped.startswith(p) for p in PENDING_READONLY_PREFIXES):
                 output_deny(
@@ -1031,7 +1036,7 @@ def handle_pre_tool_use(data):
             return
 
         # pending mission = 自造 plan mode（方案待批准，只读）
-        if mission and mission.get("status") == "pending" and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
+        if mission and mission.get("status") == MS_PENDING and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
             output_deny(
                 f"⏸️ 方案待批准。等老板说\"执行\"后调 `python3 ~/.claude/merit/credit_manager.py mission activate`",
                 agent_name, f"{tool_name}: {file_path}")
@@ -2075,7 +2080,7 @@ def review_plan(plan_path):
 
     # 5. 自动 mission submit（调 credit_manager 走正确的 held 机制）
     mission = load_mission()
-    if mission and mission.get("status") == "active":
+    if mission and mission.get("status") == MS_ACTIVE:
         print(f"\n⚠️ 已有活跃 mission [{mission.get('mission','')}]，跳过自动提交。手动管理。")
     else:
         # 构建 submit 命令参数
