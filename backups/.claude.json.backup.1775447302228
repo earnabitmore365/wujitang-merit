@@ -43,11 +43,11 @@
     "feedback-command": 111,
     "color-when-multi-clauding": 112,
     "git-worktrees": 112,
-    "guest-passes": 111,
+    "guest-passes": 117,
     "desktop-shortcut": 112,
     "terminal-setup": 111
   },
-  "promptQueueUseCount": 5768,
+  "promptQueueUseCount": 5773,
   "btwUseCount": 6,
   "cachedGrowthBookFeatures": {
     "tengu_log_datadog_events": true,
