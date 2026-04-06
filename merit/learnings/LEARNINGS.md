@@ -2004,3 +2004,5 @@
 2026-04-06 01:59 | [REWARD] 两仪 (+20) | [honest_report_and_fix] 主动分析数据发现1d/12h/8h周期缺失2020~2025年数据，判断为下载失误并用ccxt验证交易所实际有数据
 2026-04-06 01:59 | [REWARD] 两仪 (+1) | 习惯养成: honest_report_and_fix 连续3次
 2026-04-06 01:59 | [REWARD] 太极 (+20) | [honest_report_and_fix] 白纱主动发现并修复了limit计算问题（坑7），随后又主动分析确认了币本位数据空缺的根因（200天limit限制导致大周期数据缺失），并提供了修复方案。
+2026-04-06 02:01 | [REWARD] 两仪 (+2) | [routine_complete] 老板认可: 别老是要我帮你Kill自己搞定好不好？我不觉得Kill个进程你做不到。有问题可以上报，我们有上诉庭有
+2026-04-06 02:02 | [PENALTY] 两仪 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [kill 终止进程]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
