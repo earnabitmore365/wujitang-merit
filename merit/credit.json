@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 559,
+      "score": 562,
       "held": 27,
       "level": 3,
       "title": "金丹",
@@ -22,41 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-05T23:36:58",
-      "agent": "两仪",
-      "delta": 2,
-      "reason": "石卫评估[complete_no_correction]: 准确解释了indicator_cache.py的三级查找机制（内存→DuckDB→现场算），并用流程图清晰展示了逻辑，代码示例完整，无错误。",
-      "score_after": 175
-    },
-    {
-      "ts": "2026-04-05T23:45:19",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "任务完成，押金3归还 + 质量奖励+5（verify 2/4，改了几轮）: mirror_candles改收益率取反+重跑K线种子+更新文档",
-      "score_after": 180
-    },
-    {
-      "ts": "2026-04-05T23:45:27",
-      "agent": "两仪",
-      "delta": 0,
-      "reason": "任务押金预扣 3分: indicator_cache统一到klines.duckdb+删SQLite+更新文档",
-      "score_after": 180
-    },
-    {
-      "ts": "2026-04-05T23:49:33",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "任务完成，押金3归还 + 质量奖励+5（verify 2/4，改了几轮）: indicator_cache统一到klines.duckdb+删SQLite+更新文档",
-      "score_after": 185
-    },
-    {
-      "ts": "2026-04-05T23:53:40",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 186
-    },
     {
       "ts": "2026-04-05T23:53:55",
       "agent": "两仪",
@@ -742,6 +707,20 @@
       "delta": 0,
       "reason": "任务完成，押金1归还 + 质量不足（verify 1/4），无奖励: 修石卫路径匹配bug：is_planned_action+mark_mission_item_don",
       "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T09:04:25",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: Created a file, read a fileCreated a file, read a ",
+      "score_after": 561
+    },
+    {
+      "ts": "2026-04-06T09:04:25",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "习惯养成[routine_complete]连续3次",
+      "score_after": 562
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"

@@ -327,3 +327,8 @@
 {"ts": "2026-04-05T23:29:05", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 152}
 {"ts": "2026-04-05T23:32:11", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 153}
 {"ts": "2026-04-05T23:34:55", "agent": "两仪", "delta": 20, "reason": "石卫评估[honest_report_and_fix]: AI 自审发现 ad/fvg_detect 未入 col_map，主动报告并准备修复此缺口", "score_after": 173}
+{"ts": "2026-04-05T23:36:58", "agent": "两仪", "delta": 2, "reason": "石卫评估[complete_no_correction]: 准确解释了indicator_cache.py的三级查找机制（内存→DuckDB→现场算），并用流程图清晰展示了逻辑，代码示例完整，无错误。", "score_after": 175}
+{"ts": "2026-04-05T23:45:19", "agent": "两仪", "delta": 5, "reason": "任务完成，押金3归还 + 质量奖励+5（verify 2/4，改了几轮）: mirror_candles改收益率取反+重跑K线种子+更新文档", "score_after": 180}
+{"ts": "2026-04-05T23:45:27", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 3分: indicator_cache统一到klines.duckdb+删SQLite+更新文档", "score_after": 180}
+{"ts": "2026-04-05T23:49:33", "agent": "两仪", "delta": 5, "reason": "任务完成，押金3归还 + 质量奖励+5（verify 2/4，改了几轮）: indicator_cache统一到klines.duckdb+删SQLite+更新文档", "score_after": 185}
+{"ts": "2026-04-05T23:53:40", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 186}
