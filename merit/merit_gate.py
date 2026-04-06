@@ -513,13 +513,13 @@ SCORING_TABLE = {
 # ══════════════════════════════════════════════════════
 
 def load_mission():
-    """加载活跃任务计划"""
+    """加载活跃/待批准任务计划"""
     if not os.path.exists(MISSION_PATH):
         return None
     try:
         with open(MISSION_PATH) as f:
             m = json.load(f)
-        if m.get("status") != "active":
+        if m.get("status") not in ("active", "pending"):
             return None
         return m
     except Exception:
@@ -565,9 +565,9 @@ def is_planned_action(mission, tool_name, data):
 
 
 def mark_mission_item_done(tool_name, data):
-    """操作完成后标记计划项为 done"""
+    """操作完成后标记计划项为 done（仅 active mission）"""
     mission = load_mission()
-    if not mission:
+    if not mission or mission.get("status") != "active":
         return
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
@@ -984,8 +984,21 @@ def handle_pre_tool_use(data):
         output_ask(f"{agent_name}（Lv.1 锁灵 · {score}分）信用不足，所有写入操作需老板批准。")
         return
 
-    # Bash：拍快照 + 破坏性检查
+    # Bash：pending 拦截 + 拍快照 + 破坏性检查
     if tool_name == "Bash":
+        # pending mission = 自造 plan mode，Bash 写入也要拦
+        if mission and mission.get("status") == "pending":
+            cmd = data.get("tool_input", {}).get("command", "")
+            # 只读命令放行（ls/cat/grep/head/tail/wc/echo/python3 -c 查询等）
+            read_only_prefixes = ("ls ", "cat ", "grep ", "head ", "tail ", "wc ", "echo ",
+                                  "find ", "which ", "file ", "stat ", "du ", "df ",
+                                  "python3 -c", "python3 -m py_compile")
+            cmd_stripped = cmd.strip()
+            if not any(cmd_stripped.startswith(p) for p in read_only_prefixes):
+                output_deny(
+                    f"⏸️ 方案待批准，Bash 写入操作已暂停。等老板说\"执行\"后调 mission activate",
+                    agent_name, f"Bash: {cmd_stripped[:60]}")
+                return
         take_snapshot()
         cmd = data.get("tool_input", {}).get("command", "")
         reason = check_bash_destructive(cmd, mission)
@@ -1005,12 +1018,19 @@ def handle_pre_tool_use(data):
         is_tmp = file_path.startswith("/tmp/") or file_path.startswith("/private/tmp/")
         is_changelog = os.path.basename(file_path) in ("CHANGELOG.md", "backlog.md", "MEMORY.md")
 
-        # 没有 active mission 且不是太极域/系统文件/临时文件/文档文件 → 拦截
+        # 没有 mission 且不是太极域/系统文件/临时文件/文档文件 → 拦截
         # 必须先出 plan → review-plan → 有 mission 才能改代码
         if not mission and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
             output_deny(
                 f"[{agent_name} Lv.{level} {title}] "
                 f"没有 active mission，不能直接改代码。先出 plan → review-plan 提交任务。",
+                agent_name, f"{tool_name}: {file_path}")
+            return
+
+        # pending mission = 自造 plan mode（方案待批准，只读）
+        if mission and mission.get("status") == "pending" and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
+            output_deny(
+                f"⏸️ 方案待批准。等老板说\"执行\"后调 `python3 ~/.claude/merit/credit_manager.py mission activate`",
                 agent_name, f"{tool_name}: {file_path}")
             return
 

@@ -1,16 +1,25 @@
 {
-  "mission": "更新架构文档：融入调研和执事补充",
-  "agent": "两仪",
-  "started": "2026-04-06T05:48:10",
-  "status": "aborted",
+  "mission": "plan: fix-score-and-docs.md",
+  "agent": "太极",
+  "started": "2026-04-06T06:23:40",
+  "status": "pending",
   "estimated_reward": 0,
-  "held_points": 1,
+  "held_points": 3,
   "items": [
     {
-      "type": "deposit",
-      "file": "5",
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/文档/claude_code.md",
+      "done": false
+    },
+    {
+      "type": "modify",
+      "file": "~/.claude/projects/-Users-allenbot/memory/stone_guard_v7_design.md",
+      "done": false
+    },
+    {
+      "type": "modify",
+      "file": "~/.claude/merit/credit_manager.py",
       "done": false
     }
-  ],
-  "extended": "2026-04-06T05:50:06"
+  ]
 }

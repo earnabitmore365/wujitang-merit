@@ -638,6 +638,8 @@ def cmd_mission(args):
         mission_abort()
     elif sub == "extend":
         mission_extend()
+    elif sub == "activate":
+        mission_activate()
     else:
         print(f"未知 mission 子命令: {sub}")
 
@@ -692,7 +694,7 @@ def mission_submit(args):
         "mission": desc or "未命名任务",
         "agent": agent,
         "started": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-        "status": "active",
+        "status": "pending",
         "estimated_reward": estimated_reward,
         "held_points": held,
         "items": items,
@@ -771,6 +773,9 @@ def mission_complete():
         print("mission.json 读取失败。")
         return
 
+    if m.get("status") == "pending":
+        print("⚠️ 任务尚未激活（pending），无法 complete。请先 mission activate 或 mission abort。")
+        return
     if m.get("status") != "active":
         print("任务已结束。")
         return
@@ -869,7 +874,7 @@ def mission_complete():
 
 
 def mission_abort():
-    """放弃任务 → 押金全额扣除"""
+    """放弃任务 → 押金全额扣除（pending 也可 abort）"""
     if not os.path.exists(MISSION_PATH):
         print("无活跃任务。")
         return
@@ -879,7 +884,7 @@ def mission_abort():
     except Exception:
         return
 
-    if m.get("status") != "active":
+    if m.get("status") not in ("active", "pending"):
         print("任务已结束。")
         return
 
@@ -939,6 +944,34 @@ def mission_extend():
         json.dump(m, f, ensure_ascii=False, indent=2)
 
     print(f"⏳ 任务延期。押金不变，继续干。")
+
+
+def mission_activate():
+    """将 pending mission 激活为 active（老板批准后调用）"""
+    if not os.path.exists(MISSION_PATH):
+        print("❌ 没有任何 mission")
+        return
+    try:
+        with open(MISSION_PATH) as f:
+            m = json.load(f)
+    except Exception:
+        print("❌ mission.json 读取失败")
+        return
+
+    if m.get("status") != "pending":
+        print(f"⚠️ mission 状态是 [{m.get('status')}]，只有 pending 才能激活")
+        return
+
+    m["status"] = "active"
+    import fcntl
+    with open(MISSION_PATH, 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        json.dump(m, f, ensure_ascii=False, indent=2)
+        f.flush()
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+    print(f"✅ mission 已激活：{m.get('mission', '?')}")
+    print(f"   石卫放行计划内操作，开始干活。")
 
 
 def cmd_search(args):

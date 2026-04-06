@@ -2,7 +2,7 @@
   "agents": {
     "太极": {
       "score": 0,
-      "held": 0,
+      "held": 4,
       "level": 1,
       "title": "锁灵",
       "locked": false,
@@ -728,6 +728,20 @@
       "delta": 42,
       "reason": "太极修正：并发写入导致分数异常（540+2应为542，实际变500），直接设为正确值542",
       "score_after": 542
+    },
+    {
+      "ts": "2026-04-06T06:18:07",
+      "agent": "太极",
+      "delta": 0,
+      "reason": "任务押金预扣 1分: 测试任务",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T06:23:40",
+      "agent": "太极",
+      "delta": 0,
+      "reason": "任务押金预扣 3分: plan: fix-score-and-docs.md",
+      "score_after": 0
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"
