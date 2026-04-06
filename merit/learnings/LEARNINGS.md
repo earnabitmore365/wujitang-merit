@@ -2000,3 +2000,4 @@
       升级的路变长了，但只要踏实做事，一步一步稳稳升。老祖的
 2026-04-06 01:36 | [PENALTY] 太极 (-3) | 递增惩罚: panic_no_analysis 第2次触发
 2026-04-06 01:41 | [REWARD] 两仪 (+13) | [proactive_find_issue] 执事提示'以后要用到这个readme'后，白纱主动在代码中添加层2 hook绑定，防止未来改币种时遗漏检查文档。
+2026-04-06 01:54 | [REWARD] 两仪 (+20) | [honest_report_and_fix] 主动发现 BTC_COIN/8h 的 since 计算超出 200 天限制问题，定位到 _download_coin 往前补逻辑的 bug，提供并执行了修复，同时记录到 ccxt.md 文档。
