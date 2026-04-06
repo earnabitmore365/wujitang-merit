@@ -769,7 +769,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_提升_策略上线后不能只看进",
-    "rule_text": "策略上线交接时，须在规定时间内确认已产生交易信号；无信号须立即上报。",
+    "rule_text": "策略上线交接时，须在规定时间内确认已正确产生交易信号；如未产生信号，应立即上报。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -777,7 +777,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-05"
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-053",
@@ -1219,7 +1219,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_操作完成或失败后必须主动汇报，不等老板来",
-    "rule_text": "操作完成后须立即主动汇报结果及原因，严禁等待询问。",
+    "rule_text": "操作完成后须立即主动汇报结果及原因，确保信息及时传递与协作顺畅，严禁等待询问。",
     "source_count": 2,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1948,7 +1948,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_已有组件不融合自己重写 = 做假的。in",
-    "rule_text": "「优先使用现有组件满足需求，禁止重复开发已有功能。」",
+    "rule_text": "优先复用现有组件满足需求，禁止重复开发已有功能；确需新开发时须经评审并说明理由。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
