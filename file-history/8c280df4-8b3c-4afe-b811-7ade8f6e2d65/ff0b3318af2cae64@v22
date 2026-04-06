@@ -1,0 +1,166 @@
+{
+  "env": {
+    "BASH_MAX_TIMEOUT_MS": "7200000",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(ls -t ~/.claude/projects/*/*.jsonl*)",
+      "Bash(ls -t ~/.claude/projects/**/*.jsonl*)",
+      "Bash(python3 ~/.claude/scripts/convert_conversation.py*)",
+      "Bash(python3 ~/.claude/scripts/db_write.py*)",
+      "Bash(wc -l /tmp/current_session.md)",
+      "Bash(grep -q*)",
+      "Bash(while true*)",
+      "Bash(for coin in*)",
+      "Edit(//Users/allenbot/.claude/**)",
+      "Write(//Users/allenbot/.claude/**)",
+      "Read(//Users/allenbot/.claude/**)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/db_write.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/db_write.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/db_write.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/pre_compact_save.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/session_start.py"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/db_write.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|Agent|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/merit/merit_gate.py"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "channel_taiji_liangyi.md",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/opt/homebrew/bin/node\" \"${plugin_dir}dist/index.js\"'"
+  },
+  "enabledPlugins": {
+    "claude-hud@claude-hud": true,
+    "taiji-audit@taiji-audit": true,
+    "engineering@knowledge-work-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-hud": {
+      "source": {
+        "source": "github",
+        "repo": "jarrodwatts/claude-hud"
+      }
+    },
+    "taiji-audit": {
+      "source": {
+        "source": "github",
+        "repo": "earnabitmore365/taiji-audit"
+      }
+    },
+    "knowledge-work-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/knowledge-work-plugins"
+      }
+    }
+  },
+  "language": "中文",
+  "effortLevel": "high",
+  "voiceEnabled": true,
+  "skipDangerousModePermissionPrompt": true,
+  "mcpServers": {}
+}

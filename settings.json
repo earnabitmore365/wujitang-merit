@@ -116,6 +116,17 @@
           }
         ]
       }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "channel_taiji_liangyi.md",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
