@@ -640,8 +640,8 @@ _cm_session_id = ""
 def _get_mission_path():
     """返回当前 session 的 mission 路径（含 fallback）"""
     path = _mission_path_cm(_cm_session_id)
-    if not os.path.exists(path) and os.path.exists(MISSION_PATH):
-        return MISSION_PATH
+    if not os.path.exists(path) and os.path.exists(_get_mission_path()):
+        return _get_mission_path()
     return path
 
 
@@ -692,9 +692,10 @@ def mission_submit(args):
     """提交任务计划 + 预扣押金
     用法: mission submit "任务描述" --modify f1 f2 --delete f3 --create f4 --bash "ssh nitro"
     """
-    if os.path.exists(MISSION_PATH):
+    mp = _mission_path_cm(_cm_session_id)
+    if os.path.exists(mp):
         try:
-            with open(MISSION_PATH) as f:
+            with open(mp) as f:
                 existing = json.load(f)
             if existing.get("status") == MS_ACTIVE:
                 print("⚠️ 已有活跃任务，先 complete 或 abort 再提交新的。")
@@ -754,8 +755,8 @@ def mission_submit(args):
         "items": items,
     }
 
-    # 写 mission.json
-    with open(MISSION_PATH, "w") as f:
+    # 写 mission 文件（按 session 隔离）
+    with open(mp, "w") as f:
         json.dump(mission, f, ensure_ascii=False, indent=2)
 
     # 预扣押金
@@ -788,11 +789,11 @@ def mission_submit(args):
 
 def mission_status():
     """显示当前任务计划状态"""
-    if not os.path.exists(MISSION_PATH):
+    if not os.path.exists(_get_mission_path()):
         print("无活跃任务。")
         return
     try:
-        with open(MISSION_PATH) as f:
+        with open(_get_mission_path()) as f:
             m = json.load(f)
     except Exception:
         print("mission.json 读取失败。")
@@ -817,11 +818,11 @@ def mission_status():
 
 def mission_complete():
     """完成任务 → 石卫核对 + 押金结算"""
-    if not os.path.exists(MISSION_PATH):
+    if not os.path.exists(_get_mission_path()):
         print("无活跃任务。")
         return
     try:
-        with open(MISSION_PATH) as f:
+        with open(_get_mission_path()) as f:
             m = json.load(f)
     except Exception:
         print("mission.json 读取失败。")
@@ -919,7 +920,7 @@ def mission_complete():
 
     m["status"] = MS_COMPLETED
     m["completed"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    with open(MISSION_PATH, "w") as f:
+    with open(_get_mission_path(), "w") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
 
     print(f"🎉 任务完成! {done}/{total} 项全部完成")
@@ -928,11 +929,11 @@ def mission_complete():
 
 def mission_abort():
     """放弃任务 → 押金全额扣除（pending 也可 abort）"""
-    if not os.path.exists(MISSION_PATH):
+    if not os.path.exists(_get_mission_path()):
         print("无活跃任务。")
         return
     try:
-        with open(MISSION_PATH) as f:
+        with open(_get_mission_path()) as f:
             m = json.load(f)
     except Exception:
         return
@@ -970,7 +971,7 @@ def mission_abort():
         print(f"⚠️ 押金没收失败: {e}")
 
     m["status"] = MS_ABORTED
-    with open(MISSION_PATH, "w") as f:
+    with open(_get_mission_path(), "w") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
 
     print(f"❌ 任务放弃。没收押金 {held} 分。")
@@ -978,11 +979,11 @@ def mission_abort():
 
 def mission_extend():
     """延期任务 → 不扣押金"""
-    if not os.path.exists(MISSION_PATH):
+    if not os.path.exists(_get_mission_path()):
         print("无活跃任务。")
         return
     try:
-        with open(MISSION_PATH) as f:
+        with open(_get_mission_path()) as f:
             m = json.load(f)
     except Exception:
         return
@@ -992,7 +993,7 @@ def mission_extend():
         return
 
     m["extended"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    with open(MISSION_PATH, "w") as f:
+    with open(_get_mission_path(), "w") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
 
     print(f"⏳ 任务延期。押金不变，继续干。")
@@ -1000,11 +1001,11 @@ def mission_extend():
 
 def mission_activate():
     """将 pending mission 激活为 active（老板批准后调用）"""
-    if not os.path.exists(MISSION_PATH):
+    if not os.path.exists(_get_mission_path()):
         print("❌ 没有任何 mission")
         return
     try:
-        with open(MISSION_PATH) as f:
+        with open(_get_mission_path()) as f:
             m = json.load(f)
     except Exception:
         print("❌ mission.json 读取失败")
@@ -1015,7 +1016,7 @@ def mission_activate():
         return
 
     m["status"] = MS_ACTIVE
-    with open(MISSION_PATH, 'r+') as f:
+    with open(_get_mission_path(), 'r+') as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.seek(0)
         f.truncate()

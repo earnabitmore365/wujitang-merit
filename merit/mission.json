@@ -2,7 +2,7 @@
   "mission": "plan: mission-per-session.md",
   "agent": "太极",
   "started": "2026-04-06T09:23:06",
-  "status": "active",
+  "status": "completed",
   "estimated_reward": 0,
   "held_points": 2,
   "items": [
@@ -16,5 +16,6 @@
       "file": "~/.claude/merit/credit_manager.py",
       "done": true
     }
-  ]
+  ],
+  "completed": "2026-04-06T09:32:10"
 }

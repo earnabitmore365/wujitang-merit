@@ -1,8 +1,8 @@
 {
   "agents": {
     "太极": {
-      "score": 3,
-      "held": 3,
+      "score": 9,
+      "held": 1,
       "level": 1,
       "title": "锁灵",
       "locked": false,
@@ -18,20 +18,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-06T01:00:47",
-      "agent": "太极",
-      "delta": -3,
-      "reason": "老板反馈: 你怎么老是需要我帮你跑命令才能完成？这个东西你自己真的做不到吗？三律二法呢？",
-      "score_after": 0
-    },
-    {
-      "ts": "2026-04-06T01:00:47",
-      "agent": "太极",
-      "delta": -3,
-      "reason": "递增惩罚[panic_no_analysis]第2次: ×2",
-      "score_after": 0
-    },
     {
       "ts": "2026-04-06T01:04:31",
       "agent": "两仪",
@@ -717,6 +703,20 @@
       "delta": 2,
       "reason": "老板认可: 执行",
       "score_after": 3
+    },
+    {
+      "ts": "2026-04-06T09:32:10",
+      "agent": "太极",
+      "delta": 5,
+      "reason": "任务完成，押金2归还 + 质量奖励+5（verify 2/4，改了几轮）: plan: mission-per-session.md",
+      "score_after": 8
+    },
+    {
+      "ts": "2026-04-06T09:33:03",
+      "agent": "太极",
+      "delta": 1,
+      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
+      "score_after": 9
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"
