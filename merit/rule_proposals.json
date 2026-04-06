@@ -799,7 +799,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_已有组件不融合自己重",
-    "rule_text": "开发新功能前必须评估现有组件。需求完全满足时应复用；部分满足时优先扩展，扩展成本明显高于新开发时除外。",
+    "rule_text": "开发新功能前必须评估现有组件。需求完全满足时应复用；部分满足时优先扩展，但扩展成本明显高于新开发成本时除外。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -2188,14 +2188,15 @@
     "status": "approved",
     "created": "2026-04-06",
     "behavior_id": "lrn_纠错_做事前先完整说方案（远谋），不边做边想走",
-    "rule_text": "先完整说明方案再执行，禁止边做边想、走一步看一步。",
+    "rule_text": "先完整规划方案，再按计划执行，明确目标、步骤与风险；执行过程中不得临时变更或跳跃式决策。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "完整性",
-    "parent_updated": true
+    "parent_updated": true,
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-148",
