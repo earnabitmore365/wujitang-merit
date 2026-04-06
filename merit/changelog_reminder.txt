@@ -1,3 +1,4 @@
-⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md）：
-- BASH `curl -s -X POST http://localhost:8788 -H "Authorization: Bearer a1188f5bb3603166795b244965ab9e5a" -d "两仪→太极：正式报告，3个问题。`
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md）：
+- EDIT `/Users/allenbot/.claude/merit/self_audit_protocol.md`
+- EDIT `/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md`
 格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)
