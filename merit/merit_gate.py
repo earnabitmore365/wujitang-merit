@@ -19,26 +19,26 @@
 │  Mission 计划   L509-L620   load/save/planned/audit        │
 │  输出函数       L621-L650   output_deny / output_ask       │
 │  硬规则检查     L652-L935   destructive/read/grep/agent    │
-│  PreToolUse     L939-L1020  handle_pre_tool_use            │
-│  PostToolUse    L1022-L1130 verify+mission+changelog       │
-│  通道检查       L1132-L1170 check_channel                  │
-│  UserPromptSubmit L1170-L1370 语気識別(MiniMax)+任务標記   │
-│  Stop 辅助      L1370-L1565 計數器+pending+context+自审    │
-│  Stop 评分      L1567-L1675 handle_stop(冷却+AI評估)       │
-│  evolve 触发    L1678-L1705 _try_evolve（cron 每5分鐘）    │
-│  Reflect 合体   L1705-L1810 trigger追踪+习惯               │
-│  Reflect Hook   L1812-L1858 SessionEnd/PreCompact+清零     │
-│  Main 入口      L1860-L1890 hook_event_name 分支           │
-│  review-plan    L1891-L1960 CLI --review-plan              │
+│  PreToolUse     L972-L1090  handle_pre_tool_use            │
+│  PostToolUse    L1093-L1200 verify+mission+changelog       │
+│  通道检查       L1200-L1240 check_channel                  │
+│  UserPromptSubmit L1240-L1440 语気識別(MiniMax)+任务標記   │
+│  Stop 辅助      L1440-L1660 計數器+pending+context+自审    │
+│  Stop 评分      L1666-L1780 handle_stop(冷却+AI評估)       │
+│  evolve 触发    L1780-L1810 _try_evolve（cron 每5分鐘）    │
+│  Reflect 合体   L1810-L1920 trigger追踪+习惯               │
+│  Reflect Hook   L1920-L1960 SessionEnd/PreCompact+清零     │
+│  Main 入口      L1960-L2000 hook_event_name 分支           │
+│  review-plan    L2036-L2100 CLI --review-plan              │
 │                                                         │
-│  改拦截规则？    → L939 handle_pre_tool_use                │
-│  改打分表？      → L486 SCORING_TABLE                      │
-│  改 mission？    → L509                                    │
-│  改评分逻辑？    → L1567 handle_stop                       │
-│  改 reflect？    → L1743 auto_reflect_and_evolve           │
-│  改自审检测？    → L1484 check_self_audit                  │
+│  改拦截规则？    → L972 handle_pre_tool_use                │
+│  改打分表？      → L492 SCORING_TABLE                      │
+│  改 mission？    → L515                                    │
+│  改评分逻辑？    → L1666 handle_stop                       │
+│  改 reflect？    → L1888 auto_reflect_and_evolve           │
+│  改自审检测？    → L1583 check_self_audit                  │
 │  改石卫日志？    → L91 log_shiwei_action                   │
-│  改 review-plan？→ L1891 review_plan                       │
+│  改 review-plan？→ L2036 review_plan                       │
 │  改 CHANGELOG？  → L233 _resolve_changelog_path/flush      │
 │  改语气识别？    → L1218 judge_user_sentiment              │
 │                                                         │
@@ -992,7 +992,8 @@ def handle_pre_tool_use(data):
             # 只读命令放行（ls/cat/grep/head/tail/wc/echo/python3 -c 查询等）
             read_only_prefixes = ("ls ", "cat ", "grep ", "head ", "tail ", "wc ", "echo ",
                                   "find ", "which ", "file ", "stat ", "du ", "df ",
-                                  "python3 -c", "python3 -m py_compile")
+                                  "python3 -c", "python3 -m py_compile",
+                                  "python3 ~/.claude/merit/credit_manager.py mission activate")
             cmd_stripped = cmd.strip()
             if not any(cmd_stripped.startswith(p) for p in read_only_prefixes):
                 output_deny(

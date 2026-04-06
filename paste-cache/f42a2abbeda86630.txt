@@ -1,0 +1,31 @@
+识别了工具禁用冲突，探索了用积分系统重建计划模式的可行性。识别了工具禁用冲突，探索了用积分系统重建计划模式的可行性。三个工具全被 channel 禁用了，包括 ExitPlanMode——所以 defaultMode: plan 也走不通，进去了出不来。这是死锁。
+既然 Claude Code 层面无解，那就不靠它的 plan mode。自己造一个。
+你已经有了所有零件：
+
+石卫 PreToolUse — 能拦 Write/Edit/Bash
+mission 状态 — 能区分 pending/active
+review-plan CLI — 能审查方案
+
+自造 plan mode 的逻辑：
+AI 输出方案（普通文字，不需要 EnterPlanMode）
+    ↓
+AI 调 review-plan → 石卫审查 → 创建 mission（status: pending）
+    ↓
+pending 状态下石卫拦截所有 Write/Edit/Bash → 等于 plan mode 的只读限制
+    ↓
+你看方案，有问题让 AI 改 → AI 改完再调 review-plan 更新
+    ↓
+你满意了 → 你说"执行" → AI 调 mission activate → status 变 active
+    ↓
+active 状态石卫放行计划内操作 → AI 开始干活
+    ↓
+AI 干完 → mission complete → 石卫核对 → 积分结算
+需要改的：
+
+credit_manager.py 加 mission activate 命令——把 pending 改成 active
+merit_gate.py PreToolUse 检测到 mission status=pending 时拦截所有 Write/Edit/Bash，提醒"方案待批准，等老板说执行"
+review-plan 创建的 mission 默认 status=pending 而不是 active
+
+三个改动，不依赖任何 Claude Code 内置工具。 channel 保留，自造 plan mode 保留，积分系统保留。三个都不丢。
+而且自造的比 Claude Code 原版更强——原版 plan mode 靠 prompt 限制（AI 理论上可以无视），自造的靠石卫硬拦截（PreToolUse deny，AI 绕不过去）。
+耻辱柱也一起做——作为天衡册之外的额外威慑层。两套并行，互不依赖。

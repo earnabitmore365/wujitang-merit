@@ -1,0 +1,7 @@
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md）：
+- EDIT `/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md`
+- EDIT `/Users/allenbot/.claude/merit/self_audit_protocol.md`
+- EDIT `/Volumes/SSD-2TB/project/auto-trading/CLAUDE.md`
+- EDIT `/Users/allenbot/.claude/CLAUDE.md`
+- BASH `curl -s -X POST http://localhost:8789 -H "Authorization: Bearer $(cat ~/.claude/channel-server/.channel_token)" -d "白纱，工作流程更新通知：`
+格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)

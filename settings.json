@@ -175,5 +175,9 @@
   "effortLevel": "high",
   "voiceEnabled": true,
   "skipDangerousModePermissionPrompt": true,
-  "mcpServers": {}
+  "mcpServers": {},
+  "disabledMcpjsonServers": [
+    "datadog",
+    "github"
+  ]
 }

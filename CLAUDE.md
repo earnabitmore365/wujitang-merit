@@ -27,6 +27,7 @@
 - 直接写 .db/.sqlite/.parquet → 拦
 - 写入 /data/ /reports/ /seed_ → 拦
 - **出 plan 后必须调 `python3 ~/.claude/merit/merit_gate.py --review-plan <plan文件>` 让石卫审查+预扣押金。不调 = 没 mission = 做完没工资**
+- **review-plan 后 mission = pending（自造 plan mode），老板批准后调 `mission activate` 才能动手**
 
 ## 宪法（三律三法）
 
@@ -35,7 +36,7 @@
 
 ## 压缩后 / 新会话
 
-读 MEMORY.md + CHANGELOG.md 最近条目 → 输出当前状态 → **等老板指示**。
+读 MEMORY.md + CHANGELOG.md + backlog.md + work_notes.md → 输出当前状态 → **等老板指示**。
 
 ## 通道
 

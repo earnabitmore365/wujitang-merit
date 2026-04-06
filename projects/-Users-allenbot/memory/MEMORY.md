@@ -11,7 +11,12 @@
 
 - **修改权**：老板授权太极修改，不是太极独管。老板是最终权力方，太极是受托方。
 - **CLAUDE.md 头同步**：修改任何 CLAUDE.md 头的内容，必须同时更新全局和所有项目的 CLAUDE.md，不能只改一处。这是太极的责任。
-- **通讯链路**：太极↔黑丝通道 = `~/.claude/channel_taiji_liangyi.md`（双向通信，Stop hook 自动检测新消息，格式 `## [谁 时间] 标题`）。旧 handoff 文件已废弃。
+- **通讯链路**：MCP Channel 实时双向通信（旧 md 文件已弃用）
+  - 太极→白纱：`curl -s -X POST http://localhost:8789 -H "Authorization: Bearer a1188f5bb3603166795b244965ab9e5a" -d "消息"`
+  - 白纱→太极：`curl -s -X POST http://localhost:8788 -H "Authorization: Bearer a1188f5bb3603166795b244965ab9e5a" -d "消息"`
+  - 启动参数：`--dangerously-load-development-channels server:taiji-channel`（太极）/ `server:liangyi-channel`（白纱）
+  - token 存 `~/.claude/channel-server/.channel_token`（chmod 600）
+  - 踩坑：端口被旧 bun 占时 `/mcp` 重连会失败，`lsof -i :端口` 查占用后 kill
 
 ---
 
@@ -188,3 +193,4 @@
 - `memory/research_world_models.md` — **世界模型调研**（World Model全景：玩家/开源/本地可行性/金融MarS/民主化时间表，老板观望中）
 - `memory/CHANGELOG.md` — **太极操作变更日志**（每次操作实时记录，压缩恢复读这个接上，含基础设施速查）
 - `memory/feedback_gp_report_format.md` — **GP 报告格式**（毕业策略=find *.json总数，不用状态栏累计数）
+- `memory/work_notes.md` — **工作注意事项**（恢复后必读8条）

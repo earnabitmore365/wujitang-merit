@@ -701,7 +701,7 @@ def mission_submit(args):
     # 预估奖励 = 0（mission 本身不预估奖励，奖励由干活过程中石卫 SCORING_TABLE 评分累积）
     # 押金按计划复杂度：每项 1 分，最少 1 分，最多 10 分
     estimated_reward = 0
-    held = max(min(len(items), 10), 1)  # 半额概念不适用，押金纯粹是风险保证金
+    held = held_override if held_override is not None else max(min(len(items), 10), 1)
 
     agent = _get_agent()
 

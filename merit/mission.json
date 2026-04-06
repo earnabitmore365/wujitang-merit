@@ -2,24 +2,25 @@
   "mission": "plan: fix-score-and-docs.md",
   "agent": "太极",
   "started": "2026-04-06T06:23:40",
-  "status": "active",
+  "status": "completed",
   "estimated_reward": 0,
   "held_points": 3,
   "items": [
     {
       "type": "modify",
       "file": "/Volumes/SSD-2TB/文档/claude_code.md",
-      "done": false
+      "done": true
     },
     {
       "type": "modify",
       "file": "~/.claude/projects/-Users-allenbot/memory/stone_guard_v7_design.md",
-      "done": false
+      "done": true
     },
     {
       "type": "modify",
       "file": "~/.claude/merit/credit_manager.py",
       "done": true
     }
-  ]
+  ],
+  "completed": "2026-04-06T06:33:19"
 }

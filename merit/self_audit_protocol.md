@@ -9,6 +9,8 @@
 | 开工前 | **强制**（用 Task 工具拆解任务、追踪进度，不靠脑子记） |
 | 开工前 | **强制**（查法器谱 `~/.claude/wuji-world/tools.md`，确认有没有现成法器可用，不手搓） |
 | 大任务拆分时 | **强制**（能并行的子任务派多个 Sonnet subagent 同时跑，不串行等） |
+| review-plan 前 | **强制**（plan 必须包含完整步骤+涉及文件+验证标准，缺一不递交。递交后 mission = pending，石卫硬拦 Write/Edit/Bash） |
+| mission activate 后 | **强制**（老板批准了才 activate，activate 后按 plan 步骤逐项执行） |
 | mission complete 前 | **强制**（石卫核对计划清单+遗留清单，漏项不放行） |
 | 汇报老板前 | **强制**（没审就汇报 = 交残品） |
 | 方案递交前 | **强制**（方案必须包含：代码改动 + 文档更新 + .py 精简 README，缺一不递交） |
