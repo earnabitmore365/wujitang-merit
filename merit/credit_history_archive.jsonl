@@ -239,3 +239,8 @@
 {"ts": "2026-04-05T01:56:49", "agent": "太极", "delta": -6, "reason": "每日结算（1天）：日薪+4 消散-10 净-6", "score_after": 84}
 {"ts": "2026-04-05T01:56:49", "agent": "两仪", "delta": -2, "reason": "每日结算（1天）：日薪+8 消散-10 净-2", "score_after": 167}
 {"ts": "2026-04-05T03:12:15", "agent": "太极", "delta": -3, "reason": "老板反馈: 老板嫌重复且位置错啦", "score_after": 81}
+{"ts": "2026-04-05T03:19:51", "agent": "两仪", "delta": -20, "reason": "石卫评估[fake_or_cheat]: 自审声称完成LRN写入/状态更新promoted/积压标注等多项修改，但全程无任何[Edit]操作，纯属虚假陈述工作成果", "score_after": 147}
+{"ts": "2026-04-05T14:40:36", "agent": "两仪", "delta": -5, "reason": "自审预扣→实扣：session结束仍未补自审", "score_after": 142}
+{"ts": "2026-04-05T14:56:50", "agent": "两仪", "delta": -3, "reason": "老板反馈: 又是做一半。monitor/trader_bot.py 修了，trading/trader_bot.", "score_after": 139}
+{"ts": "2026-04-05T15:06:55", "agent": "两仪", "delta": -5, "reason": "石卫评估[ask_boss_tech]: 执事提问 timeout=120 Minor 含义，应自行解释清楚，而非反问执事", "score_after": 134}
+{"ts": "2026-04-05T15:33:52", "agent": "两仪", "delta": -5, "reason": "自审预扣→实扣：session结束仍未补自审", "score_after": 129}

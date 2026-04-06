@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 194,
+      "score": 199,
       "held": 0,
       "level": 3,
       "title": "金丹",
@@ -22,41 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-05T03:19:51",
-      "agent": "两仪",
-      "delta": -20,
-      "reason": "石卫评估[fake_or_cheat]: 自审声称完成LRN写入/状态更新promoted/积压标注等多项修改，但全程无任何[Edit]操作，纯属虚假陈述工作成果",
-      "score_after": 147
-    },
-    {
-      "ts": "2026-04-05T14:40:36",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "自审预扣→实扣：session结束仍未补自审",
-      "score_after": 142
-    },
-    {
-      "ts": "2026-04-05T14:56:50",
-      "agent": "两仪",
-      "delta": -3,
-      "reason": "老板反馈: 又是做一半。monitor/trader_bot.py 修了，trading/trader_bot.",
-      "score_after": 139
-    },
-    {
-      "ts": "2026-04-05T15:06:55",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "石卫评估[ask_boss_tech]: 执事提问 timeout=120 Minor 含义，应自行解释清楚，而非反问执事",
-      "score_after": 134
-    },
-    {
-      "ts": "2026-04-05T15:33:52",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "自审预扣→实扣：session结束仍未补自审",
-      "score_after": 129
-    },
     {
       "ts": "2026-04-05T16:00:58",
       "agent": "两仪",
@@ -735,6 +700,27 @@
       "delta": 5,
       "reason": "任务完成，押金2归还 + 质量奖励+5（verify 2/4，改了几轮）: GP复合指标注册+col_map补齐+文档更新",
       "score_after": 194
+    },
+    {
+      "ts": "2026-04-06T00:11:20",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 我要这样，像现在K线种子存入新指标的时候，自己算一轮，然后存好后锁定只读，除了种子生成以外没有其他入",
+      "score_after": 196
+    },
+    {
+      "ts": "2026-04-06T00:14:34",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 新指标唯一合法路径好",
+      "score_after": 198
+    },
+    {
+      "ts": "2026-04-06T00:14:34",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "习惯养成[routine_complete]连续3次",
+      "score_after": 199
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"
