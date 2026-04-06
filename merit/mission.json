@@ -1,10 +1,10 @@
 {
-  "mission": "indicator_cache统一到klines.duckdb+删SQLite+更新文档",
+  "mission": "GP复合指标注册+col_map补齐+文档更新",
   "agent": "两仪",
-  "started": "2026-04-05T23:45:27",
+  "started": "2026-04-05T23:56:03",
   "status": "completed",
   "estimated_reward": 0,
-  "held_points": 3,
+  "held_points": 2,
   "items": [
     {
       "type": "modify",
@@ -13,14 +13,9 @@
     },
     {
       "type": "modify",
-      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/README_KLINES_SEED.md",
-      "done": true
-    },
-    {
-      "type": "modify",
-      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/ARCHITECTURE.md",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/indicator_col_map.json",
       "done": true
     }
   ],
-  "completed": "2026-04-05T23:49:33"
+  "completed": "2026-04-05T23:57:44"
 }
