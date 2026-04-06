@@ -23,13 +23,6 @@
   },
   "history": [
     {
-      "ts": "2026-04-05T17:12:07",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "石卫评估[ask_boss_tech]: 执事问及杀进程与Telegram通报机制的技术问题，AI需向执事确认理解/寻求指示",
-      "score_after": 71
-    },
-    {
       "ts": "2026-04-05T17:22:16",
       "agent": "太极",
       "delta": -3,
@@ -720,6 +713,13 @@
       "agent": "太极",
       "delta": -5,
       "reason": "递增惩罚[bypass_without_report]第2次: ×2",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T00:54:38",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 宗主未及时干预",
       "score_after": 0
     }
   ],

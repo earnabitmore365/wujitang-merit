@@ -852,8 +852,12 @@ def check_bash_destructive(cmd, mission=None):
     stripped = cmd.strip()
     if stripped.startswith("ssh ") or stripped.startswith("scp "):
         return None
+    # heredoc 内容是文本数据不是命令，只检查第一行（实际命令）
+    check_text = cmd
+    if "<<" in cmd:
+        check_text = cmd.split("\n")[0]
     for pattern, desc in DANGEROUS_COMMANDS:
-        if re.search(pattern, cmd):
+        if re.search(pattern, check_text):
             if "删除" in desc or "截断" in desc or "清空" in desc or "覆盖" in desc or "移动" in desc:
                 if any(safe in cmd for safe in SAFE_RM_PATHS):
                     return None

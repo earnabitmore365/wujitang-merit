@@ -1980,3 +1980,4 @@
 2026-04-06 00:27 | [PENALTY] 太极 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
 2026-04-06 00:40 | [PENALTY] 太极 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
 2026-04-06 00:40 | [PENALTY] 太极 (-5) | 递增惩罚: bypass_without_report 第2次触发
+2026-04-06 00:54 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 宗主未及时干预
