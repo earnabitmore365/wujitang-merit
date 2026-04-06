@@ -626,11 +626,43 @@ def cmd_appeal(args):
 #  Mission 任务计划（押金制）
 # ══════════════════════════════════════════════════════
 
+def _mission_path_cm(session_id=None):
+    """按 session_id 返回 mission 文件路径"""
+    if session_id:
+        return os.path.join(MERIT_DIR, f"mission_{session_id}.json")
+    return MISSION_PATH
+
+
+# 当前会话 ID（cmd_mission 入口解析 --session 设置）
+_cm_session_id = ""
+
+
+def _get_mission_path():
+    """返回当前 session 的 mission 路径（含 fallback）"""
+    path = _mission_path_cm(_cm_session_id)
+    if not os.path.exists(path) and os.path.exists(MISSION_PATH):
+        return MISSION_PATH
+    return path
+
+
 def cmd_mission(args):
-    """任务计划管理：submit / status / complete / abort / extend"""
+    """任务计划管理：submit / status / complete / abort / extend / activate"""
+    global _cm_session_id
     if not args:
-        print("用法: credit_manager.py mission <submit|status|complete|abort|extend> ...")
+        print("用法: credit_manager.py mission <submit|status|complete|abort|extend|activate> ...")
         sys.exit(1)
+
+    # 提取 --session 参数
+    filtered = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--session" and i + 1 < len(args):
+            _cm_session_id = args[i + 1]
+            i += 2
+        else:
+            filtered.append(args[i])
+            i += 1
+    args = filtered
 
     sub = args[0]
     sub_args = args[1:]

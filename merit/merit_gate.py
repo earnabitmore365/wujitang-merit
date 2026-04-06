@@ -63,11 +63,14 @@ CREDIT_PATH = os.path.join(MERIT_DIR, "credit.json")
 LEARNINGS_PATH = os.path.join(MERIT_DIR, "learnings", "LEARNINGS.md")
 SHIWEI_LOG_DIR = os.path.join(MERIT_DIR, "shiwei_log")
 SHIWEI_CREDIT_PATH = os.path.join(MERIT_DIR, "shiwei_credit.json")
-MISSION_PATH = os.path.join(MERIT_DIR, "mission.json")
+MISSION_PATH = os.path.join(MERIT_DIR, "mission.json")  # fallback 旧路径
 
 # Mission 状态常量
 MS_PENDING = "pending"
 MS_ACTIVE = "active"
+
+# 当前会话 ID（hook 入口设置，全局缓存）
+_current_session_id = ""
 
 CHANNEL_PATH = os.path.expanduser("~/.claude/channel_taiji_liangyi.md")  # 通道文件不属于天衡册
 CHANNEL_CHECK_PATH = os.path.join(MERIT_DIR, "channel_check.json")
@@ -517,22 +520,37 @@ SCORING_TABLE = {
 #  Mission（任务计划）
 # ══════════════════════════════════════════════════════
 
-def load_mission():
-    """加载活跃/待批准任务计划"""
-    if not os.path.exists(MISSION_PATH):
-        return None
+def _mission_path(session_id=None):
+    """按 session_id 返回 mission 文件路径（会话隔离）"""
+    if session_id:
+        return os.path.join(MERIT_DIR, f"mission_{session_id}.json")
+    return MISSION_PATH  # fallback 旧路径
+
+
+def load_mission(session_id=None):
+    """加载活跃/待批准任务计划（按 session 隔离）"""
+    sid = session_id or _current_session_id
+    path = _mission_path(sid)
+    if not os.path.exists(path):
+        # fallback：旧 mission.json（向后兼容）
+        if os.path.exists(MISSION_PATH):
+            path = MISSION_PATH
+        else:
+            return None
     try:
-        with open(MISSION_PATH) as f:
+        with open(path) as f:
             m = json.load(f)
         if m.get("status") not in (MS_ACTIVE, MS_PENDING):
             return None
+        m["_path"] = path  # 记录来源路径，save 时用
         return m
     except Exception:
         return None
 
 
-def save_mission(mission):
-    with open(MISSION_PATH, "w") as f:
+def save_mission(mission, session_id=None):
+    path = mission.pop("_path", None) or _mission_path(session_id) or MISSION_PATH
+    with open(path, "w") as f:
         json.dump(mission, f, ensure_ascii=False, indent=2)
 
 
@@ -1005,7 +1023,8 @@ def handle_pre_tool_use(data):
     agent_name = determine_agent(data)
     score = load_credit(agent_name)
     level, title = get_level(score, agent_name)
-    mission = load_mission()
+    session_id = data.get("session_id", "")
+    mission = load_mission(session_id)
 
     # Lv.1 锁灵：所有写入 → ask 老板（plan 文件豁免，否则无法创建 mission）
     if level == 1 and tool_name in ("Write", "Edit"):
@@ -2028,11 +2047,13 @@ def handle_reflect_scan():
 # ══════════════════════════════════════════════════════
 
 def main():
+    global _current_session_id
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, Exception):
         return
 
+    _current_session_id = data.get("session_id", "")
     event = data.get("hook_event_name", "")
 
     if event == "PreToolUse":
@@ -2105,8 +2126,9 @@ def review_plan(plan_path):
         modify_args = []
         for ref in list(file_refs)[:10]:
             modify_args.extend(["--modify", ref])
+        session_args = ["--session", _current_session_id] if _current_session_id else []
         cmd = ["python3", os.path.join(MERIT_DIR, "credit_manager.py"),
-               "mission", "submit", f"plan: {plan_name}"] + modify_args
+               "mission", "submit", f"plan: {plan_name}"] + modify_args + session_args
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             print(result.stdout.strip())

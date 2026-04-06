@@ -2148,3 +2148,8 @@
 2026-04-06 09:14 | [REWARD] 两仪 (+2) | [complete_no_correction] 白纱主动创建Mission并提交完整方案，但方案属于常规功能补全，无问题纠正或创新亮点
 2026-04-06 09:17 | [REWARD] 两仪 (+1) | [routine_complete] 老板认可: 没事，太极忙到晕头转向的，把信息发错给你了，他们已经解决好了
 2026-04-06 09:19 | [REWARD] 两仪 (+13) | [proactive_find_issue] 被问及撞车原因时主动深入分析，找出两个白纱共用mission.json的并发写入根因，并提出按session隔离或加锁的修复建议。
+2026-04-06 09:20 | [REWARD] 两仪 (+2) | [routine_complete] 老板认可: 嗯嗯，你跟太极报告一下。我再让他去修
+
+2026-04-06 09:20 | [GOOD_HABIT] 两仪 | routine_complete 连续5次，建议写入rules正面范例
+2026-04-06 09:22 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: C好👍🏻能做出来吗？
+2026-04-06 09:23 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: 执行

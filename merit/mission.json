@@ -1,20 +1,20 @@
 {
-  "mission": "回测种子重建：seed4正在后台跑",
-  "agent": "两仪",
-  "started": "2026-04-06T09:17:31",
+  "mission": "plan: mission-per-session.md",
+  "agent": "太极",
+  "started": "2026-04-06T09:23:06",
   "status": "active",
   "estimated_reward": 0,
   "held_points": 2,
   "items": [
     {
-      "type": "bash",
-      "desc": "python3 generate_seed.py --seed4",
+      "type": "modify",
+      "file": "~/.claude/merit/merit_gate.py",
       "done": true
     },
     {
       "type": "modify",
-      "file": "/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md",
-      "done": false
+      "file": "~/.claude/merit/credit_manager.py",
+      "done": true
     }
   ]
 }
