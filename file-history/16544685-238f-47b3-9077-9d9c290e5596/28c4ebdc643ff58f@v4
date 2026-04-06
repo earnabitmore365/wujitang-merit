@@ -1,0 +1,2264 @@
+"""Indicator Cache — 统一指标计算，klines.duckdb 单一源头.
+
+策略不再自己算指标，全部通过 get_indicator() 调用。
+所有指标统一存在 klines.duckdb，不再使用 indicator_cache.db。
+
+链路：
+    init_cache(coin, interval, candles)
+        → 自动从 klines.duckdb 预加载已有指标到内存
+    get_indicator('rsi', period=14)
+        → 内存缓存命中 → 直接返回
+        → 未命中 → 现场计算 → 存内存 + 加入写回队列
+    close_cache()
+        → 批量写回 klines.duckdb（ALTER TABLE ADD COLUMN + UPDATE）
+        → 更新 indicator_col_map.json
+
+用法：
+    from core.indicator_cache import get_indicator, init_cache, close_cache
+
+    init_cache(coin='BTC', interval='1h', candles=all_candles)
+    rsi = get_indicator('rsi', period=14)
+    current_rsi = rsi[self.current_idx]
+    close_cache()  # 新指标写回 klines.duckdb
+
+注册新指标：
+    1. 写 compute_xxx(klines, **params) 函数
+    2. 加进文件底部 REGISTRY: 'xxx': compute_xxx
+    3. 策略 REQUIRES 里写 'xxx'
+    4. 首次调用时自动计算+存入 klines.duckdb，无需手动跑脚本
+
+@see data/build_klines_indicators.py — 批量预算（首次构建用）
+@see data/indicator_col_map.json — 列名→指标映射
+"""
+
+import contextlib
+import json
+import math
+import os
+from collections.abc import Callable
+from typing import Any
+
+# ==================== Context ====================
+
+# 双 namespace 支持（Grok+Gemini 全地形方案 2026-03-17）
+# 'normal' = 正常K线, 'flipped' = 翻转K线
+# 默认 namespace='normal' 向后兼容所有现有代码
+
+_contexts: dict[str, dict[str, Any]] = {
+    "normal": {
+        "coin": None, "interval": None, "candles": None,
+        "duckdb_path": None, "col_map_path": None,
+    },
+    "flipped": {
+        "coin": None, "interval": None, "candles": None,
+        "duckdb_path": None, "col_map_path": None,
+    },
+}
+
+# 待写回 klines.duckdb 的新指标队列
+# {namespace: [(coin, interval, col_name, indicator_name, params_json, sub_key, values), ...]}
+_pending_writes: dict[str, list] = {"normal": [], "flipped": []}
+
+_memory_caches: dict[str, dict[Any, Any]] = {
+    "normal": {},
+    "flipped": {},
+}
+
+# 向后兼容：旧代码用 _context / _memory_cache 直接访问 normal
+_context = _contexts["normal"]
+_memory_cache = _memory_caches["normal"]
+
+# 当前活跃 namespace（策略调 get_indicator 时用这个）
+_active_namespace = "normal"
+
+
+def init_cache(
+    coin: str, interval: str, candles: list[dict[str, Any]],
+    db_path: str | None = None, namespace: str = "normal",
+) -> None:
+    """初始化缓存上下文。每次回测前由 backtest engine 调用。.
+
+    自动从 klines.duckdb 预加载已有指标到内存缓存。
+
+    Args:
+        coin: 币种
+        interval: 周期
+        candles: 完整K线数据
+        db_path: 向后兼容参数，已忽略（统一用 klines.duckdb）
+        namespace: 'normal' 或 'flipped'（双引擎模式）
+
+    """
+    global _context, _memory_cache, _active_namespace
+
+    ctx = _contexts[namespace]
+    mcache = _memory_caches[namespace]
+
+    # 定位项目根和 DuckDB 路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    duckdb_path = os.path.join(project_root, "data", "klines.duckdb")
+    col_map_path = os.path.join(project_root, "data", "indicator_col_map.json")
+
+    # 如果 coin+interval 没变且是同一组K线对象，保留内存缓存
+    # flipped namespace 每次都强制重算（翻转数据每次不同）
+    same_ctx = (
+        ctx["coin"] == coin
+        and ctx["interval"] == interval
+        and ctx["candles"] is candles
+    )
+    if namespace == "normal" and same_ctx:
+        _active_namespace = namespace
+        _context = _contexts[namespace]
+        _memory_cache = _memory_caches[namespace]
+        return
+
+    ctx["coin"] = coin
+    ctx["interval"] = interval
+    ctx["candles"] = candles
+    ctx["duckdb_path"] = duckdb_path
+    ctx["col_map_path"] = col_map_path
+
+    # 清空内存缓存（新的 coin+interval）
+    mcache.clear()
+
+    # 切换活跃 namespace
+    _active_namespace = namespace
+    _context = _contexts[namespace]
+    _memory_cache = _memory_caches[namespace]
+
+    # normal namespace：自动从 klines.duckdb 预加载
+    if namespace == "normal" and os.path.exists(duckdb_path):
+        preload_from_duckdb(coin, interval, duckdb_path, col_map_path)
+
+
+def close_cache() -> None:
+    """关闭缓存，批量写回新指标到 klines.duckdb。."""
+    _flush_pending_writes()
+
+
+def _flush_pending_writes() -> None:
+    """将待写回的新指标批量写入 klines.duckdb + 更新 col_map。."""
+    for namespace in ("normal",):  # flipped 不写回
+        pending = _pending_writes.get(namespace, [])
+        if not pending:
+            continue
+
+        ctx = _contexts[namespace]
+        duckdb_path = ctx.get("duckdb_path")
+        col_map_path = ctx.get("col_map_path")
+
+        if not duckdb_path or not os.path.exists(duckdb_path):
+            _pending_writes[namespace] = []
+            continue
+
+        try:
+            import duckdb as _duckdb
+        except ImportError:
+            _pending_writes[namespace] = []
+            continue
+
+        # 读现有 col_map
+        col_map = {}
+        if col_map_path and os.path.exists(col_map_path):
+            with open(col_map_path, encoding="utf-8") as f:
+                col_map = json.load(f)
+
+        con = _duckdb.connect(duckdb_path)
+        col_map_updated = False
+
+        # 按 (coin, interval, col_name) 分组写入
+        for coin, interval, col_name, ind_name, params_json, sub_key, values, times in pending:
+            # 1. 确保列存在
+            try:
+                con.execute(f'ALTER TABLE klines ADD COLUMN "{col_name}" DOUBLE')
+            except Exception:
+                pass  # 列已存在
+
+            # 2. 批量 UPDATE
+            import pandas as pd
+            df = pd.DataFrame({"time": times, col_name: values})
+            con.register("tmp_upd", df)
+            con.execute(f"""
+                UPDATE klines SET "{col_name}" = tmp_upd."{col_name}"
+                FROM tmp_upd
+                WHERE klines.coin = ? AND klines.interval = ?
+                  AND klines.time = tmp_upd.time
+            """, [coin, interval])
+            con.unregister("tmp_upd")
+
+            # 3. 更新 col_map
+            if col_name not in col_map:
+                col_map[col_name] = [ind_name, params_json, sub_key]
+                col_map_updated = True
+
+        con.commit()
+        con.close()
+
+        # 写回 col_map
+        if col_map_updated and col_map_path:
+            with open(col_map_path, "w", encoding="utf-8") as f:
+                json.dump(col_map, f, indent=2, ensure_ascii=False)
+
+        _pending_writes[namespace] = []
+
+
+# ==================== Registry ====================
+
+REGISTRY: dict[str, Callable[..., Any]] = {}
+
+
+def list_indicators() -> list[str]:
+    """查看所有已注册指标。."""
+    return sorted(REGISTRY)
+
+
+def validate_requires(strategy_name: str, requires: list[str]) -> None:
+    """校验策略的 REQUIRES 声明。所有指标必须已注册。.
+
+    Args:
+        strategy_name: 策略名（报错用）
+        requires: 策略声明的指标列表
+
+    Raises:
+        ValueError: 有未注册的指标
+
+    """
+    missing = [r for r in requires if r not in REGISTRY]
+    if missing:
+        available = ", ".join(list_indicators())
+        msg = (
+            f"策略 '{strategy_name}' 需要指标 "
+            f"{missing}，但未注册。"
+            f"已注册: [{available}]"
+        )
+        raise ValueError(msg)
+
+
+# ==================== Core API ====================
+
+def _params_key(**params: Any) -> str:
+    """参数序列化为排序后 JSON，作为缓存 key。."""
+    return json.dumps(params, sort_keys=True)
+
+
+def _make_col_name(name: str, params: dict) -> str:
+    """生成 DuckDB 列名（如 rsi_p14, bb_p20_s2.0__upper）。."""
+    parts = [name]
+    for k, v in sorted(params.items()):
+        parts.append(f"{k[0]}{v}")
+    return "_".join(str(p) for p in parts)
+
+
+def set_active_namespace(namespace: str = "normal") -> None:
+    """切换活跃 namespace。.
+
+    让后续 get_indicator 用指定的缓存。
+    """
+    global _context, _memory_cache, _active_namespace
+    _active_namespace = namespace
+    _context = _contexts[namespace]
+    _memory_cache = _memory_caches[namespace]
+
+
+def get_indicator(name: str, coin: str | None = None, interval: str | None = None,
+                  namespace: str | None = None, **params: Any) -> Any:
+    """获取指标数据（完整序列）。.
+
+    查找顺序：内存缓存（含 preload）→ 现场计算 → 加入写回队列
+
+    Args:
+        name: 指标名（必须已注册）
+        coin: 币种（默认用当前上下文）
+        interval: 周期（默认用当前上下文）
+        namespace: 'normal'/'flipped'（默认用当前活跃的）
+        **params: 指标参数（如 period=14）
+
+    Returns:
+        List[float]: 单值指标（RSI, ATR, SMA 等），长度 = len(candles)
+        Dict[str, List[float]]: 多值指标（MACD, BB, Stochastic 等）
+
+    """
+    # 如果指定了 namespace，临时切换
+    if namespace is not None and namespace != _active_namespace:
+        ctx = _contexts[namespace]
+        mcache = _memory_caches[namespace]
+    else:
+        ctx = _context
+        mcache = _memory_cache
+
+    coin = coin or ctx["coin"]
+    interval = interval or ctx["interval"]
+    candles = ctx["candles"]
+
+    if not coin or not interval:
+        msg = "indicator_cache 未初始化。先调用 init_cache()。"
+        raise RuntimeError(msg)
+
+    pk = _params_key(**params)
+    mem_key = (coin, interval, name, pk)
+
+    # 1. 内存缓存（含 preload_from_duckdb 加载的）
+    if mem_key in mcache:
+        return mcache[mem_key]
+
+    # 2. 现场计算
+    if name not in REGISTRY:
+        available = ", ".join(list_indicators())
+        msg = f"指标 '{name}' 未注册。已注册: [{available}]"
+        raise ValueError(msg)
+
+    if candles is None or (coin != ctx["coin"] or interval != ctx["interval"]):
+        msg = (
+            f"无法计算 {name}({coin}/{interval})："
+            "没有该周期的K线数据。"
+        )
+        raise RuntimeError(msg)
+
+    result = REGISTRY[name](candles, **params)
+    mcache[mem_key] = result
+
+    # 3. 加入写回队列（normal namespace 才写回，flipped 不写）
+    ns = namespace or _active_namespace
+    if ns == "normal":
+        times = [c.get("time", c.get("timestamp", 0)) for c in candles]
+        if isinstance(result, dict):
+            # 多值指标：每个 sub_key 一列
+            for sub_key, values in result.items():
+                col_name = _make_col_name(name, params) + f"__{sub_key}"
+                _pending_writes["normal"].append(
+                    (coin, interval, col_name, name, pk, sub_key, list(values), times)
+                )
+        else:
+            # 单值指标：一列
+            col_name = _make_col_name(name, params)
+            _pending_writes["normal"].append(
+                (coin, interval, col_name, name, pk, None, list(result), times)
+            )
+
+    return result
+
+
+def preload_from_duckdb(coin: str, interval: str,
+                        duckdb_path: str, col_map_path: str) -> int:
+    """从 DuckDB 加载预算指标到内存缓存，避免策略重算。
+
+    klines.duckdb 有 101 个预算指标列，indicator_col_map.json 有列名→缓存key映射。
+    调用后 get_indicator() 命中内存缓存直接返回，零计算。
+    DuckDB 里没有的指标仍走 fallback 现场计算。
+
+    Args:
+        coin: 币种
+        interval: 周期
+        duckdb_path: klines.duckdb 路径
+        col_map_path: indicator_col_map.json 路径
+
+    Returns:
+        加载的指标数量（按 indicator+params 去重后）
+    """
+    # 跳过重复预加载（同一 coin/interval 只加载一次）
+    sentinel = ("__preloaded__", coin, interval)
+    if sentinel in _memory_cache:
+        return 0
+
+    try:
+        import duckdb as _duckdb
+    except ImportError:
+        return 0
+
+    if not os.path.exists(duckdb_path) or not os.path.exists(col_map_path):
+        return 0
+
+    with open(col_map_path, encoding="utf-8") as f:
+        col_map = json.load(f)
+
+    indicator_cols = list(col_map.keys())
+    if not indicator_cols:
+        return 0
+
+    cols_sql = ", ".join(f'"{c}"' for c in indicator_cols)
+
+    con = _duckdb.connect(duckdb_path, read_only=True)
+    rows = con.execute(
+        f"SELECT {cols_sql} FROM klines "
+        f"WHERE coin = ? AND interval = ? ORDER BY time",
+        [coin, interval],
+    ).fetchall()
+    con.close()
+
+    if not rows:
+        return 0
+
+    # 按 (indicator_name, params_key) 分组
+    grouped: dict[tuple[str, str], Any] = {}
+    for col_idx, col_name in enumerate(indicator_cols):
+        entry = col_map[col_name]
+        name, params_json = entry[0], entry[1]
+        sub_key = entry[2] if len(entry) > 2 else None
+        key = (name, params_json)
+        values = [r[col_idx] for r in rows]
+
+        if sub_key:  # 多值指标（BB, MACD, ADX 等）
+            if key not in grouped:
+                grouped[key] = {}
+            grouped[key][sub_key] = values
+        else:  # 单值指标（RSI, SMA, ATR 等）
+            grouped[key] = values
+
+    # 注入内存缓存（用当前活跃 namespace，不硬绑 normal）
+    mcache = _memory_caches[_active_namespace]
+    loaded = 0
+    for (name, params_json), data in grouped.items():
+        mem_key = (coin, interval, name, params_json)
+        mcache[mem_key] = data
+        loaded += 1
+
+    mcache[sentinel] = True
+    return loaded
+
+
+# ==================== 辅助函数 ====================
+
+def _get_source(klines: list[dict[str, Any]], source: str = "close") -> list[float]:
+    """从K线提取价格序列。.
+
+    支持: close, high, low, open, volume,
+          hl2/midpoint, hlc3/typical, ohlc4
+    """
+    if source == "close":
+        return [k["close"] for k in klines]
+    if source == "high":
+        return [k["high"] for k in klines]
+    if source == "low":
+        return [k["low"] for k in klines]
+    if source == "open":
+        return [k["open"] for k in klines]
+    if source in ("hl2", "midpoint"):
+        return [(k["high"] + k["low"]) / 2.0 for k in klines]
+    if source in ("hlc3", "typical"):
+        return [(k["high"] + k["low"] + k["close"]) / 3.0 for k in klines]
+    if source == "ohlc4":
+        return [
+            (k["open"] + k["high"] + k["low"] + k["close"]) / 4.0
+            for k in klines
+        ]
+    if source == "volume":
+        return [k.get("volume", 0) for k in klines]
+    return [k.get(source, 0) for k in klines]
+
+
+# ==================== 指标计算函数 ====================
+# 所有函数返回与 klines 等长的序列，series[i] 对应 klines[i]
+
+
+def compute_rsi(klines: list[dict[str, Any]], period: int = 14) -> list[float]:
+    """Wilder RSI。.
+
+    前 period 个值为 50.0（热身期），
+    从第 period 个开始有真实值。
+    """
+    n = len(klines)
+    if n < 2:
+        return [50.0] * n
+
+    result = [50.0] * n
+
+    changes = [
+        klines[i]["close"] - klines[i - 1]["close"]
+        for i in range(1, n)
+    ]
+    gains = [max(c, 0) for c in changes]
+    losses = [max(-c, 0) for c in changes]
+
+    if len(gains) < period:
+        return result
+
+    # 初始 SMA
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    # 第一个 RSI 值（klines[period]）
+    if avg_loss == 0:
+        result[period] = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        result[period] = 100.0 - (100.0 / (1.0 + rs))
+
+    # Wilder 平滑
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            result[i + 1] = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            result[i + 1] = 100.0 - (100.0 / (1.0 + rs))
+
+    return result
+
+
+def compute_atr(klines: list[dict[str, Any]], period: int = 14) -> list[float]:
+    """ATR（True Range 的 SMA）。.
+
+    第一个值为 0.0（需要前一根K线的 close）。
+    """
+    n = len(klines)
+    if n < 2:
+        return [0.0] * n
+
+    result = [0.0] * n
+
+    # True Range
+    tr_list = []
+    for i in range(1, n):
+        high = klines[i]["high"]
+        low = klines[i]["low"]
+        prev_close = klines[i - 1]["close"]
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        tr_list.append(tr)
+
+    # SMA of TR
+    for i in range(len(tr_list)):
+        if i < period - 1:
+            result[i + 1] = sum(tr_list[:i + 1]) / (i + 1)
+        else:
+            result[i + 1] = sum(tr_list[i - period + 1:i + 1]) / period
+
+    return result
+
+
+def compute_sma(
+    klines: list[dict[str, Any]], period: int = 20,
+    source: str = "close",
+) -> list[float]:
+    """Calculate simple moving average."""
+    n = len(klines)
+    values = _get_source(klines, source)
+    result = [0.0] * n
+
+    for i in range(n):
+        if i < period - 1:
+            result[i] = sum(values[:i + 1]) / (i + 1)
+        else:
+            result[i] = sum(values[i - period + 1:i + 1]) / period
+
+    return result
+
+
+def compute_ema(
+    klines: list[dict[str, Any]], period: int = 20,
+    source: str = "close",
+) -> list[float]:
+    """Exponential Moving Average。."""
+    n = len(klines)
+    if n == 0:
+        return []
+
+    values = _get_source(klines, source)
+    result = [0.0] * n
+
+    if n < period:
+        for i in range(n):
+            result[i] = sum(values[:i + 1]) / (i + 1)
+        return result
+
+    # 热身期用 SMA
+    for i in range(period - 1):
+        result[i] = sum(values[:i + 1]) / (i + 1)
+
+    # 初始 EMA = SMA(period)
+    k = 2.0 / (period + 1)
+    ema = sum(values[:period]) / period
+    result[period - 1] = ema
+
+    # EMA
+    for i in range(period, n):
+        ema = (values[i] - ema) * k + ema
+        result[i] = ema
+
+    return result
+
+
+def compute_macd(
+    klines: list[dict[str, Any]], fast: int = 12,
+    slow: int = 26, signal: int = 9,
+) -> dict[str, list[float]]:
+    """MACD（EMA快线 - EMA慢线 + 信号线 + 柱状图）。.
+
+    Returns:
+        {'macd': [...], 'signal': [...], 'histogram': [...]}
+
+    """
+    n = len(klines)
+    closes = [k["close"] for k in klines]
+
+    macd_line = [0.0] * n
+    signal_line = [0.0] * n
+    histogram = [0.0] * n
+
+    if n < slow + signal:
+        return {
+            "macd": macd_line,
+            "signal": signal_line,
+            "histogram": histogram,
+        }
+
+    # 内部 EMA 序列计算
+    def _ema_series(data: list[float], period: int) -> list[float]:
+        if len(data) < period:
+            return data[:]
+        k = 2.0 / (period + 1)
+        ema = sum(data[:period]) / period
+        result = [ema]
+        for v in data[period:]:
+            ema = (v - ema) * k + ema
+            result.append(ema)
+        return result
+
+    ema_fast = _ema_series(closes, fast)
+    ema_slow = _ema_series(closes, slow)
+
+    # 对齐：ema_slow 比 ema_fast 少 (slow - fast) 个值
+    offset = len(ema_fast) - len(ema_slow)
+    macd_raw = [
+        ema_fast[i + offset] - ema_slow[i]
+        for i in range(len(ema_slow))
+    ]
+
+    signal_raw = _ema_series(macd_raw, signal)
+
+    # 映射回 klines 索引
+    # ema_slow 从 klines[slow-1] 开始 → macd_raw[0] 对应 klines[slow-1]
+    macd_start = slow - 1
+    for i in range(len(macd_raw)):
+        macd_line[macd_start + i] = macd_raw[i]
+
+    # signal_raw 从 macd_raw[signal-1] 开始
+    signal_start = macd_start + signal - 1
+    for i in range(len(signal_raw)):
+        signal_line[signal_start + i] = signal_raw[i]
+
+    # Histogram
+    for i in range(n):
+        histogram[i] = macd_line[i] - signal_line[i]
+
+    return {"macd": macd_line, "signal": signal_line, "histogram": histogram}
+
+
+def compute_bb(
+    klines: list[dict[str, Any]], period: int = 20,
+    std: float = 2.0,
+) -> dict[str, list[float]]:
+    """Bollinger Bands（布林带）。.
+
+    Returns:
+        {'upper': [...], 'middle': [...], 'lower': [...]}
+
+    """
+    n = len(klines)
+    closes = [k["close"] for k in klines]
+
+    upper = [0.0] * n
+    middle = [0.0] * n
+    lower = [0.0] * n
+
+    for i in range(n):
+        window = closes[:i + 1] if i < period - 1 else closes[i - period + 1:i + 1]
+
+        avg = sum(window) / len(window)
+        middle[i] = avg
+
+        if len(window) >= 2:
+            # 布林带标准实现用 population stdev (÷N)
+            sd = (sum((p - avg) ** 2 for p in window) / len(window)) ** 0.5
+        else:
+            sd = 0.0
+
+        upper[i] = avg + std * sd
+        lower[i] = avg - std * sd
+
+    return {"upper": upper, "middle": middle, "lower": lower}
+
+
+def compute_vwap(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """VWAP（滚动成交量加权均价）。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(n):
+        start = max(0, i - period + 1)
+        tp_sum = 0.0
+        vol_sum = 0.0
+        for j in range(start, i + 1):
+            c = klines[j]
+            tp = (c["high"] + c["low"] + c["close"]) / 3.0
+            v = c.get("volume", 1000)
+            tp_sum += tp * v
+            vol_sum += v
+        result[i] = tp_sum / vol_sum if vol_sum > 0 else 0.0
+
+    return result
+
+
+def compute_stochastic(
+    klines: list[dict[str, Any]], k_period: int = 14,
+    d_period: int = 3,
+) -> dict[str, list[float]]:
+    """Stochastic Oscillator（随机指标）。.
+
+    Returns:
+        {'k': [...], 'd': [...]}
+
+    """
+    n = len(klines)
+    k_line = [50.0] * n
+    d_line = [50.0] * n
+
+    for i in range(n):
+        start = max(0, i - k_period + 1)
+        window = klines[start:i + 1]
+
+        highest = max(c["high"] for c in window)
+        lowest = min(c["low"] for c in window)
+
+        if highest == lowest:
+            k_line[i] = 50.0
+        else:
+            k_line[i] = (
+                (klines[i]["close"] - lowest)
+                / (highest - lowest) * 100.0
+            )
+
+    # %D = SMA of %K
+    for i in range(n):
+        if i < d_period - 1:
+            d_line[i] = sum(k_line[:i + 1]) / (i + 1)
+        else:
+            d_line[i] = sum(k_line[i - d_period + 1:i + 1]) / d_period
+
+    return {"k": k_line, "d": d_line}
+
+
+def compute_fvg(
+    klines: list[dict[str, Any]], lookback: int = 20,
+    min_gap_pct: float = 0.001,
+) -> dict[str, list[float]]:
+    """Fair Value Gap（公允价值缺口）。.
+
+    三根K线模式：
+    - 看涨FVG：第3根low > 第1根high（向上跳空）
+    - 看跌FVG：第3根high < 第1根low（向下跳空）
+
+    在lookback窗口内追踪最近的未填补缺口。
+
+    Returns:
+        {
+            'bull_gap_low': [...],    # 最近未填补看涨FVG下沿（无则0）
+            'bull_gap_high': [...],   # 最近未填补看涨FVG上沿（无则0）
+            'bear_gap_low': [...],    # 最近未填补看跌FVG下沿（无则0）
+            'bear_gap_high': [...],   # 最近未填补看跌FVG上沿（无则0）
+            'bull_signal': [...],     # 价格在看涨FVG区域内=1（做多机会）
+            'bear_signal': [...],     # 价格在看跌FVG区域内=1（做空机会）
+        }
+
+    """
+    n = len(klines)
+    bull_gap_low = [0.0] * n
+    bull_gap_high = [0.0] * n
+    bear_gap_low = [0.0] * n
+    bear_gap_high = [0.0] * n
+    bull_signal = [0.0] * n
+    bear_signal = [0.0] * n
+
+    if n < 3:
+        return {
+            "bull_gap_low": bull_gap_low, "bull_gap_high": bull_gap_high,
+            "bear_gap_low": bear_gap_low, "bear_gap_high": bear_gap_high,
+            "bull_signal": bull_signal, "bear_signal": bear_signal,
+        }
+
+    for i in range(2, n):
+        current_price = klines[i]["close"]
+        best_bull = None  # (gap_low, gap_high, age)
+        best_bear = None
+
+        search_start = max(0, i - lookback)
+        for j in range(search_start, i - 1):
+            c1 = klines[j]
+            if j + 2 > i:
+                break
+            c3 = klines[j + 2]
+
+            # 看涨FVG
+            if c3["low"] > c1["high"]:
+                g_low = c1["high"]
+                g_high = c3["low"]
+                gap_size = (g_high - g_low) / g_low if g_low > 0 else 0
+                if gap_size >= min_gap_pct:
+                    # 检查是否已被后续K线填补（low触及gap_low）
+                    filled = False
+                    for k in range(j + 3, i + 1):
+                        if klines[k]["low"] <= g_low:
+                            filled = True
+                            break
+                    if not filled:
+                        age = i - j
+                        if best_bull is None or age < best_bull[2]:
+                            best_bull = (g_low, g_high, age)
+
+            # 看跌FVG
+            if c3["high"] < c1["low"]:
+                g_high = c1["low"]
+                g_low = c3["high"]
+                gap_size = (g_high - g_low) / g_low if g_low > 0 else 0
+                if gap_size >= min_gap_pct:
+                    filled = False
+                    for k in range(j + 3, i + 1):
+                        if klines[k]["high"] >= g_high:
+                            filled = True
+                            break
+                    if not filled:
+                        age = i - j
+                        if best_bear is None or age < best_bear[2]:
+                            best_bear = (g_low, g_high, age)
+
+        if best_bull:
+            bull_gap_low[i] = best_bull[0]
+            bull_gap_high[i] = best_bull[1]
+            if best_bull[0] <= current_price <= best_bull[1]:
+                bull_signal[i] = 1.0
+
+        if best_bear:
+            bear_gap_low[i] = best_bear[0]
+            bear_gap_high[i] = best_bear[1]
+            if best_bear[0] <= current_price <= best_bear[1]:
+                bear_signal[i] = 1.0
+
+    return {
+        "bull_gap_low": bull_gap_low, "bull_gap_high": bull_gap_high,
+        "bear_gap_low": bear_gap_low, "bear_gap_high": bear_gap_high,
+        "bull_signal": bull_signal, "bear_signal": bear_signal,
+    }
+
+
+def compute_fvg_detect(
+    klines: list[dict[str, Any]], relaxed_window: int = 5,
+    min_gap_pct: float = 0.0,
+) -> dict[str, list[float]]:
+    """FVG检测器 — 纯检测有没有缺口，不管回踩/填补。.
+
+    和降噪脚本 oi_fvg_test.py 的 check_fvg / check_fvg_relaxed 同逻辑。
+    给其他策略当过滤器/信号源用（比如均值回归策略看到缺口就做反向吃回填）。
+
+    Returns:
+        {
+            'bull': [...],          # 当前3根K线有向上缺口=1（严格）
+            'bear': [...],          # 当前3根K线有向下缺口=1（严格）
+            'bull_relaxed': [...],  # 最近N根内有向上缺口=1（宽松）
+            'bear_relaxed': [...],  # 最近N根内有向下缺口=1（宽松）
+            'bull_gap_low': [...],  # 严格版缺口下沿（无则0）
+            'bull_gap_high': [...], # 严格版缺口上沿（无则0）
+            'bear_gap_low': [...],  # 严格版缺口下沿（无则0）
+            'bear_gap_high': [...], # 严格版缺口上沿（无则0）
+        }
+
+    """
+    n = len(klines)
+    bull = [0.0] * n
+    bear = [0.0] * n
+    bull_relaxed = [0.0] * n
+    bear_relaxed = [0.0] * n
+    bull_gap_low = [0.0] * n
+    bull_gap_high = [0.0] * n
+    bear_gap_low = [0.0] * n
+    bear_gap_high = [0.0] * n
+
+    if n < 3:
+        return {
+            "bull": bull, "bear": bear,
+            "bull_relaxed": bull_relaxed, "bear_relaxed": bear_relaxed,
+            "bull_gap_low": bull_gap_low, "bull_gap_high": bull_gap_high,
+            "bear_gap_low": bear_gap_low, "bear_gap_high": bear_gap_high,
+        }
+
+    for i in range(2, n):
+        c0 = klines[i]
+        c2 = klines[i - 2]
+
+        # 严格：当前3根K线
+        # 向上缺口：第3根low > 第1根high
+        if c0["low"] > c2["high"]:
+            g_low = c2["high"]
+            g_high = c0["low"]
+            gap_size = (g_high - g_low) / g_low if g_low > 0 else 0
+            if gap_size >= min_gap_pct:
+                bull[i] = 1.0
+                bull_gap_low[i] = g_low
+                bull_gap_high[i] = g_high
+
+        # 向下缺口：第3根high < 第1根low
+        if c0["high"] < c2["low"]:
+            g_high = c2["low"]
+            g_low = c0["high"]
+            gap_size = (g_high - g_low) / g_low if g_low > 0 else 0
+            if gap_size >= min_gap_pct:
+                bear[i] = 1.0
+                bear_gap_low[i] = g_low
+                bear_gap_high[i] = g_high
+
+        # 宽松：最近N根内有缺口
+        for offset in range(min(relaxed_window, i - 1)):
+            ci = i - offset
+            if ci < 2:
+                continue
+            c0r = klines[ci]
+            c2r = klines[ci - 2]
+            if c0r["low"] > c2r["high"]:
+                gap_size = (
+                    (c0r["low"] - c2r["high"]) / c2r["high"]
+                    if c2r["high"] > 0 else 0
+                )
+                if gap_size >= min_gap_pct:
+                    bull_relaxed[i] = 1.0
+            if c0r["high"] < c2r["low"]:
+                gap_size = (
+                    (c2r["low"] - c0r["high"]) / c0r["high"]
+                    if c0r["high"] > 0 else 0
+                )
+                if gap_size >= min_gap_pct:
+                    bear_relaxed[i] = 1.0
+            if bull_relaxed[i] and bear_relaxed[i]:
+                break  # 两个都找到了，不用继续
+
+    return {
+        "bull": bull, "bear": bear,
+        "bull_relaxed": bull_relaxed, "bear_relaxed": bear_relaxed,
+        "bull_gap_low": bull_gap_low, "bull_gap_high": bull_gap_high,
+        "bear_gap_low": bear_gap_low, "bear_gap_high": bear_gap_high,
+    }
+
+
+def compute_ad(klines: list[dict[str, Any]]) -> list[float]:
+    """Accumulation/Distribution Line（累积派发线）。.
+
+    MFM = ((close - low) - (high - close)) / (high - low)
+    AD = cumulative sum of (MFM × volume)
+    """
+    n = len(klines)
+    result = [0.0] * n
+    cum = 0.0
+
+    for i in range(n):
+        k = klines[i]
+        hl = k["high"] - k["low"]
+        mfm = (k["close"] - k["low"] - (k["high"] - k["close"])) / hl if hl > 0 else 0.0
+        cum += mfm * k.get("volume", 1000)
+        result[i] = cum
+
+    return result
+
+
+def compute_adx(klines: list[dict[str, Any]], period: int = 14) -> dict[str, list[float]]:
+    """Wilder ADX（平均方向指数）。.
+
+    Returns:
+        {'adx': [...], 'plus_di': [...], 'minus_di': [...]}
+
+    """
+    n = len(klines)
+    adx_out = [0.0] * n
+    pdi_out = [0.0] * n
+    mdi_out = [0.0] * n
+
+    if n < period * 2 + 1:
+        return {"adx": adx_out, "plus_di": pdi_out, "minus_di": mdi_out}
+
+    # +DM, -DM, TR
+    plus_dm = []
+    minus_dm = []
+    tr_list = []
+
+    for i in range(1, n):
+        h = klines[i]["high"]
+        lo = klines[i]["low"]
+        ph = klines[i - 1]["high"]
+        pl = klines[i - 1]["low"]
+        pc = klines[i - 1]["close"]
+
+        up = h - ph
+        down = pl - lo
+        plus_dm.append(up if up > down and up > 0 else 0.0)
+        minus_dm.append(down if down > up and down > 0 else 0.0)
+        tr_list.append(max(h - lo, abs(h - pc), abs(lo - pc)))
+
+    # Wilder 平滑
+    def wilder_smooth(values: list[float], p: int) -> list[float]:
+        if len(values) < p:
+            return []
+        first = sum(values[:p]) / p
+        result = [first]
+        for i in range(p, len(values)):
+            result.append((result[-1] * (p - 1) + values[i]) / p)
+        return result
+
+    smooth_tr = wilder_smooth(tr_list, period)
+    smooth_plus = wilder_smooth(plus_dm, period)
+    smooth_minus = wilder_smooth(minus_dm, period)
+
+    if not smooth_tr:
+        return {"adx": adx_out, "plus_di": pdi_out, "minus_di": mdi_out}
+
+    length = min(len(smooth_tr), len(smooth_plus), len(smooth_minus))
+    dx_list = []
+    pdi_values = []
+    mdi_values = []
+
+    for i in range(length):
+        atr_val = smooth_tr[i]
+        if atr_val == 0:
+            pdi_values.append(0.0)
+            mdi_values.append(0.0)
+            dx_list.append(0.0)
+            continue
+        pdi = 100 * smooth_plus[i] / atr_val
+        mdi = 100 * smooth_minus[i] / atr_val
+        pdi_values.append(pdi)
+        mdi_values.append(mdi)
+        di_sum = pdi + mdi
+        dx_list.append(abs(pdi - mdi) / di_sum * 100 if di_sum > 0 else 0.0)
+
+    adx_smooth = wilder_smooth(dx_list, period)
+
+    # 映射回 klines 索引
+    # smooth_tr 从 klines[period] 开始
+    # （tr_list 从 index 1 开始，wilder_smooth 需 period 个值）
+    # smooth 开始位置 = period
+    # （tr_list[0]=klines[1], wilder_smooth 第一个值对应 klines[period]）
+    pdi_start = period
+    for i in range(length):
+        idx = pdi_start + i
+        if idx < n:
+            pdi_out[idx] = pdi_values[i]
+            mdi_out[idx] = mdi_values[i]
+
+    # ADX 从 DX 的 wilder_smooth 开始
+    if adx_smooth:
+        adx_start = pdi_start + period - 1
+        for i in range(len(adx_smooth)):
+            idx = adx_start + i
+            if idx < n:
+                adx_out[idx] = adx_smooth[i]
+
+    return {"adx": adx_out, "plus_di": pdi_out, "minus_di": mdi_out}
+
+
+def compute_aroon(klines: list[dict[str, Any]], period: int = 25) -> dict[str, list[float]]:
+    """Aroon 指标。.
+
+    Aroon Up = ((period - 距离最高点的K线数) / period) × 100
+    Aroon Down = ((period - 距离最低点的K线数) / period) × 100
+
+    Returns:
+        {'up': [...], 'down': [...], 'osc': [...]}
+
+    """
+    n = len(klines)
+    up = [50.0] * n
+    down = [50.0] * n
+    osc = [0.0] * n
+
+    for i in range(period, n):
+        window_highs = [klines[j]["high"] for j in range(i - period, i + 1)]
+        window_lows = [klines[j]["low"] for j in range(i - period, i + 1)]
+
+        highest = max(window_highs)
+        lowest = min(window_lows)
+
+        # 找最近的最高/最低点位置（从右往左找）
+        days_since_high = period - (period - window_highs[::-1].index(highest))
+        days_since_low = period - (period - window_lows[::-1].index(lowest))
+
+        up[i] = ((period - days_since_high) / period) * 100
+        down[i] = ((period - days_since_low) / period) * 100
+        osc[i] = up[i] - down[i]
+
+    return {"up": up, "down": down, "osc": osc}
+
+
+def compute_ao(klines: list[dict[str, Any]], fast: int = 5, slow: int = 34) -> list[float]:
+    """Awesome Oscillator (Bill Williams)。.
+
+    AO = SMA(fast, midprice) - SMA(slow, midprice)
+    midprice = (high + low) / 2
+    """
+    n = len(klines)
+    result = [0.0] * n
+    midprices = [(k["high"] + k["low"]) / 2.0 for k in klines]
+
+    for i in range(slow - 1, n):
+        fast_start = max(0, i - fast + 1)
+        fast_sma = sum(midprices[fast_start:i + 1]) / min(fast, i - fast_start + 1)
+        slow_start = i - slow + 1
+        slow_sma = sum(midprices[slow_start:i + 1]) / slow
+        result[i] = fast_sma - slow_sma
+
+    return result
+
+
+def compute_bop(klines: list[dict[str, Any]]) -> list[float]:
+    """Balance of Power（买卖力量对比）。.
+
+    BOP = (close - open) / (high - low)
+    返回未平滑的原始值，平滑由策略自行用 SMA 处理。
+    """
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(n):
+        k = klines[i]
+        hl = k["high"] - k["low"]
+        if hl > 0:
+            result[i] = (k["close"] - k["open"]) / hl
+        else:
+            result[i] = 0.0
+
+    return result
+
+
+def compute_cci(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """Commodity Channel Index。.
+
+    TP = (high + low + close) / 3
+    CCI = (TP - SMA(TP)) / (0.015 × MAD)
+    """
+    n = len(klines)
+    result = [0.0] * n
+    tps = [(k["high"] + k["low"] + k["close"]) / 3.0 for k in klines]
+
+    for i in range(period - 1, n):
+        window = tps[i - period + 1:i + 1]
+        mean_tp = sum(window) / period
+        mad = sum(abs(tp - mean_tp) for tp in window) / period
+        if mad > 0:
+            result[i] = (tps[i] - mean_tp) / (0.015 * mad)
+
+    return result
+
+
+def compute_cmf(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """Chaikin Money Flow。.
+
+    CMF = sum(MFM × volume, period) / sum(volume, period)
+    MFM = ((close - low) - (high - close)) / (high - low)
+    """
+    n = len(klines)
+    result = [0.0] * n
+
+    mfv = [0.0] * n
+    vols = [0.0] * n
+
+    for i in range(n):
+        k = klines[i]
+        hl = k["high"] - k["low"]
+        v = k.get("volume", 1000)
+        vols[i] = v
+        if hl > 0:
+            mfm = ((k["close"] - k["low"]) - (k["high"] - k["close"])) / hl
+            mfv[i] = mfm * v
+
+    for i in range(period - 1, n):
+        vol_sum = sum(vols[i - period + 1:i + 1])
+        if vol_sum > 0:
+            result[i] = sum(mfv[i - period + 1:i + 1]) / vol_sum
+
+    return result
+
+
+def compute_cmo(klines: list[dict[str, Any]], period: int = 9) -> list[float]:
+    """Chande Momentum Oscillator。.
+
+    CMO = (sum_ups - sum_downs) / (sum_ups + sum_downs) × 100
+    """
+    n = len(klines)
+    result = [0.0] * n
+
+    if n < 2:
+        return result
+
+    changes = [klines[i]["close"] - klines[i - 1]["close"] for i in range(1, n)]
+
+    for i in range(period, len(changes) + 1):
+        window = changes[i - period:i]
+        ups = sum(c for c in window if c > 0)
+        downs = sum(abs(c) for c in window if c < 0)
+        total = ups + downs
+        if total > 0:
+            result[i] = (ups - downs) / total * 100
+
+    return result
+
+
+def compute_roc(klines: list[dict[str, Any]], period: int = 12) -> list[float]:
+    """Rate of Change (%)。.
+
+    ROC = (close - close[n]) / close[n] × 100
+    """
+    n = len(klines)
+    result = [0.0] * n
+    closes = [k["close"] for k in klines]
+
+    for i in range(period, n):
+        prev = closes[i - period]
+        if prev != 0:
+            result[i] = (closes[i] - prev) / prev * 100
+
+    return result
+
+
+def compute_chaikin_osc(
+    klines: list[dict[str, Any]], fast: int = 3,
+    slow: int = 10,
+) -> list[float]:
+    """Chaikin Oscillator = EMA(fast, AD) - EMA(slow, AD)。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    # 先算 AD Line
+    ad = [0.0] * n
+    cum = 0.0
+    for i in range(n):
+        k = klines[i]
+        hl = k["high"] - k["low"]
+        mfm = (k["close"] - k["low"] - (k["high"] - k["close"])) / hl if hl > 0 else 0.0
+        cum += mfm * k.get("volume", 1000)
+        ad[i] = cum
+
+    # EMA of AD
+    def ema_of_series(values: list[float], period: int) -> list[float]:
+        out = [0.0] * len(values)
+        if len(values) < period:
+            return out
+        k = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        out[period - 1] = ema
+        for i in range(period, len(values)):
+            ema = (values[i] - ema) * k + ema
+            out[i] = ema
+        return out
+
+    fast_ema = ema_of_series(ad, fast)
+    slow_ema = ema_of_series(ad, slow)
+
+    for i in range(slow - 1, n):
+        result[i] = fast_ema[i] - slow_ema[i]
+
+    return result
+
+
+def compute_connors_rsi(klines: list[dict[str, Any]], rsi_period: int = 2,
+                         streak_rsi_period: int = 3,
+                         percentile_period: int = 100) -> list[float]:
+    """ConnorsRSI = (RSI(2) + StreakRSI(3) + PercentileRank(100)) / 3。."""
+    n = len(klines)
+    result = [50.0] * n
+    closes = [k["close"] for k in klines]
+
+    # 1. RSI(2) on closes
+    rsi_vals = compute_rsi(klines, period=rsi_period)
+
+    # 2. Streak series
+    streak_series = [0.0] * n
+    streak = 0
+    for i in range(1, n):
+        if closes[i] > closes[i - 1]:
+            streak = streak + 1 if streak >= 0 else 1
+        elif closes[i] < closes[i - 1]:
+            streak = streak - 1 if streak <= 0 else -1
+        else:
+            streak = 0
+        streak_series[i] = float(streak)
+
+    # RSI on streak series (custom, not from klines)
+    def rsi_on_values(values: list[float], period: int) -> list[float]:
+        n2 = len(values)
+        out = [50.0] * n2
+        if n2 < period + 1:
+            return out
+        changes = [values[i] - values[i - 1] for i in range(1, n2)]
+        gains = [max(c, 0) for c in changes]
+        losses = [max(-c, 0) for c in changes]
+        if len(gains) < period:
+            return out
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+        if avg_loss == 0:
+            out[period] = 100.0
+        else:
+            out[period] = 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+            if avg_loss == 0:
+                out[i + 1] = 100.0
+            else:
+                out[i + 1] = 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+        return out
+
+    streak_rsi = rsi_on_values(streak_series, streak_rsi_period)
+
+    # 3. Percentile rank of current price change
+    pct_rank = [50.0] * n
+    for i in range(percentile_period + 1, n):
+        if closes[i - 1] == 0:
+            continue
+        current_change = (closes[i] - closes[i - 1]) / closes[i - 1] * 100
+        changes = [
+            (closes[j] - closes[j - 1]) / closes[j - 1] * 100
+            for j in range(i - percentile_period, i + 1)
+            if closes[j - 1] != 0
+        ]
+        if changes:
+            count_below = sum(1 for c in changes if c < current_change)
+            pct_rank[i] = count_below / len(changes) * 100
+
+    # Combine
+    for i in range(n):
+        result[i] = (rsi_vals[i] + streak_rsi[i] + pct_rank[i]) / 3.0
+
+    return result
+
+
+def compute_coppock(klines: list[dict[str, Any]], roc_short: int = 11, roc_long: int = 14,
+                     wma_period: int = 10) -> list[float]:
+    """Coppock Curve = WMA(ROC(short) + ROC(long), period)。."""
+    n = len(klines)
+    result = [0.0] * n
+    closes = [k["close"] for k in klines]
+
+    # ROC values
+    roc_sum = [0.0] * n
+    for i in range(roc_long, n):
+        prev_s = closes[i - roc_short]
+        prev_l = closes[i - roc_long]
+        roc_s = (
+            (closes[i] - prev_s) / prev_s * 100
+            if prev_s != 0 else 0
+        )
+        roc_l = (
+            (closes[i] - prev_l) / prev_l * 100
+            if prev_l != 0 else 0
+        )
+        roc_sum[i] = roc_s + roc_l
+
+    # WMA
+    for i in range(roc_long + wma_period - 1, n):
+        window = roc_sum[i - wma_period + 1:i + 1]
+        weight_sum = wma_period * (wma_period + 1) / 2
+        result[i] = sum(window[j] * (j + 1) for j in range(wma_period)) / weight_sum
+
+    return result
+
+
+def compute_dema(
+    klines: list[dict[str, Any]], period: int = 20,
+    source: str = "close",
+) -> list[float]:
+    """Double EMA = 2×EMA - EMA(EMA)。."""
+    n = len(klines)
+    values = _get_source(klines, source)
+    result = [0.0] * n
+
+    if n < period:
+        return result
+
+    k = 2.0 / (period + 1)
+
+    # EMA1
+    ema1 = [0.0] * n
+    ema_val = sum(values[:period]) / period
+    ema1[period - 1] = ema_val
+    for i in range(period, n):
+        ema_val = (values[i] - ema_val) * k + ema_val
+        ema1[i] = ema_val
+
+    # EMA2 (EMA of EMA1, starting from period-1)
+    ema2 = [0.0] * n
+    start = period - 1
+    valid_ema1 = ema1[start:]
+    if len(valid_ema1) >= period:
+        ema2_val = sum(valid_ema1[:period]) / period
+        ema2[start + period - 1] = ema2_val
+        for i in range(period, len(valid_ema1)):
+            ema2_val = (valid_ema1[i] - ema2_val) * k + ema2_val
+            ema2[start + i] = ema2_val
+
+    # DEMA = 2*EMA1 - EMA2  # noqa: ERA001
+    dema_start = start + period - 1
+    for i in range(dema_start, n):
+        result[i] = 2 * ema1[i] - ema2[i]
+
+    return result
+
+
+def compute_tema(
+    klines: list[dict[str, Any]], period: int = 20,
+    source: str = "close",
+) -> list[float]:
+    """Triple EMA = 3×EMA - 3×EMA(EMA) + EMA(EMA(EMA))。."""
+    n = len(klines)
+    values = _get_source(klines, source)
+    result = [0.0] * n
+
+    if n < period:
+        return result
+
+    k = 2.0 / (period + 1)
+
+    def ema_of(data: list[float], start_idx: int) -> tuple[list[float], int]:
+        out = [0.0] * n
+        valid = data[start_idx:]
+        if len(valid) < period:
+            return out, start_idx
+        ema_val = sum(valid[:period]) / period
+        out_start = start_idx + period - 1
+        out[out_start] = ema_val
+        for i in range(period, len(valid)):
+            ema_val = (valid[i] - ema_val) * k + ema_val
+            out[start_idx + i] = ema_val
+        return out, out_start
+
+    # EMA1
+    ema1 = [0.0] * n
+    ema_val = sum(values[:period]) / period
+    ema1[period - 1] = ema_val
+    for i in range(period, n):
+        ema_val = (values[i] - ema_val) * k + ema_val
+        ema1[i] = ema_val
+
+    ema2, ema2_start = ema_of(ema1, period - 1)
+    ema3, ema3_start = ema_of(ema2, ema2_start)
+
+    for i in range(ema3_start, n):
+        result[i] = 3 * ema1[i] - 3 * ema2[i] + ema3[i]
+
+    return result
+
+
+def compute_demand_index(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """Demand Index = 成交量加权价格变化。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    if n < 2:
+        return result
+
+    price_changes = [0.0] * n
+    volumes = [0.0] * n
+    for i in range(1, n):
+        price_changes[i] = klines[i]["close"] - klines[i - 1]["close"]
+        volumes[i] = klines[i].get("volume", 1)
+
+    for i in range(period, n):
+        rng = range(i - period + 1, i + 1)
+        weighted = sum(
+            price_changes[j] * volumes[j] for j in rng
+        )
+        vol_sum = sum(volumes[j] for j in range(i - period + 1, i + 1))
+        if vol_sum > 0:
+            result[i] = (weighted / vol_sum) * 100
+
+    return result
+
+
+def compute_emv(
+    klines: list[dict[str, Any]], period: int = 14,
+    volume_divisor: float = 10000.0,
+) -> list[float]:
+    """Ease of Movement = SMA(raw_emv, period)。."""
+    n = len(klines)
+    result = [0.0] * n
+    raw = [0.0] * n
+
+    for i in range(1, n):
+        mid_move = (klines[i]["high"] + klines[i]["low"]) / 2 - \
+                   (klines[i - 1]["high"] + klines[i - 1]["low"]) / 2
+        box_ratio = klines[i]["high"] - klines[i]["low"]
+        vol = klines[i].get("volume", 0)
+        if box_ratio == 0 or vol == 0:
+            raw[i] = 0.0
+        else:
+            raw[i] = mid_move / (vol / volume_divisor / box_ratio)
+
+    # SMA of raw EMV
+    for i in range(period, n):
+        result[i] = sum(raw[i - period + 1:i + 1]) / period
+
+    return result
+
+
+def compute_ehlers_itl(klines: list[dict[str, Any]], alpha: float = 0.07) -> list[float]:
+    """Ehlers Instantaneous Trendline — Hilbert 变换趋势线。."""
+    n = len(klines)
+    prices = [(k["high"] + k["low"]) / 2 for k in klines]
+    itl = [0.0] * n
+
+    for i in range(n):
+        if i < 7:
+            itl[i] = prices[i]
+        else:
+            a = alpha
+            itl[i] = (a - a * a / 4) * prices[i] + \
+                     0.5 * a * a * prices[i - 1] - \
+                     (a - 0.75 * a * a) * prices[i - 2] + \
+                     2 * (1 - a) * itl[i - 1] - \
+                     (1 - a) ** 2 * itl[i - 2]
+
+    return itl
+
+
+def compute_rvi(klines: list[dict[str, Any]], period: int = 10,
+                signal_period: int = 4) -> dict[str, list[float]]:
+    """Relative Vigor Index — 收盘vs开盘动量 + 信号线。."""
+    n = len(klines)
+    rvi_out = [0.0] * n
+    signal_out = [0.0] * n
+
+    # Weighted ratios (needs 3 bars lookback)
+    raw = [0.0] * n
+    for i in range(3, n):
+        num = (klines[i]["close"] - klines[i]["open"]) + \
+              2 * (klines[i - 1]["close"] - klines[i - 1]["open"]) + \
+              2 * (klines[i - 2]["close"] - klines[i - 2]["open"]) + \
+              (klines[i - 3]["close"] - klines[i - 3]["open"])
+        den = (klines[i]["high"] - klines[i]["low"]) + \
+              2 * (klines[i - 1]["high"] - klines[i - 1]["low"]) + \
+              2 * (klines[i - 2]["high"] - klines[i - 2]["low"]) + \
+              (klines[i - 3]["high"] - klines[i - 3]["low"])
+        raw[i] = num / den if den != 0 else 0.0
+
+    # SMA of raw over period
+    rvi_start = 3 + period - 1
+    for i in range(rvi_start, n):
+        rvi_out[i] = sum(raw[i - period + 1:i + 1]) / period
+
+    # Signal = SMA of RVI
+    sig_start = rvi_start + signal_period - 1
+    for i in range(sig_start, n):
+        signal_out[i] = sum(rvi_out[i - signal_period + 1:i + 1]) / signal_period
+
+    return {"rvi": rvi_out, "signal": signal_out}
+
+
+def compute_supertrend(klines: list[dict[str, Any]], period: int = 10,
+                       multiplier: float = 3.0) -> dict[str, list[float]]:
+    """SuperTrend — ATR通道方向跟踪。."""
+    n = len(klines)
+    direction_out = [0.0] * n
+
+    if n < period + 2:
+        return {"direction": direction_out}
+
+    # TR
+    trs = [0.0] * n
+    for i in range(1, n):
+        hl = klines[i]["high"] - klines[i]["low"]
+        hc = abs(klines[i]["high"] - klines[i - 1]["close"])
+        lc = abs(klines[i]["low"] - klines[i - 1]["close"])
+        trs[i] = max(hl, hc, lc)
+
+    prev_upper = 0.0
+    prev_lower = 0.0
+    direction = 1
+
+    for i in range(period, n):
+        atr = sum(trs[i - period + 1:i + 1]) / period
+        if atr == 0:
+            direction_out[i] = float(direction)
+            continue
+
+        hl2 = (klines[i]["high"] + klines[i]["low"]) / 2
+        basic_upper = hl2 + multiplier * atr
+        basic_lower = hl2 - multiplier * atr
+
+        if prev_upper != 0:
+            final_upper = basic_upper if basic_upper < prev_upper or \
+                          klines[i - 1]["close"] > prev_upper else prev_upper
+            final_lower = basic_lower if basic_lower > prev_lower or \
+                          klines[i - 1]["close"] < prev_lower else prev_lower
+        else:
+            final_upper = basic_upper
+            final_lower = basic_lower
+
+        close = klines[i]["close"]
+        if direction == 1:
+            direction = -1 if close < final_lower else 1
+        else:
+            direction = 1 if close > final_upper else -1
+
+        direction_out[i] = float(direction)
+        prev_upper = final_upper
+        prev_lower = final_lower
+
+    return {"direction": direction_out}
+
+
+def compute_trix(klines: list[dict[str, Any]], trix_period: int = 15,
+                 signal_period: int = 9) -> dict[str, list[float]]:
+    """TRIX — 三重EMA变化率 + 信号线。."""
+    n = len(klines)
+    trix_out = [0.0] * n
+    signal_out = [0.0] * n
+    closes = [k["close"] for k in klines]
+
+    if n < trix_period:
+        return {"trix": trix_out, "signal": signal_out}
+
+    k = 2.0 / (trix_period + 1)
+
+    # EMA1
+    ema1 = [0.0] * n
+    ema_val = sum(closes[:trix_period]) / trix_period
+    ema1[trix_period - 1] = ema_val
+    for i in range(trix_period, n):
+        ema_val = (closes[i] - ema_val) * k + ema_val
+        ema1[i] = ema_val
+
+    # EMA2
+    ema2 = [0.0] * n
+    s2 = trix_period - 1
+    v1 = ema1[s2:]
+    if len(v1) >= trix_period:
+        ema_val = sum(v1[:trix_period]) / trix_period
+        ema2[s2 + trix_period - 1] = ema_val
+        for i in range(trix_period, len(v1)):
+            ema_val = (v1[i] - ema_val) * k + ema_val
+            ema2[s2 + i] = ema_val
+
+    # EMA3
+    ema3 = [0.0] * n
+    s3 = s2 + trix_period - 1
+    v2 = ema2[s3:]
+    if len(v2) >= trix_period:
+        ema_val = sum(v2[:trix_period]) / trix_period
+        ema3[s3 + trix_period - 1] = ema_val
+        for i in range(trix_period, len(v2)):
+            ema_val = (v2[i] - ema_val) * k + ema_val
+            ema3[s3 + i] = ema_val
+
+    # TRIX = pct change of EMA3
+    trix_start = s3 + trix_period
+    for i in range(trix_start, n):
+        if ema3[i - 1] != 0:
+            trix_out[i] = (ema3[i] - ema3[i - 1]) / ema3[i - 1] * 100
+
+    # Signal = EMA of TRIX
+    sig_k = 2.0 / (signal_period + 1)
+    if n > trix_start + signal_period:
+        sig_val = sum(trix_out[trix_start:trix_start + signal_period]) / signal_period
+        signal_out[trix_start + signal_period - 1] = sig_val
+        for i in range(trix_start + signal_period, n):
+            sig_val = (trix_out[i] - sig_val) * sig_k + sig_val
+            signal_out[i] = sig_val
+
+    return {"trix": trix_out, "signal": signal_out}
+
+
+def compute_tvi(klines: list[dict[str, Any]], min_tick: float = 0.001,
+                sma_period: int = 10) -> dict[str, list[float]]:
+    """Trade Volume Index — 根据价格变动方向累积成交量。."""
+    n = len(klines)
+    tvi_out = [0.0] * n
+    tvi_sma_out = [0.0] * n
+
+    for i in range(1, n):
+        prev_close = klines[i - 1]["close"]
+        curr_close = klines[i]["close"]
+        vol = klines[i].get("volume", 1000)
+        pct = (curr_close - prev_close) / prev_close * 100 if prev_close != 0 else 0
+
+        if pct > min_tick:
+            tvi_out[i] = tvi_out[i - 1] + vol
+        elif pct < -min_tick:
+            tvi_out[i] = tvi_out[i - 1] - vol
+        else:
+            tvi_out[i] = tvi_out[i - 1]
+
+    for i in range(sma_period - 1, n):
+        tvi_sma_out[i] = sum(tvi_out[i - sma_period + 1:i + 1]) / sma_period
+
+    return {"tvi": tvi_out, "tvi_sma": tvi_sma_out}
+
+
+def compute_parabolic_sar(klines: list[dict[str, Any]], step: float = 0.02,
+                          max_step: float = 0.2) -> dict[str, list[float]]:
+    """Parabolic SAR — 抛物线止损反转。.
+
+    Returns:
+        {'sar': [...], 'is_bull': [...]}  is_bull=1.0表示多头, 0.0空头
+
+    """
+    n = len(klines)
+    sar_out = [0.0] * n
+    bull_out = [0.0] * n
+
+    if n < 3:
+        return {"sar": sar_out, "is_bull": bull_out}
+
+    bull = klines[1]["close"] >= klines[0]["close"]
+    if bull:
+        sar = klines[0]["low"]
+        ep = klines[0]["high"]
+    else:
+        sar = klines[0]["high"]
+        ep = klines[0]["low"]
+    af = step
+
+    sar_out[0] = sar
+    bull_out[0] = 1.0 if bull else 0.0
+
+    for i in range(1, n):
+        high = klines[i]["high"]
+        low = klines[i]["low"]
+
+        if bull:
+            new_sar = sar + af * (ep - sar)
+            new_sar = min(new_sar, klines[i - 1]["low"])
+            if i >= 2:
+                new_sar = min(new_sar, klines[i - 2]["low"])
+            if low < new_sar:
+                bull = False
+                sar = ep
+                ep = low
+                af = step
+            else:
+                sar = new_sar
+                if high > ep:
+                    ep = high
+                    af = min(af + step, max_step)
+        else:
+            new_sar = sar + af * (ep - sar)
+            new_sar = max(new_sar, klines[i - 1]["high"])
+            if i >= 2:
+                new_sar = max(new_sar, klines[i - 2]["high"])
+            if high > new_sar:
+                bull = True
+                sar = ep
+                ep = high
+                af = step
+            else:
+                sar = new_sar
+                if low < ep:
+                    ep = low
+                    af = min(af + step, max_step)
+
+        sar_out[i] = sar
+        bull_out[i] = 1.0 if bull else 0.0
+
+    return {"sar": sar_out, "is_bull": bull_out}
+
+
+def compute_mass_index(klines: list[dict[str, Any]], ema_period: int = 9,
+                       sum_period: int = 25) -> list[float]:
+    """Mass Index — EMA(H-L)/EMA(EMA(H-L)) 之和。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    hl_range = [k["high"] - k["low"] for k in klines]
+    k_mul = 2 / (ema_period + 1)
+
+    # EMA1 of H-L range
+    ema1 = [0.0] * n
+    if n >= ema_period:
+        ema_val = sum(hl_range[:ema_period]) / ema_period
+        ema1[ema_period - 1] = ema_val
+        for i in range(ema_period, n):
+            ema_val = (hl_range[i] - ema_val) * k_mul + ema_val
+            ema1[i] = ema_val
+
+    # EMA2 of EMA1
+    ema2 = [0.0] * n
+    start2 = ema_period - 1
+    valid1 = ema1[start2:]
+    if len(valid1) >= ema_period:
+        ema2_val = sum(valid1[:ema_period]) / ema_period
+        ema2[start2 + ema_period - 1] = ema2_val
+        for i in range(ema_period, len(valid1)):
+            ema2_val = (valid1[i] - ema2_val) * k_mul + ema2_val
+            ema2[start2 + i] = ema2_val
+
+    # Ratio = EMA1 / EMA2, then sum over sum_period
+    ratio_start = start2 + ema_period - 1
+    ratios = [0.0] * n
+    for i in range(ratio_start, n):
+        ratios[i] = ema1[i] / ema2[i] if ema2[i] != 0 else 1.0
+
+    mi_start = ratio_start + sum_period - 1
+    for i in range(mi_start, n):
+        result[i] = sum(ratios[i - sum_period + 1:i + 1])
+
+    return result
+
+
+def compute_obv(klines: list[dict[str, Any]]) -> list[float]:
+    """On-Balance Volume — 累积成交量。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(1, n):
+        if klines[i]["close"] > klines[i - 1]["close"]:
+            result[i] = result[i - 1] + klines[i].get("volume", 0)
+        elif klines[i]["close"] < klines[i - 1]["close"]:
+            result[i] = result[i - 1] - klines[i].get("volume", 0)
+        else:
+            result[i] = result[i - 1]
+
+    return result
+
+
+def compute_fisher_transform(klines: list[dict[str, Any]], period: int = 9) -> list[float]:
+    """Fisher Transform — 价格正态化变换。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(period - 1, n):
+        highs = [klines[j]["high"] for j in range(i - period + 1, i + 1)]
+        lows = [klines[j]["low"] for j in range(i - period + 1, i + 1)]
+        highest = max(highs)
+        lowest = min(lows)
+        mid = (klines[i]["high"] + klines[i]["low"]) / 2
+        x = 0.0 if highest == lowest else 2 * (mid - lowest) / (highest - lowest) - 1
+        x = max(-0.999, min(0.999, x))
+        result[i] = 0.5 * math.log((1 + x) / (1 - x))
+
+    return result
+
+
+def compute_hma(klines: list[dict[str, Any]], period: int = 9) -> list[float]:
+    """Hull Moving Average = WMA(2×WMA(n/2) - WMA(n), sqrt(n))。."""
+    n = len(klines)
+    closes = [k["close"] for k in klines]
+    result = [0.0] * n
+
+    half_p = max(int(period / 2), 1)
+    sqrt_p = max(int(math.sqrt(period)), 1)
+
+    def wma_at(data: list[float], end_idx: int, p: int) -> float:
+        if end_idx < p - 1:
+            return 0.0
+        window = data[end_idx - p + 1:end_idx + 1]
+        weight_sum = p * (p + 1) / 2
+        return sum(window[j] * (j + 1) for j in range(p)) / weight_sum
+
+    # Diff series: 2*WMA(half) - WMA(full)
+    diff = [0.0] * n
+    min_idx = period - 1
+    for i in range(min_idx, n):
+        wh = wma_at(closes, i, half_p)
+        wf = wma_at(closes, i, period)
+        diff[i] = 2 * wh - wf
+
+    # HMA = WMA of diff
+    hma_start = min_idx + sqrt_p - 1
+    for i in range(hma_start, n):
+        window = diff[i - sqrt_p + 1:i + 1]
+        weight_sum = sqrt_p * (sqrt_p + 1) / 2
+        result[i] = sum(window[j] * (j + 1) for j in range(sqrt_p)) / weight_sum
+
+    return result
+
+
+def compute_kama(klines: list[dict[str, Any]], er_period: int = 10,
+                 fast_sc: int = 2, slow_sc: int = 30) -> list[float]:
+    """Kaufman Adaptive Moving Average。."""
+    n = len(klines)
+    closes = [k["close"] for k in klines]
+    result = [0.0] * n
+
+    fast_k = 2 / (fast_sc + 1)
+    slow_k = 2 / (slow_sc + 1)
+
+    if n < er_period + 1:
+        return result
+
+    kama = closes[er_period - 1]
+    for i in range(er_period):
+        result[i] = closes[i]
+    result[er_period - 1] = kama
+
+    for i in range(er_period, n):
+        direction = abs(closes[i] - closes[i - er_period])
+        volatility = sum(abs(closes[j] - closes[j - 1])
+                         for j in range(i - er_period + 1, i + 1))
+        er = direction / volatility if volatility != 0 else 0
+        sc = (er * (fast_k - slow_k) + slow_k) ** 2
+        kama = kama + sc * (closes[i] - kama)
+        result[i] = kama
+
+    return result
+
+
+def compute_klinger(
+    klines: list[dict[str, Any]], fast_period: int = 34,
+    slow_period: int = 55, signal_period: int = 13,
+) -> dict[str, list[float]]:
+    """Klinger Oscillator — 量力趋势振荡器。."""
+    n = len(klines)
+    ko_out = [0.0] * n
+    sig_out = [0.0] * n
+
+    if n < 2:
+        return {"ko": ko_out, "signal": sig_out}
+
+    # Volume Force
+    vf = [0.0] * n
+    prev_trend = 0
+    cm = 0.0
+    for i in range(1, n):
+        hlc = klines[i]["high"] + klines[i]["low"] + klines[i]["close"]
+        prev_hlc = klines[i - 1]["high"] + klines[i - 1]["low"] + klines[i - 1]["close"]
+        trend = 1 if hlc > prev_hlc else -1
+        dm = klines[i]["high"] - klines[i]["low"]
+        if trend == prev_trend:
+            cm += dm
+        else:
+            cm = dm
+        if cm != 0:
+            vf[i] = klines[i].get("volume", 1000) * trend * abs(2 * (dm / cm) - 1)
+        prev_trend = trend
+
+    # Streaming EMA helper
+    def _ema_array(data: list[float], start: int, period: int) -> list[float]:
+        out = [0.0] * n
+        k = 2 / (period + 1)
+        if n - start < period:
+            return out
+        ema_val = sum(data[start:start + period]) / period
+        out[start + period - 1] = ema_val
+        for i in range(start + period, n):
+            ema_val = (data[i] - ema_val) * k + ema_val
+            out[i] = ema_val
+        return out
+
+    fast_ema = _ema_array(vf, 1, fast_period)
+    slow_ema = _ema_array(vf, 1, slow_period)
+
+    ko_start = slow_period
+    for i in range(ko_start, n):
+        ko_out[i] = fast_ema[i] - slow_ema[i]
+
+    sig_arr = _ema_array(ko_out, ko_start, signal_period)
+    for i in range(ko_start + signal_period - 1, n):
+        sig_out[i] = sig_arr[i]
+
+    return {"ko": ko_out, "signal": sig_out}
+
+
+def compute_linreg_slope(klines: list[dict[str, Any]], period: int = 10) -> list[float]:
+    """Linear Regression Slope — 百分比化斜率。."""
+    n = len(klines)
+    closes = [k["close"] for k in klines]
+    result = [0.0] * n
+
+    for i in range(period - 1, n):
+        y = closes[i - period + 1:i + 1]
+        p = len(y)
+        x_mean = (p - 1) / 2
+        y_mean = sum(y) / p
+        num = sum((j - x_mean) * (y[j] - y_mean) for j in range(p))
+        den = sum((j - x_mean) ** 2 for j in range(p))
+        if den == 0:
+            result[i] = 0.0
+        else:
+            slope = num / den
+            result[i] = slope / y_mean * 100 if y_mean != 0 else 0.0
+
+    return result
+
+
+def compute_ulcer_index(klines: list[dict[str, Any]], period: int = 14) -> list[float]:
+    """Ulcer Index — 回撤痛苦指数：sqrt(mean(pct_drawdown^2))。."""
+    n = len(klines)
+    result = [0.0] * n
+    closes = [k["close"] for k in klines]
+
+    for i in range(period - 1, n):
+        window = closes[i - period + 1:i + 1]
+        peak = window[0]
+        sq_sum = 0.0
+        for c in window:
+            peak = max(peak, c)
+            dd_pct = (c - peak) / peak * 100 if peak != 0 else 0
+            sq_sum += dd_pct ** 2
+        result[i] = math.sqrt(sq_sum / period)
+
+    return result
+
+
+def compute_ultimate_oscillator(klines: list[dict[str, Any]], period1: int = 7, period2: int = 14,
+                                period3: int = 28, weight1: int = 4, weight2: int = 2,
+                                weight3: int = 1) -> list[float]:
+    """Ultimate Oscillator — 多周期动量振荡器 (0-100)。."""
+    n = len(klines)
+    result = [50.0] * n
+
+    bp = [0.0] * n
+    tr = [0.0] * n
+    for i in range(1, n):
+        prev_close = klines[i - 1]["close"]
+        low_i = klines[i]["low"]
+        high_i = klines[i]["high"]
+        bp[i] = klines[i]["close"] - min(low_i, prev_close)
+        tr[i] = max(high_i, prev_close) - min(low_i, prev_close)
+
+    max_period = max(period1, period2, period3)
+    for i in range(max_period, n):
+        avgs = []
+        for period in [period1, period2, period3]:
+            bp_sum = sum(bp[i - period + 1:i + 1])
+            tr_sum = sum(tr[i - period + 1:i + 1])
+            avgs.append(bp_sum / tr_sum if tr_sum != 0 else 0.5)
+
+        weights = [weight1, weight2, weight3]
+        weighted_sum = sum(a * w for a, w in zip(avgs, weights, strict=True))
+        weight_total = sum(weights)
+        result[i] = weighted_sum / weight_total * 100
+
+    return result
+
+
+def compute_volume_momentum(klines: list[dict[str, Any]], period: int = 10) -> list[float]:
+    """Volume Momentum — 量加权价格动量百分比。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(period - 1, n):
+        total_vol = 0.0
+        vw_price = 0.0
+        for j in range(i - period + 1, i + 1):
+            vol = klines[j].get("volume", 1000)
+            total_vol += vol
+            vw_price += klines[j]["close"] * vol
+        if total_vol == 0:
+            result[i] = 0.0
+        else:
+            vwap_val = vw_price / total_vol
+            close = klines[i]["close"]
+            result[i] = (close - vwap_val) / vwap_val * 100 if vwap_val != 0 else 0.0
+
+    return result
+
+
+def compute_vortex(klines: list[dict[str, Any]], period: int = 14) -> dict[str, list[float]]:
+    """Vortex Indicator — VI+ / VI-。.
+
+    Returns:
+        {'vi_plus': [...], 'vi_minus': [...]}
+
+    """
+    n = len(klines)
+    vi_plus = [1.0] * n
+    vi_minus = [1.0] * n
+
+    vm_p = [0.0] * n
+    vm_m = [0.0] * n
+    tr_arr = [0.0] * n
+
+    for i in range(1, n):
+        vm_p[i] = abs(klines[i]["high"] - klines[i - 1]["low"])
+        vm_m[i] = abs(klines[i]["low"] - klines[i - 1]["high"])
+        hl = klines[i]["high"] - klines[i]["low"]
+        hc = abs(klines[i]["high"] - klines[i - 1]["close"])
+        lc = abs(klines[i]["low"] - klines[i - 1]["close"])
+        tr_arr[i] = max(hl, hc, lc)
+
+    for i in range(period, n):
+        vm_p_sum = sum(vm_p[i - period + 1:i + 1])
+        vm_m_sum = sum(vm_m[i - period + 1:i + 1])
+        tr_sum = sum(tr_arr[i - period + 1:i + 1])
+        if tr_sum > 0:
+            vi_plus[i] = vm_p_sum / tr_sum
+            vi_minus[i] = vm_m_sum / tr_sum
+
+    return {"vi_plus": vi_plus, "vi_minus": vi_minus}
+
+
+def compute_vpt(
+    klines: list[dict[str, Any]], period: int = 20,
+    sma_period: int = 10,
+) -> dict[str, list[float]]:
+    """Volume Price Trend — 滚动窗口VPT + SMA。.
+
+    Returns:
+        {'vpt': [...], 'vpt_sma': [...]}
+
+    """
+    n = len(klines)
+    vpt_arr = [0.0] * n
+    vpt_sma_arr = [0.0] * n
+
+    for i in range(period - 1, n):
+        vpt = 0.0
+        start = i - period + 1
+        for j in range(start + 1, i + 1):
+            if klines[j - 1]["close"] == 0:
+                continue
+            pct = (klines[j]["close"] - klines[j - 1]["close"]) / klines[j - 1]["close"]
+            vpt += pct * klines[j].get("volume", 1000)
+        vpt_arr[i] = vpt
+
+    sma_start = period - 1 + sma_period - 1
+    for i in range(sma_start, n):
+        vpt_sma_arr[i] = sum(vpt_arr[i - sma_period + 1:i + 1]) / sma_period
+
+    return {"vpt": vpt_arr, "vpt_sma": vpt_sma_arr}
+
+
+def compute_vroc(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """Volume Rate of Change — 成交量变化率百分比。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(period, n):
+        past = klines[i - period].get("volume", 1000)
+        current = klines[i].get("volume", 1000)
+        result[i] = (current - past) / past * 100 if past != 0 else 0.0
+
+    return result
+
+
+def compute_williams_r(klines: list[dict[str, Any]], period: int = 14) -> list[float]:
+    """Williams %R — 威廉指标 (-100 to 0)。."""
+    n = len(klines)
+    result = [-50.0] * n
+
+    for i in range(period - 1, n):
+        highest = max(klines[j]["high"] for j in range(i - period + 1, i + 1))
+        lowest = min(klines[j]["low"] for j in range(i - period + 1, i + 1))
+        close = klines[i]["close"]
+        if highest == lowest:
+            result[i] = -50.0
+        else:
+            result[i] = (highest - close) / (highest - lowest) * -100
+
+    return result
+
+
+def compute_zscore(klines: list[dict[str, Any]], period: int = 14) -> list[float]:
+    """Z-Score — 价格标准差偏离度。."""
+    n = len(klines)
+    result = [0.0] * n
+
+    for i in range(period - 1, n):
+        closes = [klines[j]["close"] for j in range(i - period + 1, i + 1)]
+        mean_val = sum(closes) / period
+        variance = sum((x - mean_val) ** 2 for x in closes) / period
+        std = math.sqrt(variance)
+        if std > 0:
+            result[i] = (closes[-1] - mean_val) / std
+
+    return result
+
+
+# ==================== GP 复合指标 ====================
+# GP 进化树需要的复合指标，统一注册到 REGISTRY 让所有系统共用。
+
+
+def compute_volume_ratio(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """成交量比率 = volume / SMA(volume, period)。GP 进化树用。."""
+    n = len(klines)
+    result = [1.0] * n
+    volumes = [k.get("volume", 0) for k in klines]
+    window_sum = 0.0
+    for i in range(n):
+        window_sum += volumes[i]
+        if i >= period:
+            window_sum -= volumes[i - period]
+        p = min(i + 1, period)
+        sma_vol = window_sum / p
+        if sma_vol > 1e-10:
+            result[i] = volumes[i] / sma_vol
+    return result
+
+
+def compute_obv_slope(klines: list[dict[str, Any]], period: int = 10) -> list[float]:
+    """OBV 斜率 = OBV - roll(OBV, period)。GP 进化树用。."""
+    n = len(klines)
+    obv = [0.0] * n
+    for i in range(1, n):
+        if klines[i]["close"] > klines[i - 1]["close"]:
+            obv[i] = obv[i - 1] + klines[i].get("volume", 0)
+        elif klines[i]["close"] < klines[i - 1]["close"]:
+            obv[i] = obv[i - 1] - klines[i].get("volume", 0)
+        else:
+            obv[i] = obv[i - 1]
+    result = [0.0] * n
+    for i in range(period, n):
+        result[i] = obv[i] - obv[i - period]
+    return result
+
+
+def compute_ad_roc(klines: list[dict[str, Any]], period: int = 20) -> list[float]:
+    """AD 变化率 = (AD[i] - AD[i-period]) / |AD[i-period]|。GP 进化树用。."""
+    n = len(klines)
+    ad = compute_ad(klines)
+    result = [0.0] * n
+    for i in range(period, n):
+        if abs(ad[i - period]) > 1e-10:
+            result[i] = (ad[i] - ad[i - period]) / abs(ad[i - period])
+    return result
+
+
+# ==================== 注册所有内置指标 ====================
+
+REGISTRY = {
+    "rsi": compute_rsi,
+    "atr": compute_atr,
+    "sma": compute_sma,
+    "ema": compute_ema,
+    "macd": compute_macd,
+    "bb": compute_bb,
+    "vwap": compute_vwap,
+    "stochastic": compute_stochastic,
+    "fvg": compute_fvg,
+    "fvg_detect": compute_fvg_detect,
+    "ad": compute_ad,
+    "adx": compute_adx,
+    "aroon": compute_aroon,
+    "ao": compute_ao,
+    "bop": compute_bop,
+    "cci": compute_cci,
+    "cmf": compute_cmf,
+    "cmo": compute_cmo,
+    "roc": compute_roc,
+    "chaikin_osc": compute_chaikin_osc,
+    "connors_rsi": compute_connors_rsi,
+    "coppock": compute_coppock,
+    "dema": compute_dema,
+    "tema": compute_tema,
+    "demand_index": compute_demand_index,
+    "emv": compute_emv,
+    "ehlers_itl": compute_ehlers_itl,
+    "fisher_transform": compute_fisher_transform,
+    "hma": compute_hma,
+    "kama": compute_kama,
+    "klinger": compute_klinger,
+    "linreg_slope": compute_linreg_slope,
+    "mass_index": compute_mass_index,
+    "obv": compute_obv,
+    "parabolic_sar": compute_parabolic_sar,
+    "rvi": compute_rvi,
+    "supertrend": compute_supertrend,
+    "trix": compute_trix,
+    "tvi": compute_tvi,
+    "ulcer_index": compute_ulcer_index,
+    "ultimate_oscillator": compute_ultimate_oscillator,
+    "volume_momentum": compute_volume_momentum,
+    "vortex": compute_vortex,
+    "vpt": compute_vpt,
+    "vroc": compute_vroc,
+    "williams_r": compute_williams_r,
+    "zscore": compute_zscore,
+    # GP 复合指标
+    "volume_ratio": compute_volume_ratio,
+    "obv_slope": compute_obv_slope,
+    "ad_roc": compute_ad_roc,
+}

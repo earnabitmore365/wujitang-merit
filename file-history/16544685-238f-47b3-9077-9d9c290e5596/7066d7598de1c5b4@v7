@@ -1,0 +1,1274 @@
+# wuji-auto-trading 技术架构文档
+
+> 文档版本：2026-04-06
+> 对应代码库：`/Volumes/SSD-2TB/project/wuji-auto-trading/`
+
+---
+
+## 目录
+
+1. [系统概览](#1-系统概览)
+2. [目录结构](#2-目录结构)
+3. [核心模块详解](#3-核心模块详解)
+   - [3.1 指标系统 (indicator_cache)](#31-指标系统-indicator_cache)
+   - [3.2 策略层 (strategy)](#32-策略层-strategy)
+   - [3.3 回测引擎 (backtest)](#33-回测引擎-backtest)
+   - [3.4 增量管线 (incremental pipeline)](#34-增量管线-incremental-pipeline)
+   - [3.5 Gate 选拔体系](#35-gate-选拔体系)
+   - [3.6 GP 进化引擎 (gp_engine)](#36-gp-进化引擎-gp_engine)
+   - [3.7 哨兵营 (sentinel_camp)](#37-哨兵营-sentinel_camp)
+   - [3.8 实盘 Regime 检测 (live_regime)](#38-实盘-regime-检测-live_regime)
+   - [3.9 通讯部总机 (feed_gateway / feed_client)](#39-通讯部总机-feed_gateway--feed_client)
+   - [3.10 实盘交易系统 (unified_trader)](#310-实盘交易系统-unified_trader)
+   - [3.11 风控层 (risk)](#311-风控层-risk)
+   - [3.12 交易所适配器层 (exchange)](#312-交易所适配器层-exchange)
+   - [3.13 Paper Trade 模拟系统](#313-paper-trade-模拟系统)
+   - [3.14 双引擎路由器 (regime_router)](#314-双引擎路由器-regime_router)
+   - [3.15 每日自动管线 (daily_pipeline)](#315-每日自动管线-daily_pipeline)
+4. [数据流图](#4-数据流图)
+   - [4.1 历史研究管线](#41-历史研究管线)
+   - [4.2 实盘交易链路](#42-实盘交易链路)
+5. [模块依赖关系](#5-模块依赖关系)
+6. [设计模式与架构约束](#6-设计模式与架构约束)
+   - [6.1 策略注册机制](#61-策略注册机制)
+   - [6.2 Mirror 机制 (v2.1)](#62-mirror-机制-v21)
+   - [6.3 Regime 切换机制](#63-regime-切换机制)
+   - [6.4 指标双 Namespace](#64-指标双-namespace)
+   - [6.5 增量断点续跑](#65-增量断点续跑)
+7. [数据库 Schema](#7-数据库-schema)
+   - [7.1 seed_signal.db（信号种子库）](#71-seed_signaldb信号种子库)
+   - [7.2 indicator_cache.db（指标缓存库）](#72-indicator_cachedb指标缓存库)
+   - [7.3 gate_v41_report.db（Gate 选拔报告库）](#73-gate_v41_report_db-gate-选拔报告库)
+   - [7.4 live_trades.db（实盘交易记录库）](#74-live_tradesdb实盘交易记录库)
+8. [实盘系统架构](#8-实盘系统架构)
+   - [8.1 整体架构](#81-整体架构)
+   - [8.2 策略状态机](#82-策略状态机)
+   - [8.3 限价单执行流程](#83-限价单执行流程)
+   - [8.4 对账机制](#84-对账机制)
+   - [8.5 崩溃恢复机制](#85-崩溃恢复机制)
+9. [附录：策略一览](#9-附录策略一览)
+
+---
+
+## 1. 系统概览
+
+本项目是一套完整的量化交易研究与生产系统。它以 BitMEX 永续合约为交易标的，覆盖从原始 K 线数据到实盘下单的完整闭环：
+
+- **研究侧**：103 个手工策略 + GP 进化引擎自动生成策略，在约 94.9M 笔历史交易的种子库上回测，通过 Gate 多轮选拔筛出冠军组合（89 个）。
+- **信号侧**：双引擎模式（正常 K 线 + 价格取负镜像 K 线），根据市场 ADX 值动态切换，同一策略既能适应趋势市又能适应盘整市。
+- **实盘侧**：21 个冠军策略并行运行，共享一个 BitMEX WebSocket 连接（Feed Gateway），通过 ZMQ 广播分发行情，零 REST 轮询，TTP 检查间隔 1 秒。
+- **进化侧**：GP 引擎持续在每个 coin×interval 格子上进化新策略，毕业考通过后存入冠军库，定期补充实盘队伍的候选池。
+
+系统的核心设计哲学是**研究与生产共享同一套指标基础设施**（`indicator_cache`），保证回测行为与实盘行为一致，消除指标重复计算。
+
+---
+
+## 2. 目录结构
+
+```
+wuji-auto-trading/
+├── src/                              # 核心共享代码库
+│   ├── core/
+│   │   ├── indicator_cache.py        # 统一指标系统（唯一入口，双 namespace）
+│   │   ├── strategy/                 # 103 个策略 + 基类 + MirrorStrategy
+│   │   └── risk/                     # 风控层（TTP / StopLoss / Combined）
+│   ├── backtest/
+│   │   ├── backtest.py               # 回测引擎核心（策略信号+TTP+MFE/MAE）
+│   │   ├── generate_seed.py          # 种子生成管线（含 TradeSimulator 4种模式）
+│   │   ├── incremental_backtest.py   # 增量回测（断点续跑）
+│   │   └── verify_seed.py            # 种子验证
+│   ├── data/
+│   │   ├── feed_gateway.py           # 通讯部总机（单 WS + ZMQ PUB 广播）
+│   │   ├── feed_client.py            # ZMQ SUB 客户端
+│   │   └── gw_query.py               # Gateway 查询工具
+│   ├── exchange/
+│   │   ├── base.py                   # 交易所适配器基类
+│   │   ├── bitmex/                   # BitMEX 适配器（实盘）
+│   │   │   ├── adapter.py            # REST + 15m/30m 聚合
+│   │   │   ├── auth.py               # HMAC-SHA256 签名
+│   │   │   └── websocket.py          # WS 自动重连
+│   │   ├── hyperliquid/              # HyperLiquid 适配器
+│   │   │   ├── adapter.py            # REST + WebSocket
+│   │   │   ├── accounts.py           # 多账号管理
+│   │   │   ├── ttp_orders.py         # Exchange TTP 同步
+│   │   │   └── websocket.py          # WS 客户端（线程安全）
+│   │   └── paper/
+│   │       └── adapter.py            # Paper Trading
+│   ├── trading/
+│   │   ├── system.py                 # TradingSystem 主控
+│   │   ├── runner.py                 # 单币种运行器
+│   │   ├── state.py                  # 持仓状态持久化
+│   │   ├── notifier.py               # 事件通知
+│   │   └── regime/                   # Regime 检测
+│   ├── indicators/                   # 宏观/链上指标
+│   └── ui/
+│       └── base.py                   # UI 基类
+│
+├── trading/                          # 实盘交易系统（21 策略并行）
+│   ├── unified_trader.py             # 实盘主入口
+│   ├── strategy_runner.py            # 单策略生命周期管理
+│   ├── kline_dispatcher.py           # K 线预加载 + 聚合 + 分发
+│   ├── limit_executor.py             # 限价挂单（5次重试 + 转市价）
+│   ├── trade_logger.py               # 交易记录（SQLite）
+│   ├── trader_report.py              # Telegram 通知
+│   ├── trader_bot.py                 # Telegram 查询 Bot
+│   ├── team_config.py                # 21 策略配置表
+│   ├── run.py                        # HyperLiquid 单币种入口
+│   ├── paper_trade/run.py            # Paper Trade
+│   ├── monitor/                      # 监控看板 + Gateway 健康
+│   ├── start_trading.sh              # 启动脚本
+│   └── stop_trading.sh               # 停止脚本
+│
+├── backtest/                         # 回测 + Gate 选人 + 管线
+│   ├── build_seed_report.py          # 4 SQLite → 1 DuckDB（31列pt+49列cs，逐笔+汇总后算）
+│   ├── gate/                         # Gate 策略选拔（4关）
+│   │   ├── gate_runner.py            # 统一入口
+│   │   ├── gate1_threshold.py        # 初考
+│   │   ├── gate2v41_scorecard.py     # 专考
+│   │   ├── gate3v41_team.py          # 组考
+│   │   └── gate_mcv41.py             # MC 照妖镜
+│   ├── pipeline/                     # 每日自动管线
+│   ├── regime/                       # Regime 检测 + 验证
+│   │   └── live_regime/              # L2+L3 实盘 Regime
+│   └── dashboard/                    # 看板生成
+│
+├── research/                         # 研究 + 进化
+│   ├── gp_engine/                    # 表达式树自进化引擎
+│   ├── sentinel_camp/                # 哨兵营（Regime 检测器进化）
+│   ├── filters/                      # 信号过滤器实验
+│   ├── indicators/                   # 指标研究工具
+│   ├── selection/                    # 策略选人 + 验证
+│   └── simulation/                   # 团队模拟
+│
+├── data/                             # K 线数据（DuckDB + JSON）
+├── config/                           # 配置
+├── reports/                          # 种子库 + 报告输出
+├── tests/                            # 测试
+├── path_config.py                    # 路径配置（唯一权威来源）
+├── ARCHITECTURE.md                   # 技术架构文档
+└── README.md
+```
+
+---
+
+## 3. 核心模块详解
+
+### 3.1 指标系统 (indicator_cache)
+
+**文件**：`src/core/indicator_cache.py`
+
+整个系统的指标唯一入口。所有模块（回测引擎、GP 进化、哨兵营、实盘）统一通过这个模块获取技术指标，禁止各模块自行计算。
+
+**核心设计**：
+
+- 双 namespace（`normal` / `flipped`）：支持双引擎模式下正常 K 线与翻转 K 线各自独立缓存，互不干扰。
+- **klines.duckdb 单一源头**：所有指标统一存在 klines.duckdb 的列里。init_cache 自动预加载，close_cache 批量写回新指标。不再使用 indicator_cache.db。
+- 内存缓存层：预加载后全部在 Python dict 内存缓存，热路径零 I/O。
+- `flipped` namespace 纯内存：翻转数据每次不同，不写回 DuckDB。
+
+**关键接口**：
+
+```python
+init_cache(coin, interval, candles, db_path=None, namespace='normal')
+    # 回测开始前由引擎调用，初始化上下文
+
+get_indicator('rsi', period=14)
+    # 返回完整序列 list，长度 = len(candles)
+    # 策略用 rsi[self.current_idx] 取当前值
+
+set_active_namespace('flipped')
+    # 切换活跃 namespace（双引擎用）
+
+close_cache()
+    # 关闭 SQLite 连接（回测结束时调用）
+```
+
+**已注册指标**（通过 `REGISTRY` 字典，在文件底部）：atr, bb, cci, cmf, cmo, dema, ema, fvg_detect, hma, ichimoku, kama, keltner, klinger, linreg_slope, macd, mass_index, obv_slope, rsi, roc, sma, stochastic, supertrend, tema, ulcer_index, vortex, vroc, volume_momentum, vwap, williams_r, zscore 等。
+
+---
+
+### 3.2 策略层 (strategy)
+
+**文件**：`src/core/strategy/` 目录下 103 个 `.py` 文件
+
+**基类**（`base.py`）：
+
+- `Strategy`：所有策略必须继承的基类，`generate_signal(coin, klines)` 是唯一接口。
+- `Signal`：枚举（BUY / SELL / HOLD / CLOSE）。
+- `TradingSignal`：带元数据的信号对象（signal + confidence + info + coin + timestamp + metadata）。
+- `_STRATEGY_REGISTRY`：全局注册表，通过 `register_strategy(name, cls)` 注册，`get_strategy(name)` 实例化。
+
+**策略注册机制**：每个策略文件底部调用 `register_strategy('xxx', XxxStrategy)`，模块被 import 时自动注册。`list_strategies()` 返回所有已注册名称（排除 'mirror'）。
+
+**MirrorStrategy**（`mirror.py`）：
+
+- 包装任意策略，用价格取负后的镜像 OHLCV 喂给内层策略。
+- 翻转公式：`mirrored = -original`（high/low 互换）。收益率自然反转，不需要轴。
+- 翻转 K 线下 BUY 信号仍然是真实 BUY（不翻转信号方向）。
+- 内部调用 `init_cache(..., db_path=":memory:", namespace="flipped")` 保证不污染文件缓存。
+
+**策略文件命名规律**：`strategy_{name}.py`，策略名去掉前缀即为注册键（如 `strategy_mean_reversion.py` 注册为 `mean_reversion`）。
+
+**策略类型分布**（103 个）：
+
+| 类型 | 代表策略 |
+|------|---------|
+| 均值回归 | mean_reversion, zscore, bollinger_deviation, rsi_reversal |
+| 趋势跟踪 | macross_fast/slow, supertrend, ema_cross_fast, donchian_break |
+| 动量 | momentum_slope, roc, proc, connors_rsi, coppock |
+| 量价 | volume_surge, obv_slope, pv_divergence, vwap |
+| 波动率 | atr_breakout, bb_squeeze, keltner, atr_trailing_stop |
+| 结构 | smc_real, order_block, fvg, break_of_structure, pivot_points |
+| 振荡器 | stochastic_fast, williams_fast, cci_extreme, rvi |
+| 复合 | advanced_kline_echo, demand_index_echo, donchian_echo |
+
+---
+
+### 3.3 回测引擎 (backtest)
+
+**文件**：`src/backtest/backtest.py`
+
+单次回测的核心引擎，接收一组 K 线数据 + 策略实例，模拟完整的开仓-持仓-平仓流程。
+
+**核心类**：
+
+- `BacktestEngine`：主引擎，负责逐 K 线遍历、信号执行、仓位管理、TTP 追踪、资金费率模拟。
+- `Trade`：单笔交易记录（时间/类型/价格/资本/PnL/余额/手续费/滑点/资金费）。
+- `BacktestResult`：汇总指标（总收益/最大回撤/夏普/索提诺/卡玛等 35 个字段）。
+
+**回测参数**（来自 `generate_seed.py`）：
+
+- 初始资本：$500
+- 杠杆：10 倍
+- 止损幅度：10%
+- 手续费率：0.035%/侧（HyperLiquid taker）
+- 滑点：0.02%/侧
+- 资金费率：0.01%/8h
+- 注码：$1 固定（R-Multiple 标准化）
+
+**行为逻辑**：
+
+1. 逐 K 线调用策略 `generate_signal()`
+2. 信号为 BUY/SELL 且无仓位 → 开仓
+3. 信号翻转 → 反手（平旧开新）
+4. 每根 K 线检查 TTP 是否触发（high/low 价格触碰 TTP level）
+5. 止损检查（entry_price ± 10%）
+6. 计算资金费用（持仓每 8h 扣一次）
+
+**批量回测**（`batch_backtest.py`）：多进程并行调度，内存感知（1m 数据约 1.9GB/进程）。
+
+**种子生成**（`generate_seed.py`）：枚举所有 coin × strategy × interval 组合，跑完后写入 `seed_signal.db`。支持 `--mirror`（翻转 K 线）和 `--ttp`（开启移动止盈）参数。
+
+---
+
+### 3.4 增量管线 (incremental pipeline)
+
+**文件**：`incremental_backtest.py`，`refresh_summary.py`，`bootstrap_checkpoints.py`，`daily_pipeline.py`
+
+**设计原则**：种子库是活的，每天新增 K 线后只跑增量部分，不重跑历史。
+
+**增量回测**（`incremental_backtest.py`）：
+
+1. 加载完整 K 线（历史 + 新增合并）
+2. 查断点表（`backtest_checkpoint`）—— 记录上次跑到哪根 K 线、当时的余额/持仓/TTP 状态
+3. 无断点 → 全量跑（但首次运行前必须先执行 `bootstrap_checkpoints.py` 创建断点，否则会删掉全部数据重跑）
+4. 用时间戳对齐断点位置（不依赖索引，因为新增 K 线后旧索引可能偏移）
+5. 恢复引擎状态 → 从断点位置继续跑回测循环
+6. 新交易追加到 `paired_trades` 表，更新断点
+
+**报告重算**（`refresh_summary.py`）：
+
+- 增量回测后 `paired_trades` 有新数据，需重算 `combo_summary` 的 35 个聚合字段
+- 只重算有更新的 combo（通过 `checkpoint.updated_at > combo_summary.backtest_time` 判断）
+- `refresh_summary` 读 `paired_trades`，不查 `paired_trades` 聚合，直接查 `combo_summary`
+
+**每日管线**（`daily_pipeline.py`）：
+
+```
+下载新 K 线 → 增量回测（seed_signal.db）→ 增量回测（seed_ttp_close.db）→ 报告重算 → 生成 HTML 看板
+```
+
+---
+
+### 3.5 Gate 选拔体系
+
+**文件**：`gate1_threshold.py`，`gate2v41_scorecard.py`，`gate3v41_team.py`，`gate_mcv41.py`，`gate4_wf_v4.py`，`gate5_mc_v4.py`，`gate6_oos_v4.py`，`run_gate_v41.py`
+
+Gate v4.1 是一套多轮筛选机制，从种子库中选出适合实盘的冠军 combo。
+
+**Gate v4.1 六轮选拔流程**：
+
+| 关卡 | 脚本 | 筛选标准 |
+|------|------|---------|
+| Gate 1（初考） | `gate1_threshold.py` | 交易次数门槛（剔除交易太少的组合） |
+| Gate 2（专考） | `gate2v41_scorecard.py` | 13 维度成绩单（6 Regime 维度 + 7 子阶段维度） |
+| Gate 3（组考） | `gate3v41_team.py` | 按 Short/Mid/Long 分组，每维度 Top5，去相关性 |
+| Gate 4（WF 考） | `gate4_wf_v4.py` | Walk-Forward 验证（训练集/测试集分离） |
+| Gate 5（MC 考） | `gate5_mc_v4.py` / `gate_mcv41.py` | Monte Carlo 随机模拟（鲁棒性检验） |
+| Gate 6（OOS 考） | `gate6_oos_v4.py` | Out-Of-Sample 检验（真实样本外数据） |
+
+**13 个评分维度**（Gate 2）：
+
+- Regime 维度（6 个）：全程 / 牛市 / 熊市 / 盘整 / 初牛 / 初熊
+- 子阶段维度（7 个）：sprint（涨>1%）/ rest（±1%）/ dip（跌>1%）/ bounce（涨>1%）/ up / flat / down
+
+**分组规则**（Gate 3）：
+
+- Short 组：1m / 5m / 15m / 30m
+- Mid 组：1h / 2h / 4h
+- Long 组：8h / 12h / 1d
+
+**产出**：`results/gate_v41/gate_v41_report.db`，包含 89 个冠军（Long 40 / Mid 35 / Short 14）。
+
+---
+
+### 3.6 GP 进化引擎 (gp_engine)
+
+**目录**：`gp_engine/`
+
+一套基因编程（Genetic Programming）引擎，自动进化出能通过 Walk-Forward 毕业考的交易信号树。
+
+**核心组件**：
+
+**`tree.py` — 表达式树**：
+
+- 每棵树 = 一个交易信号规则
+- 根节点输出 BOOLEAN（1.0=做多，0.0=空仓）
+- 内部节点：算术运算（+/-/×/÷）、比较（>/< ）、逻辑（AND/OR/NOT）、条件（ITE）
+- 叶子节点：指标值（通过 `indicator_cache` 获取）、常数
+- `to_skeleton()`：去掉参数化节点的具体参数，得到规则骨架（用于跨轮去重）
+
+**`blocks.py` — 积木库**：
+
+- 34 个固定终端：close、volume、volume_ratio、obv_slope 等
+- 23 个参数化类型（v0.9 扩展）：rsi(5-50)、sma(3-200)、ema(3-200)、atr(5-50)、vwap(5-50)、cci(5-50)…所有单 period 参数的指标均可让 GP 自由选择周期
+
+**`engine.py` — 进化引擎 v1.0（岛屿模型）**：
+
+- 4 个岛屿，每岛独立进化，定期环形迁移（每 10 代迁移 Top3 个体）
+- 迁入个体保护 2 代不参与淘汰
+- 4 岛指标偏好：量价类 / 动量类 / 波动率类 / 自由探索
+- 分池进化：Long 池 vs Short 池各自独立锦标赛
+- 锦标赛选择：随机抽 5 棵比较适应度
+
+**`evaluator.py` — 适应度函数**：
+
+- 适应度 = 训练集内部 WF t-statistic（Sharpe × √交易数）
+- 训练集切 3 个窗口，取最低 t-stat（抗过拟合）
+- 简洁性惩罚（系数 0.02，树越大适应度越低）
+
+**`graduation.py` — WF 毕业考**：
+
+- Walk-Forward 验证：前 60% 训练集，后 40% 切 5 个滚动窗口
+- 弃权制：0 笔交易的窗口算弃权，不算失败
+  - 无弃权 → 5 窗口中至少 3 个盈利 + 平均收益 > 0 + 总交易 ≥ 30
+  - 有弃权 → 有效窗口 100% 通过 + 平均收益 > 5%
+  - 有效窗口 < 5 → 直接不合格
+- 镜像毕业考：原始数据 5 窗口 + 翻转数据 5 窗口 = 10 关，需过 9 关
+
+**`param_optimizer.py` — CMA-ES 参数精化**：
+
+- 毕业后自动触发
+- 用 CMA-ES 精调参数化节点（指标周期等），比 GP 随机变异快一个数量级
+- 依赖 `pip install cma`
+
+**`gp_evolve.py` — 进化循环**：
+
+- 无限循环直到遇到 `STOP` 文件或 Ctrl+C
+- 精英库（Hall of Fame）：跨轮保留 Long/Short 各 100 个最优个体，注入下一轮初始种群
+- 骨架去重：同一骨架的个体只保留得分最高的一个
+- 断点续传：每 10 代保存 `round_state.json`
+
+**`gp_scheduler.py` — 调度器 v1.2**：
+
+- 扫描所有 coin×interval 格子，优先填充空缺（没有冠军的格子）
+- 3 工位并行（可配置），内存感知（1m 数据约 800MB/进程，总限 22GB）
+- 出了毕业生的格子下一圈自动跳过，算力集中给空缺
+
+---
+
+### 3.7 哨兵营 (sentinel_camp)
+
+**目录**：`sentinel_camp/`
+
+专门进化 Regime 检测树的 GP 子系统。与 `gp_engine` 的区别：适应度不是赚钱能力，而是 Regime 分类的 F-beta 分数。
+
+**四个检测任务**：
+
+| 任务 | 目标 Regime | β 参数 | 策略 |
+|------|------------|--------|------|
+| 偏多检测 | 初牛 + 盘整 | β=2.0 | 宁可多报不漏 |
+| 牛市确认 | 牛 | β=0.5 | 精准为主 |
+| 偏空检测 | 初熊 + 盘整 | β=2.0 | 宁可多报不漏 |
+| 熊市确认 | 熊 | β=0.5 | 精准为主 |
+
+**数据加载**（`data_loader.py`）：
+
+- 13 个币种 1m K 线（子采样到目标频率）
+- 每个币种都通过 `indicator_cache` 获取指标（27 个维度）
+- 加入镜像数据（价格翻转 + regime 标签翻转）
+- 60%/40% 分割（训练/测试）
+
+**适应度函数**（`evaluator.py`）：
+
+```
+F-beta = (1+β²) × precision × recall / (β² × precision + recall)
+```
+
+- 持续状态（牛/熊确认）：min_precision=0.60，max_signal_ratio=0.50
+- 转折检测（偏多/偏空）：min_precision=0.30，max_signal_ratio=0.30
+
+**输出**：`champions/` 目录下 4 个方向的兵王 JSON，每方向 1 个，`hall_of_fame.json` 保留各方向 Top20。
+
+---
+
+### 3.8 实盘 Regime 检测 (live_regime)
+
+**目录**：`live_regime/`
+
+L2+L3 两层实时 Regime 检测，不依赖 GP 或哨兵营，完全基于价格结构和量能特征进行状态机判断。
+
+**架构**（分层）：
+
+```
+L3 盘口确认（order_book_checker.py）
+       ↑
+L2 综合有效性（validity_checker.py）
+       ├── 大周期（4h）：swing_tracker + macd_tracker
+       └── 小周期（1h）：swing_tracker + volume_tracker
+       ↑
+Regime 状态机（regime_detector.py）
+       ↑
+Live Runner（live_runner.py）— 实时消费 1h K 线
+```
+
+**`swing_tracker.py` — 摆动追踪（零参数）**：
+
+- 核心思想：追踪 HH（更高高点）/ HL（更高低点）/ LH（更低高点）/ LL（更低低点）
+- 不用 ATR、不用百分比，噪音过滤靠结构本身
+- 破位确认用打分制：逐根 K 线计分（穿透深度 + 收盘位置 + 量能 + K 线形态），累计 >= 50 分确认，超时或站回去取消
+- 支持 Intrabar 加速：4h 大周期的 pending break 可以用 1h 数据打分
+
+**`validity_checker.py` — 综合有效性**：
+
+- 失效条件（AND 逻辑）：
+  - 大周期：结构破坏 AND（MACD 背离 OR MACD 转负）
+  - 小周期：结构破坏 AND 量能确认（放量破位，不是缩量假破）
+- 升级信号：大周期连续 2+ 次同方向摆动 → 自动升级（初牛→牛，初熊→熊）
+
+**`regime_detector.py` — 状态机**：
+
+- 5 个 Regime：牛 / 初牛 / 盘整 / 初熊 / 熊
+- 合法转换约束（不能跳级）：牛→初熊，初牛→牛/盘整/初熊，盘整→初牛/初熊，初熊→熊/盘整/初牛，熊→初牛
+- 维持状态，检测失效：形态没破就不动，破了才叫哨兵确认
+- JSON 断点续传：重启后直接恢复状态继续追踪
+
+**`order_book_checker.py` — L3 盘口确认**：
+
+- 通过 HyperLiquid l2Book 数据检测买卖盘失衡
+- 失衡门槛：60%（一侧占总挂单 60% 以上算失衡）
+- 用于在哨兵信号触发时做最后一关确认
+
+---
+
+### 3.9 通讯部总机 (feed_gateway / feed_client)
+
+**文件**：`src/data/feed_gateway.py`，`src/data/feed_client.py`
+
+**设计动机**：BitMEX API 有 429 限速，多个策略进程各自直连 WS 会被封。Feed Gateway 持有唯一 WS 连接，通过 ZMQ PUB/SUB 广播给所有策略进程，实现零 REST 轮询。
+
+**Gateway 架构**（`feed_gateway.py`，389 行）：
+
+```
+BitMEX WebSocket（公开连接，无 API key）
+  ├── tradeBin1m × 9 币种 → K 线
+  └── trade × 9 币种     → 实时 tick 价格
+
+ZMQ PUB (tcp://127.0.0.1:5555)
+  ├── KLINE.{coin}.{interval}  → K 线 JSON
+  ├── TICK.{coin}              → 最新价格（TTP 检查用）
+  └── HEARTBEAT                → 时间戳（每分钟心跳）
+
+ZMQ REP (tcp://127.0.0.1:5556)
+  └── 响应 "KLINES {coin} {interval}" → 返回完整 K 线窗口（启动时历史请求）
+```
+
+**客户端**（`feed_client.py`，224 行）：
+
+- ZMQ SUB 订阅，后台线程持续接收
+- 线程安全（所有缓存操作加锁，主线程 run_once + TTP 线程共用）
+- 聚合模式：5m/15m/30m/1h 策略订阅 1m 数据后本地聚合
+- 事件驱动：`wait_for_kline(timeout=180)` 阻塞等待新 K 线到达
+
+**重连安全**：WS 重连后 `_load_history()` 全量覆盖 K 线窗口（使用 `=` 赋值，不用 `extend`，避免断线期间数据缺口）。
+
+**ZMQ 主题格式**：
+
+| 主题 | 格式 | 含义 |
+|------|------|------|
+| `KLINE.ETH.1m` | `{json}` | ETH 1m K 线完成 |
+| `TICK.BTC` | `{price}` | BTC 最新成交价 |
+| `HEARTBEAT` | `{timestamp}` | 心跳，每分钟发送 |
+
+---
+
+### 3.10 实盘交易系统 (unified_trader)
+
+**文件**：`unified_trader.py`，`strategy_runner.py`，`kline_dispatcher.py`，`limit_executor.py`，`trade_logger.py`，`team_config.py`
+
+**`unified_trader.py` — 主进程**（21 策略并行）：
+
+启动流程：
+
+1. 从 `.env` 加载 BitMEX API 密钥
+2. 创建共享组件：`BitMEXAdapter`（1 个）、`FeedClient`（1 个）、`LimitOrderExecutor`（1 个）、`TradeLogger`（1 个）
+3. 按 `team_config.TEAM` 创建 21 个 `StrategyRunner`
+4. 从 `strategy_states.json` 恢复状态
+5. `KlineDispatcher.startup()`：REST 预下载各周期 250 根历史 K 线
+6. 订阅 FeedClient，等待 ZMQ 广播
+7. 主循环：收到 1m K 线 → KlineDispatcher 聚合 → 分发到各 StrategyRunner
+
+周期性任务：
+
+- 每 1 秒：TTP tick 检查（调用 `StrategyRunner.on_tick()`）
+- 每 1 小时：对账（内部持仓加总 vs 交易所 API 查询，偏差 > 0.01 报警）
+- 每日：日报生成
+
+**`strategy_runner.py` — 策略生命周期**：
+
+每个 `StrategyRunner` 管理一个 coin×strategy×interval 组合，包含：
+
+- 内部持仓状态（`position` / `entry_price` / `position_size`）：不靠 API 查，因为 BitMEX 合并同币种仓位
+- 独立 `TTPManager` 实例
+- 交易所挂单 ID（止损单 `sl_order_id` + 止盈单 `tp_order_id`）
+- `on_bar(bar, klines)` → 产信号，不执行交易
+- Mirror 包装：`config.mirror=True` 时翻转 K 线
+
+**`kline_dispatcher.py` — K 线分发**：
+
+- 管理各 coin×interval 的 K 线历史窗口（maxlen=250）
+- 收到 1m K 线后按 UTC 时间边界聚合到 5m/15m/30m/1h
+- UTC 总分钟数对齐（`ts // 60`，修正了 FeedClient 的 `%3600` bug）
+- `on_reconnect()`：清空聚合 buffer，重新预下载
+
+**`limit_executor.py` — 限价挂单**：
+
+执行逻辑（5 次重试机制）：
+
+1. 获取 best bid/ask，偏移 2 tick 挂限价单
+2. 等待 10 秒
+3. 未成交 → 撤单重挂
+4. 1m/5m 策略：每次重挂前重算信号，信号没了就放弃
+5. 15m+ 策略：信号来之不易，直接重挂不重算
+6. 5 次失败 → 转市价
+7. 部分成交 → 市价补齐
+
+**`team_config.py` — 策略配置与资金管理**：
+
+21 个冠军策略的完整配置（`StrategyConfig` 数据类：coin / strategy / interval / mirror / sl_pct）。
+
+资金管理公式：
+
+```python
+bet_amount = max($100, (available_margin // 21 // 10) * 10)
+bet_amount = min(bet_amount, $1000)
+# 名义敞口 = bet_amount × 10 (LEVERAGE)
+```
+
+特殊规则：
+
+- 余额 < $100（CIRCUIT_BREAKER_USD）→ 全平停战
+- 余额 ≥ $27000（WITHDRAW_THRESHOLD）→ 提款 $6000
+
+---
+
+### 3.11 风控层 (risk)
+
+**目录**：`src/core/risk/`
+
+**`base.py`**：`RiskManager` 抽象基类，`RiskConfig` / `RiskCheckResult` 数据类。
+
+**`ttp.py` — TTP 移动止盈**：
+
+逻辑（以多头为例）：
+
+1. 浮盈 >= `trigger_pct`（默认 1%）后开始追踪
+2. 价格创新高 A，确认上涨
+3. 回调形成前低 L1
+4. 价格再创新高 B > A → L1 成为确认摆动低点
+5. TTP 设置为 L1 - `buffer_pips`
+6. 连续新高时 TTP 跟随上移（TTP 只往有利方向移动）
+7. 价格跌破 TTP → 触发平仓
+
+空头完全镜像。TTP level 同步到交易所挂单（通过 `StrategyRunner.update_ttp_on_exchange()`）。
+
+**`stop_loss.py`**：固定百分比止损，默认 ±10%。
+
+**`combined.py`**：`CombinedRiskManager`，组合 TTP + StopLoss + 其他风控规则。
+
+---
+
+### 3.12 交易所适配器层 (exchange)
+
+**文件**：`src/exchange/base.py`，`bitmex/`，`hyperliquid/`，`paper/`
+
+**`base.py` — 抽象接口**：
+
+`ExchangeAdapter` 定义了统一接口，所有适配器必须实现：
+
+- `connect()` / `disconnect()` / `health_check()`
+- `get_price(coin)` / `get_klines(coin, interval, limit)`
+- `place_order(OrderRequest)` / `cancel_order(order_id)` / `get_order_status(order_id)`
+- `get_positions()` / `get_position(coin)`
+- `get_balance()`
+- `close_position(coin)`
+
+核心数据类：`OrderRequest`（coin / side / order_type / size / price / reduce_only）、`OrderResult`（success / order_id / filled_price / filled_size）、`Position`（coin / side / size / entry_price / unrealized_pnl）。
+
+**`bitmex/adapter.py` — BitMEX 主适配器**（~530 行）：
+
+- `SYMBOL_MAP`：coin → BitMEX 合约代码（BTC→XBTUSDT，ETH→ETHUSDT 等 9 个币种）
+- `AGGREGATE_MAP`：15m/30m 本地聚合（BitMEX API 只支持 1m/5m/1h/1d）
+- Maker 模式（默认）：postOnly 限价单 + 追价
+- Taker 模式：市价单
+- `get_best_bid_ask(coin)`：返回 (bid, ask) 用于限价单定价
+- `place_stop_loss(coin, side, size, price)`：挂交易所 SL 单
+- `place_take_profit(coin, side, size, price)`：挂交易所 TP 单
+
+**`bitmex/websocket.py`**：
+
+- 三层防断线：`_reconnect_enabled` + 指数退避 + 重连回调
+- 订阅频道：`tradeBin1m`（K 线）+ `trade`（tick）
+- 无认证模式（Feed Gateway 用）
+
+**`bitmex/auth.py`**：HMAC-SHA256 签名，用于下单等认证接口。
+
+**`hyperliquid/adapter.py`**：HyperLiquid REST + WebSocket，主要用于 Paper Trade 行情源。
+
+**`hyperliquid/ttp_orders.py`**：Exchange TTP 同步，将 TTP 状态同步到 HyperLiquid 的 trigger TP 单（positionTpsl grouping）。
+
+**`paper/adapter.py` — Paper Trading**：
+
+- 真实行情（委托给 HyperLiquidAdapter）+ 虚拟账本
+- 模拟滑点、手续费、资金费率
+- 每个冠军一个实例，独立资金、独立持仓
+
+---
+
+### 3.13 Paper Trade 模拟系统
+
+**文件**：`paper_trade/run.py`
+
+用真实 WebSocket 行情做完整的模拟交易验证，行为跟实盘完全一致，不下真单。
+
+**架构**：
+
+```
+HyperLiquid WebSocket（主网）→ 实时价格 → 止损/TTP tick 级检查
+HyperLiquid REST（主网）→ K 线 → 策略信号（K 线收盘时）
+Regime Detector → 实时 regime → 决定用哪队冠军
+每个冠军：TradingSystem(PaperAdapter) → 信号 + 风控 → 虚拟账本
+```
+
+状态持久化到 `paper_trade/state/`，重启不丢失。
+
+---
+
+### 3.14 双引擎路由器 (regime_router)
+
+**文件**：`src/trading/regime_router.py`
+
+**RegimeRouter 类**：根据市场状态自动选择正常 K 线（盘整）或翻转 K 线（趋势），实现"单一大脑，不同眼镜"。
+
+**ADX 切换逻辑**：
+
+```
+ADX(14) > 30 → flipped 模式（强趋势行情，翻转 K 线）
+ADX(14) < 20 → normal 模式（盘整行情，正常 K 线）
+20 ≤ ADX ≤ 30 → 缓冲区，保持上一状态（防止频繁切换）
+```
+
+**安全机制**：
+
+- ATR 动态熔断：当前 ATR 超过历史 90th 百分位 → 强制 normal（市场异常波动时不用翻转 K 线）
+- 30 分钟冷却锁：切换后 1800 秒内不再切换，防止在缓冲区来回振荡
+- 小周期聚合：5m/15m/30m 策略先聚合到 1h 再喂 RegimeDetector，避免短周期噪音触发假切换
+
+**warmup 机制**：初始化时用历史 K 线批量预热 RegimeDetector，避免冷启动 regime 判断不准。
+
+**已封杀的旧方案**：`--mirror`（固定 max_price 翻转）和 `--flip-klines` 会 `raise SystemExit`，因为 max_price 在实盘会随价格上涨不断漂移，导致历史指标重绘。
+
+---
+
+### 3.15 每日自动管线 (daily_pipeline)
+
+**文件**：`daily_pipeline.py`，`daily_cron.sh`
+
+```
+Step 1: 下载新 K 线数据（REST API 增量拉取）
+Step 2: 增量回测（纯信号，写 seed_signal.db）
+Step 3: 增量回测（TTP 模式，写 seed_ttp_close.db）
+Step 4: 报告重算（refresh_summary.py，只算有更新的 combo）
+Step 5: 生成 HTML 看板（seed_dashboard.py）
+```
+
+每步有超时保护（默认 7200 秒），失败时打印最后 10 行错误日志，不阻断后续步骤（视配置）。
+
+`daily_cron.sh` 是系统 cron 的包装入口。
+
+---
+
+## 4. 数据流图
+
+### 4.1 历史研究管线
+
+```
+原始 K 线数据（DuckDB klines.duckdb 或 JSON 文件）
+        │
+        ▼
+[generate_seed.py / incremental_backtest.py]
+  逐 coin×strategy×interval 回测
+  ├── indicator_cache.py 计算指标（SQLite 持久缓存）
+  ├── backtest.py 执行信号
+  └── 写入 seed_signal.db
+        │ paired_trades（每笔交易明细）
+        ▼
+[refresh_summary.py]
+  重算 combo_summary（35 字段汇总）
+        │
+        ▼
+[Gate v4.1 管线]
+  gate1 初考（交易数门槛）
+        │
+  gate2 专考（13 维度：6 regime + 7 sub_phase）
+        │
+  gate3 组考（Short/Mid/Long 分组，Top5/维度）
+        │
+  gate4 WF 考
+        │
+  gate5 Monte Carlo
+        │
+  gate6 OOS 考
+        │
+  冠军库 gate_v41_report.db
+  （89 个冠军：Long40/Mid35/Short14）
+        │
+        ▼
+[team_config.py]
+  人工确认 21 个 A 型冠军入队
+```
+
+### 4.2 实盘交易链路
+
+```
+BitMEX Exchange
+  │
+  ├── WebSocket（tradeBin1m + trade）
+  │      │
+  │      ▼
+  │   [feed_gateway.py]（单进程，唯一 WS）
+  │      │ ZMQ PUB tcp://127.0.0.1:5555
+  │      ▼
+  │   [unified_trader.py]
+  │      │ FeedClient（ZMQ SUB）
+  │      │
+  │      ▼
+  │   [kline_dispatcher.py]
+  │      ├── 1m K 线直接分发
+  │      └── 聚合 → 5m/15m/30m/1h K 线
+  │             │
+  │             ▼
+  │   [StrategyRunner × 21]（并行）
+  │      ├── on_bar(bar, klines) → 生成信号
+  │      │      └── indicator_cache → 计算指标
+  │      │      └── (mirror=True) 翻转 K 线后再算指标
+  │      │
+  │      ├── 信号 BUY/SELL → [limit_executor.py]
+  │      │      ├── 挂 best bid/ask 限价单
+  │      │      ├── 等 10s，未成交撤单重挂（最多 5 次）
+  │      │      └── 5 次失败 → 市价单
+  │      │
+  │      ├── 开仓后 → 挂 SL 单（±10%）
+  │      └── TTP 激活后 → 挂/更新 TP 单
+  │
+  └── REST（下单 / 撤单 / 查持仓）
+         │
+         ▼
+      [BitMEXAdapter]（共享 1 个实例）
+         │
+         ▼
+      [trade_logger.py]
+      记录每笔交易到 live_trades.db
+
+附：每小时对账
+  StrategyRunner 内部加总
+      vs
+  BitMEXAdapter.get_positions() API 查询
+  偏差 > 0.01 → 报警日志
+```
+
+---
+
+## 5. 模块依赖关系
+
+### 完整依赖矩阵
+
+| 模块 | 依赖 |
+|------|------|
+| `indicator_cache` | 无外部依赖（SQLite + zlib 标准库） |
+| `strategy/*` | `indicator_cache`（指标），`core.strategy.base`（基类） |
+| `backtest.py` | `indicator_cache`，`strategy`，`core.risk`（TTP/SL） |
+| `generate_seed.py` | `backtest.py`，`strategy`，`trading.regime.detector` |
+| `incremental_backtest.py` | `backtest.py`，`generate_seed.py`，`indicator_cache` |
+| `refresh_summary.py` | `incremental_backtest.py`（读 DB 路径常量） |
+| `daily_pipeline.py` | 调用子进程，无直接模块依赖 |
+| `gp_engine/*` | `indicator_cache`，`gp_engine/blocks.py`（积木库） |
+| `sentinel_camp/*` | `indicator_cache`，`gp_engine/tree.py`（树结构共享） |
+| `live_regime/*` | 独立（numpy only，不依赖指标库） |
+| `regime_router.py` | `indicator_cache`（ADX/ATR），`live_regime.RegimeDetector` |
+| `feed_gateway.py` | `exchange.bitmex.websocket`，`exchange.bitmex.adapter` |
+| `feed_client.py` | 独立（纯 ZMQ） |
+| `kline_dispatcher.py` | `team_config`（需要哪些 coin×interval） |
+| `strategy_runner.py` | `strategy`（get_strategy），`core.risk.ttp`（TTPManager），`exchange.base` |
+| `unified_trader.py` | `feed_client`，`strategy_runner`，`kline_dispatcher`，`limit_executor`，`trade_logger`，`team_config`，`exchange.bitmex.adapter` |
+| `limit_executor.py` | `exchange.base`（OrderRequest/OrderSide/OrderType） |
+| `trade_logger.py` | `team_config`（LEVERAGE 常量）|
+| `paper/adapter.py` | `exchange.base`，（委托给）`hyperliquid/adapter.py` |
+| `paper_trade/run.py` | `hyperliquid/adapter.py`，`paper/adapter.py`，`trading.system`，`strategy`，`core.risk.combined` |
+
+### 关键共享资源
+
+| 资源 | 共享方 |
+|------|-------|
+| `indicator_cache.db` | 回测引擎、GP 进化、哨兵营 |
+| `BitMEXAdapter` 实例 | 所有 21 个 StrategyRunner 共用 1 个 |
+| `ZMQ PUB:5555` | Feed Gateway → 所有策略进程 |
+| `strategy_states.json` | UnifiedTrader 崩溃恢复用 |
+| `seed_signal.db` | 增量回测（写）→ Gate 选拔（读） |
+
+---
+
+## 6. 设计模式与架构约束
+
+### 6.1 策略注册机制
+
+策略文件末尾调用：
+
+```python
+register_strategy('mean_reversion', MeanReversionStrategy)
+```
+
+`_STRATEGY_REGISTRY` 是一个模块级全局 dict，模块被 `import` 时自动填充。调用 `get_strategy('mean_reversion')` 返回一个新实例。
+
+`list_strategies()` 排除 `'mirror'`，因为 MirrorStrategy 不能独立运行，只能包装其他策略。
+
+### 6.2 Mirror 机制 (v2.1)
+
+**问题起源**：趋势行情中均值回归策略会逆势做单，亏损严重。翻转 K 线后，下跌趋势变上涨趋势，均值回归策略的"卖出超买"逻辑就变成了真实行情下的"买入超卖"。
+
+**v2.1 翻转公式**：
+
+```
+翻转轴 = SMA(200)
+翻转价格 = 2 × SMA(200) - 原始价格
+```
+
+与旧版 `max_price` 翻转的区别：SMA(200) 会随价格平滑移动，翻转后价格空间与正常数据重合，指标数值范围一致；而 `max_price` 固定不变，当价格上涨时翻转轴偏移，导致历史指标重绘。
+
+**信号不翻转原则**：翻转 K 线下的 BUY 信号等于真实行情下的 BUY（做多），翻转的是数据视角，不是交易方向。回测验证：`_mirror=True` + `BUY` 信号 = 实际在下跌行情中抄底做多。
+
+### 6.3 Regime 切换机制
+
+**两套机制并存**（不同场景用不同的）：
+
+**RegimeRouter**（`src/trading/regime_router.py`）：
+- 用于旧版 `bitmex_race.py`，基于 ADX 值动态切换 normal/flipped
+- 适合单策略场景
+
+**RegimeBridge**（`bitmex_race.py` 内部类）：
+- 基于 `live_regime/regime_detector.py` 的宏观 Regime（牛/熊/盘整）
+- 映射规则：牛/初牛 → Mirror + BUY_ONLY；熊/初熊 → Normal + SELL_ONLY；盘整 → Normal + 多空双开
+- 适合多策略场景
+
+**新版 unified_trader 方案**（Phase 1）：
+- 21 策略全员常驻，无 Regime 切换
+- Mirror 标志固定在 `team_config.py` 中，由 Gate 选拔决定（mirror 策略就是天生回归性强的策略）
+- 不在实盘动态切换，降低风险
+
+### 6.4 指标双 Namespace
+
+`indicator_cache` 维护两套独立的上下文和内存缓存：
+
+```python
+_contexts = {
+    'normal': {coin, interval, candles, db_path, conn},
+    'flipped': {coin, interval, candles, db_path, conn},
+}
+```
+
+`normal` 持久化到 `indicator_cache.db`（多轮回测共享）；`flipped` 始终纯内存（每次翻转数据不同，不值得缓存）。
+
+`set_active_namespace('flipped')` 切换后，所有 `get_indicator()` 调用都在 flipped 数据上计算，策略代码无需任何修改。
+
+### 6.5 增量断点续跑
+
+**问题**：全量回测 seed_signal.db 需要数小时，每天重跑代价太高。
+
+**解法**：在 seed_signal.db 中维护 `backtest_checkpoint` 表，记录每个 combo 跑到的最后一根 K 线时间戳及完整引擎状态（余额/持仓/TTP 状态/regime 状态）。新 K 线进来后，只从断点继续跑。
+
+**时间戳对齐**：不依赖整数索引（因为旧 K 线可能被修正，索引会偏移），而是用毫秒时间戳通过 `bisect` 二分查找定位断点位置。
+
+**注意事项**：首次运行前必须执行 `bootstrap_checkpoints.py` 创建断点记录，否则 `incremental_backtest.py` 检测不到断点会删掉全部数据重跑。
+
+---
+
+## 7. 数据库 Schema
+
+### 7.1 seed_signal.db（信号种子库）
+
+共 4 张表。纯信号版（`seed_signal.db`）和 TTP 版（`seed_ttp_close.db`）使用相同 schema。
+
+**combo_summary — 汇总指标表**（~11656 行 / 26288 行 TTP 版）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| strategy | TEXT | 策略名 |
+| coin | TEXT | 币种 |
+| interval | TEXT | K 线周期 |
+| total_return | REAL | 总收益率 |
+| final_balance | REAL | 最终余额 |
+| max_drawdown | REAL | 最大回撤 |
+| sharpe_ratio | REAL | 夏普比率 |
+| sortino_ratio | REAL | 索提诺比率 |
+| calmar_ratio | REAL | 卡玛比率 |
+| total_trades | INTEGER | 总交易次数 |
+| winning_trades | INTEGER | 盈利次数 |
+| losing_trades | INTEGER | 亏损次数 |
+| win_rate | REAL | 胜率 |
+| avg_win_pct | REAL | 平均盈利幅度 |
+| avg_loss_pct | REAL | 平均亏损幅度 |
+| profit_factor | REAL | 盈利因子 |
+| ttp_count | INTEGER | TTP 触发次数 |
+| double_count | INTEGER | 翻倍次数 |
+| fastest_double_days | REAL | 最快翻倍天数 |
+| avg_double_days | REAL | 平均翻倍天数 |
+| daily_open_positions | REAL | 日均开仓次数 |
+| cagr | REAL | 复合年化收益率 |
+| max_daily_dd | REAL | 最大单日回撤 |
+| reward_risk | REAL | 盈亏比 |
+| max_consec_loss_amt | REAL | 最大连续亏损金额 |
+| total_fees | REAL | 总手续费 |
+| max_balance | REAL | 历史最高余额 |
+| min_balance | REAL | 历史最低余额 |
+| max_win | REAL | 最大单笔盈利 |
+| max_loss | REAL | 最大单笔亏损 |
+| expectancy_ratio | REAL | 期望值比率 |
+| longest_win_streak | INTEGER | 最长连胜 |
+| longest_loss_streak | INTEGER | 最长连败 |
+| signal_close_count | INTEGER | 信号平仓次数 |
+| backtest_time | TEXT | 回测时间戳 |
+
+唯一索引：`(strategy, coin, interval)`
+
+**paired_trades — 配对交易明细表**（~94.9M 行）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| combo_id | INTEGER FK | 关联 combo_summary.id |
+| open_candle_idx | INTEGER | 开仓 K 线索引 |
+| close_candle_idx | INTEGER | 平仓 K 线索引 |
+| open_time | TEXT | 开仓时间 |
+| close_time | TEXT | 平仓时间 |
+| holding_bars | INTEGER | 持仓 K 线数 |
+| direction | TEXT | 方向（long/short） |
+| entry_price | REAL | 开仓价 |
+| exit_price | REAL | 平仓价 |
+| capital | REAL | 名义资本 |
+| position_size | REAL | 仓位大小 |
+| pnl | REAL | 盈亏 |
+| r_value | REAL | R 倍数（PnL / 1R） |
+| balance_after | REAL | 平仓后余额 |
+| close_type | TEXT | 平仓类型（signal/stop_loss/ttp/liquidation） |
+| regime_at_open | TEXT | 开仓时 regime |
+| fee | REAL | 手续费 |
+| funding_cost | REAL | 资金费用 |
+| slippage_cost | REAL | 滑点成本 |
+| mfe | REAL | 最大有利偏移 |
+| mae | REAL | 最大不利偏移 |
+| open_atr_pct | REAL | 开仓时 ATR% |
+| open_volume | REAL | 开仓时成交量 |
+| funding_count | INTEGER | 资金费扣除次数 |
+
+索引：`idx_pt_combo(combo_id)`，`idx_pt_regime(regime_at_open)`
+
+**regime_timeline — Regime 时间线表**（~67 万行）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| coin | TEXT | 币种 |
+| interval | TEXT | 周期 |
+| candle_idx | INTEGER | K 线索引 |
+| candle_time_ms | INTEGER | 毫秒时间戳 |
+| regime | TEXT | 当前 regime（牛/初牛/盘整/初熊/熊） |
+| adx | REAL | ADX 值 |
+| sma_direction | TEXT | SMA 方向 |
+
+唯一索引：`(coin, interval, candle_idx)`
+
+**backtest_checkpoint — 断点表**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| strategy | TEXT | 策略名 |
+| coin | TEXT | 币种 |
+| interval_ | TEXT | 周期（注意字段名有下划线） |
+| last_candle_time_ms | INTEGER | 最后处理的 K 线时间戳 |
+| total_candle_count | INTEGER | 已处理 K 线总数 |
+| balance | REAL | 当前余额 |
+| position | TEXT | 当前持仓（NO_POSITION/BUY/SELL） |
+| entry_price | REAL | 开仓价 |
+| position_open_time_ms | INTEGER | 开仓时间戳 |
+| buy_signals | INTEGER | 历史买信号数 |
+| sell_signals | INTEGER | 历史卖信号数 |
+| withdraw_count | INTEGER | 提款次数 |
+| first_withdraw_day | INTEGER | 首次提款日 |
+| ttp_state | TEXT | TTP 状态 JSON |
+| regime_state | TEXT | Regime 状态 JSON |
+| updated_at | TEXT | 最后更新时间 |
+
+主键：`(strategy, coin, interval_)`
+
+---
+
+### 7.2 indicator_cache.db（指标缓存库）
+
+单张表：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| coin | TEXT | 币种 |
+| interval | TEXT | 周期 |
+| indicator | TEXT | 指标名（如 rsi） |
+| params | TEXT | 参数 JSON（如 `{"period":14}`） |
+| data | BLOB | zlib 压缩序列化的指标数组 |
+| candle_count | INTEGER | 计算时的 K 线数量 |
+
+主键：`(coin, interval, indicator, params)`
+
+`flipped` namespace 对应 `indicator_cache_flipped.db`，结构相同。
+
+---
+
+### 7.3 gate_v41_report.db（Gate 选拔报告库）
+
+多张表，按关卡和周期命名：
+
+- `gate1_{interval}` × 10 个周期：初考结果（passed 字段）
+- `gate2_{interval}` × 10 个周期：13 维度成绩单
+- `gate3_short` / `gate3_mid` / `gate3_long`：分组选拔结果（selected 字段）
+- 后续 MC / WF / OOS 结果表
+
+---
+
+### 7.4 live_trades.db（实盘交易记录库）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| strategy_id | TEXT | 策略唯一标识（coin_strategy_interval） |
+| coin | TEXT | 币种 |
+| strategy | TEXT | 策略名 |
+| interval | TEXT | 周期 |
+| side | TEXT | 方向（BUY/SELL） |
+| entry_price | REAL | 开仓价 |
+| exit_price | REAL | 平仓价 |
+| position_size | REAL | 仓位大小 |
+| pnl | REAL | 盈亏 |
+| fee | REAL | 手续费 |
+| open_time | TEXT | 开仓时间 |
+| close_time | TEXT | 平仓时间 |
+| close_reason | TEXT | 平仓原因 |
+| bet_amount | REAL | 注码（保证金） |
+| balance_after | REAL | 平仓后余额 |
+
+Schema 与 `seed_signal.db` 的 `paired_trades` 对齐，方便将实盘数据与回测数据做对比分析。
+
+---
+
+## 8. 实盘系统架构
+
+### 8.1 整体架构
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │           BitMEX Exchange                │
+                    │  WebSocket                REST API       │
+                    └─────────────┬───────────────┬───────────┘
+                                  │               │
+                          tradeBin1m           下单/撤单
+                          trade tick          查持仓/余额
+                                  │               │
+                    ┌─────────────▼───────────┐   │
+                    │   feed_gateway.py        │   │
+                    │   唯一 WS 持有者          │   │
+                    │   ZMQ PUB :5555          │   │
+                    │   ZMQ REP :5556 (历史)   │   │
+                    └─────────────┬────────────┘   │
+                                  │ ZMQ SUB         │
+                    ┌─────────────▼────────────────▼─────────┐
+                    │           unified_trader.py              │
+                    │                                          │
+                    │  FeedClient  KlineDispatcher  BitMEXAdapter
+                    │        │           │               │     │
+                    │        └─────┬─────┘               │     │
+                    │              │ on_bar                │     │
+                    │   ┌──────────▼──────────────────────┐    │
+                    │   │  StrategyRunner × 21             │    │
+                    │   │  ┌───────────────────────────┐  │    │
+                    │   │  │  Strategy + indicator_cache│  │    │
+                    │   │  │  TTPManager               │  │    │
+                    │   │  │  sl_order_id / tp_order_id│  │    │
+                    │   │  └───────────┬───────────────┘  │    │
+                    │   └─────────────┼───────────────────┘    │
+                    │                 │ 信号                    │
+                    │   ┌─────────────▼──────────────────┐     │
+                    │   │  LimitOrderExecutor              ├─────┘
+                    │   │  5次重试 + 转市价               │
+                    │   └─────────────────────────────────┘
+                    │                                          │
+                    │   TradeLogger → live_trades.db           │
+                    └──────────────────────────────────────────┘
+```
+
+### 8.2 策略状态机
+
+每个 `StrategyRunner` 维护一个状态机：
+
+```
+idle ──[BUY/SELL 信号]──► pending_open ──[限价单成交]──► active
+  ▲                                                         │
+  │                                                  [反手信号/止损/TTP]
+  └──────────────────── idle ◄──[平仓完成]── pending_close ◄┘
+```
+
+状态转换时的操作：
+
+- `idle → pending_open`：提交限价单，等待成交
+- `pending_open → active`：开仓成功，挂 SL 单（entry ± 10%）
+- `active`：持续监控 TTP；TTP 激活时挂/更新 TP 单到交易所
+- `active → pending_close`：收到平仓信号，先撤 SL+TP 单，再提交平仓限价单
+- `pending_close → idle`：平仓成功，记录到 live_trades.db
+
+### 8.3 限价单执行流程
+
+```
+┌──────────────────────────────────────────────────┐
+│ execute_limit(strategy, side, size, ...)          │
+│                                                    │
+│ FOR attempt in 1..5:                               │
+│   1. 获取 best_bid_ask                             │
+│   2. 偏移 2 tick 挂限价单                          │
+│   3. 等待 10 秒                                    │
+│   4. 查询成交状态                                   │
+│      ├─ 全成交 → 返回成功                           │
+│      ├─ 部分成交 → 撤剩余 + 市价补齐 → 返回成功    │
+│      └─ 未成交 → 撤单                              │
+│         ├─ 小周期(1m/5m)：重算信号                  │
+│         │   信号消失 → 放弃，返回 signal_gone       │
+│         └─ 继续下一次尝试                           │
+│                                                    │
+│ 5次都失败 → 转市价单                               │
+└──────────────────────────────────────────────────┘
+```
+
+### 8.4 对账机制
+
+每小时执行一次：
+
+```python
+# 内部账本
+internal_positions = {coin: sum(runner.position_size for runner in runners if runner.coin == coin)}
+
+# 交易所账本
+exchange_positions = adapter.get_positions()
+
+# 比对
+for coin, internal_size in internal_positions.items():
+    exchange_size = exchange_positions.get(coin, 0)
+    if abs(internal_size - exchange_size) > 0.01:
+        logger.warning(f"对账偏差: {coin} 内部={internal_size} 交易所={exchange_size}")
+```
+
+### 8.5 崩溃恢复机制
+
+状态持久化文件：`strategy_states.json`，采用原子写入（`.tmp` 文件 → `os.replace()`）。
+
+重启恢复流程：
+
+1. 读取 `strategy_states.json`
+2. 为每个 StrategyRunner 恢复 `position / entry_price / position_size / state / sl_order_id / tp_order_id`
+3. 调用 BitMEX API 查询当前挂单，对比 `sl_order_id / tp_order_id` 是否仍然存在
+4. 丢失的保护单重新挂上
+5. 恢复 TTPManager 状态
+
+---
+
+## 9. 附录：策略一览
+
+21 个实盘冠军策略配置（来自 `team_config.py`）：
+
+| 序号 | 币种 | 策略名 | 周期 | Mirror |
+|------|------|--------|------|--------|
+| 1 | ETH | mean_reversion | 1m | 是 |
+| 2 | XRP | mean_reversion | 1m | 是 |
+| 3 | SOL | mean_reversion | 1m | 是 |
+| 4 | AVAX | mean_reversion | 1m | 是 |
+| 5 | ADA | mean_reversion | 5m | 是 |
+| 6 | LINK | order_block | 5m | 是 |
+| 7 | DOT | bb_squeeze | 5m | 是 |
+| 8 | LINK | mean_reversion | 15m | 是 |
+| 9 | BTC | bb_squeeze | 30m | 是 |
+| 10 | ETH | proc | 30m | 是 |
+| 11 | BNB | mean_reversion | 30m | 是 |
+| 12 | DOT | bb_squeeze | 30m | 是 |
+| 13 | ETH | advanced_kline_echo | 1h | 是 |
+| 14 | XRP | rsi_reversal | 1h | 是 |
+| 15 | SOL | bb_squeeze | 1h | 否 |
+| 16 | SOL | williams_fast | 1h | 是 |
+| 17 | ADA | mean_reversion | 1h | 是 |
+| 18 | AVAX | bb_squeeze | 1h | 否 |
+| 19 | AVAX | smc_real | 1h | 否 |
+| 20 | LINK | bb_squeeze | 1h | 否 |
+| 21 | DOT | bb_squeeze | 1h | 否 |
+
+**策略分布观察**：
+
+- 高频（1m）：4 个，全部 mean_reversion + mirror，适合盘整行情
+- 中高频（5m-30m）：7 个，以 mean_reversion 和 bb_squeeze 为主
+- 日内（1h）：9 个，策略多样性最高，部分无 mirror（smc_real、bb_squeeze）
+- 无 mirror 的 6 个策略（SOL bb_squeeze 1h、AVAX bb_squeeze 1h、AVAX smc_real 1h、LINK bb_squeeze 1h、DOT bb_squeeze 1h）：说明这些策略在正常 K 线上的表现已经足够稳定，不需要翻转视角
+
+---
+
+## 踩过的坑
+
+### 坑1: indicator_cache preload_from_duckdb namespace 固定写 normal (2026-04-06)
+**现象**: `preload_from_duckdb()` 直接写 `_memory_cache`（永远指向 normal），如果在 flipped namespace 下调用会写错缓存。
+**根因**: 模块级别 `_memory_cache` 是 normal 的别名，函数内没有用 `_memory_caches[_active_namespace]`。
+**解决**: 改成 `mcache = _memory_caches[_active_namespace]`。当前不触发但堵住未来隐患。
+
+### 坑2: 两份副本改一处漏另一处 (2026-04-06)
+**现象**: `trader_bot.py` 在 `trading/` 和 `trading/monitor/` 各有一份。修了 monitor 里的 `TG_API_BASE` bug，但 trading/ 里的没修——实盘用的恰好是没修的那份。
+**根因**: 代码复制而非共享，改了 A 忘了 B。
+**解决**: 删除副本，改用 symlink。规则 完整性-40："发现副本立刻统一为单一来源"。
+
+### 坑3: paper_trade position_side 传错导致止损静默失效 (2026-04-06)
+**现象**: `paper_trade/run.py` 把 `pos.side`（'LONG'/'SHORT'）映射成 'BUY'/'SELL' 再传给 `StopLossManager`，但 StopLossManager 判断的是 `== "LONG"` / `== "SHORT"`。两个分支都不匹配，tick 级止损从未生效。
+**根因**: 多余的映射——`pos.side` 已经是正确格式，映射反而改错了。
+**解决**: 删掉映射，直接传 `pos.side`。
+
+---
+
+*文档由技术架构分析生成，代码来源：wuji-auto-trading*

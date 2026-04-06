@@ -1,0 +1,335 @@
+"""通讯部客户端 — 策略进程用来接收 Gateway 推送.
+
+线程安全：所有缓存操作加锁（主线程 run_once + TTP 线程共用）。
+
+用法:
+    from data.feed_client import FeedClient
+
+    client = FeedClient()
+    client.subscribe('ETH', '1m')
+    history = client.request_history('ETH', '1m')  # 启动时一次性
+
+    # 聚合模式（5m 策略从 1m K 线聚合）
+    client.subscribe('XRP', '5m', source_interval='1m')
+    history = adapter.get_klines('XRP', '5m', limit=250)
+    client.load_history('XRP', '5m', history)
+
+    # 事件驱动主循环
+    while True:
+        client.wait_for_kline(timeout=180)
+        klines = client.get_klines('ETH', '1m')  # 完整 200+ 根窗口
+        price = client.get_price('ETH')           # 最新 tick 价格
+
+"""
+
+import json
+import logging
+import threading
+import time
+from collections import deque
+from typing import Any
+
+import zmq
+
+logger = logging.getLogger("FeedClient")
+
+
+class FeedClient:
+    """ZMQ 订阅客户端 — 线程安全."""
+
+    def __init__(self, pub_endpoint: str = "tcp://127.0.0.1:5555",
+                 req_endpoint: str = "tcp://127.0.0.1:5556") -> None:
+        """Initialize FeedClient.
+
+        Args:
+            pub_endpoint: Gateway ZMQ PUB 地址
+            req_endpoint: Gateway ZMQ REP 地址（REQ/REP 历史请求）
+
+        """
+        self._ctx = zmq.Context()
+
+        # SUB socket（接收实时推送）
+        self._sub = self._ctx.socket(zmq.SUB)
+        self._sub.connect(pub_endpoint)
+
+        # REQ socket（启动时请求历史 K 线）
+        self._req = self._ctx.socket(zmq.REQ)
+        self._req.connect(req_endpoint)
+        self._req.setsockopt(zmq.RCVTIMEO, 10000)  # 10 秒超时
+
+        # 内部缓存（线程安全）
+        self._lock = threading.Lock()
+        # "{coin}_{interval}" → deque
+        self._kline_windows: dict[str, deque[dict[str, Any]]] = {}
+        self._last_price: dict[str, float] = {}       # coin → price
+        self._last_heartbeat: float = time.time()
+
+        # 聚合缓存（1m → Nm 本地聚合）
+        self._agg_buffers: dict[str, list[dict[str, Any]]] = {}    # "XRP_5m" → 待聚合的 1m bars
+        self._agg_targets: dict[str, str] = {}      # "XRP" → "5m"（目标周期）
+
+        # K 线事件信号（事件驱动主循环用）
+        self._kline_event = threading.Event()
+
+        # 后台接收线程
+        self._running = True
+        self._recv_thread = threading.Thread(
+            target=self._recv_loop, daemon=True,
+        )
+        self._recv_thread.start()
+
+    # ==================== 订阅 ====================
+
+    def subscribe(
+        self, coin: str, interval: str,
+        source_interval: str | None = None,
+    ) -> None:
+        """订阅指定 coin 的所有频道.
+
+        Args:
+            coin: 币种
+            interval: 目标 K 线周期（如 '5m'）
+            source_interval: 若设定，订阅 source_interval 的 ZMQ topic，
+                             本地聚合成 interval。如 interval='5m', source='1m'
+
+        """
+        if source_interval and source_interval != interval:
+            # 聚合模式：订阅 source 的 topic，本地聚合成 target
+            topic = f"KLINE.{coin}.{source_interval}"
+            self._sub.setsockopt_string(zmq.SUBSCRIBE, topic)
+            self._agg_targets[coin] = interval
+            self._agg_buffers[f"{coin}_{interval}"] = []
+        else:
+            # 普通模式：直接订阅目标周期
+            topic = f"KLINE.{coin}.{interval}"
+            self._sub.setsockopt_string(zmq.SUBSCRIBE, topic)
+
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, f"TICK.{coin}")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "HEARTBEAT")
+
+        key = f"{coin}_{interval}"
+        with self._lock:
+            if key not in self._kline_windows:
+                self._kline_windows[key] = deque(maxlen=250)
+
+        logger.info("已订阅: %s/%s%s", coin, interval,
+                    f"（聚合自 {source_interval}）" if source_interval else "")
+
+    # ==================== 历史请求 ====================
+
+    def request_history(self, coin: str, interval: str) -> list[dict[str, Any]]:
+        """向 Gateway 请求历史 K 线（启动时一次性调用）.
+
+        Returns:
+            List[Dict]: K 线列表（空列表 = Gateway 无响应）
+
+        """
+        try:
+            self._req.send_string(f"KLINES {coin} {interval}")
+            reply = self._req.recv_string()
+            klines: list[dict[Any, Any]] = json.loads(reply)
+            key = f"{coin}_{interval}"
+            with self._lock:
+                self._kline_windows[key] = deque(klines, maxlen=250)
+            logger.info("历史 K 线: %s/%s = %d 根", coin, interval, len(klines))
+        except zmq.Again:
+            logger.warning("请求历史 K 线超时（Gateway 无响应，检查是否运行）")
+            return []
+        except Exception:
+            logger.exception("请求历史 K 线异常")
+            return []
+        else:
+            return klines
+
+    def load_history(self, coin: str, interval: str, klines: list[dict[str, Any]]) -> None:
+        """直接加载历史 K 线数据到窗口（用于聚合模式启动，不走 REQ/REP）."""
+        key = f"{coin}_{interval}"
+        with self._lock:
+            self._kline_windows[key] = deque(klines, maxlen=250)
+        logger.info("历史 K 线（直接加载）: %s/%s = %d 根", coin, interval, len(klines))
+
+    # ==================== 事件驱动 ====================
+
+    def wait_for_kline(self, timeout: float = 120) -> bool:
+        """阻塞等待 K 线事件.
+
+        Args:
+            timeout: 超时秒数
+
+        Returns:
+            bool: True = 收到 K 线, False = 超时
+
+        """
+        got = self._kline_event.wait(timeout=timeout)
+        self._kline_event.clear()
+        return got
+
+    # ==================== 缓存读取（线程安全） ====================
+
+    def get_klines(self, coin: str, interval: str) -> list[dict[str, Any]]:
+        """获取 K 线窗口（完整 200+ 根）."""
+        key = f"{coin}_{interval}"
+        with self._lock:
+            window = self._kline_windows.get(key, deque())
+            return list(window)
+
+    def get_price(self, coin: str) -> float:
+        """获取最新 tick 价格."""
+        with self._lock:
+            return self._last_price.get(coin, 0.0)
+
+    def is_gateway_alive(self) -> bool:
+        """Gateway 心跳是否正常（30 秒内有心跳 = 活着）."""
+        return (time.time() - self._last_heartbeat) < 30
+
+    # ==================== 后台接收 ====================
+
+    def _recv_loop(self) -> None:
+        """后台线程：持续接收 ZMQ 消息并更新缓存."""
+        poller = zmq.Poller()
+        poller.register(self._sub, zmq.POLLIN)
+
+        while self._running:
+            socks = dict(poller.poll(1000))
+            if self._sub not in socks:
+                continue
+
+            try:
+                msg = self._sub.recv_string()
+                space_idx = msg.index(" ")
+                topic = msg[:space_idx]
+                payload = msg[space_idx + 1:]
+            except (ValueError, zmq.ZMQError) as e:
+                logger.warning("消息解析失败: %s", e)
+                continue
+
+            try:
+                if topic.startswith("KLINE."):
+                    # KLINE.SOL.1m {json}
+                    parts = topic.split(".")
+                    coin, interval = parts[1], parts[2]
+                    kline = json.loads(payload)
+
+                    if coin in self._agg_targets:
+                        # === 聚合模式（1m → Nm） ===
+                        target = self._agg_targets[coin]
+                        buf_key = f"{coin}_{target}"
+                        target_secs = _interval_to_secs(target)
+                        source_secs = _interval_to_secs(interval)
+                        n_needed = target_secs // source_secs
+                        period_minutes = target_secs // 60
+                        buf = self._agg_buffers[buf_key]
+
+                        bar_minute = _parse_minute(kline["timestamp"])
+
+                        if not buf:
+                            # 首根 bar 必须在周期起点（如 5m: minute%5==0）
+                            if bar_minute % period_minutes != 0:
+                                self._kline_event.set()  # 仍发心跳
+                                continue
+                        else:
+                            # 检查是否与 buffer 属于同一周期（防丢包跨周期）
+                            first_ts = buf[0]["timestamp"]
+                            first_period = (
+                                _parse_minute(first_ts)
+                                // period_minutes
+                            )
+                            this_period = bar_minute // period_minutes
+                            if this_period != first_period:
+                                if len(buf) < n_needed:
+                                    logger.debug(
+                                        "聚合重置: 旧缓冲 %d/%d 不完整",
+                                        len(buf), n_needed,
+                                    )
+                                buf = []
+                                if bar_minute % period_minutes != 0:
+                                    self._agg_buffers[buf_key] = buf
+                                    self._kline_event.set()
+                                    continue
+
+                        buf.append(kline)
+
+                        if len(buf) >= n_needed:
+                            # 聚合完成：OHLCV 合并
+                            agg = _aggregate_bars(buf)
+                            self._agg_buffers[buf_key] = []
+                            with self._lock:
+                                tgt_key = f"{coin}_{target}"
+                                window = self._kline_windows.get(tgt_key)
+                                if window is not None:
+                                    last_ts = (
+                                        window[-1]["timestamp"]
+                                        if window else None
+                                    )
+                                    if last_ts != agg["timestamp"]:
+                                        window.append(agg)
+                        else:
+                            self._agg_buffers[buf_key] = buf
+
+                        self._kline_event.set()  # 每根 1m bar 都发心跳
+                    else:
+                        # === 普通模式（不变） ===
+                        key = f"{coin}_{interval}"
+                        with self._lock:
+                            window = self._kline_windows.get(key)
+                            if window is not None:
+                                last_ts = (
+                                    window[-1]["timestamp"]
+                                    if window else None
+                                )
+                                if last_ts != kline["timestamp"]:
+                                    window.append(kline)
+                        self._kline_event.set()
+
+                elif topic.startswith("TICK."):
+                    coin = topic.split(".")[1]
+                    price = float(payload)
+                    with self._lock:
+                        self._last_price[coin] = price
+
+                elif topic == "HEARTBEAT":
+                    self._last_heartbeat = float(payload)
+
+            except Exception as e:
+                logger.warning("处理消息异常 [%s]: %s", topic, e)
+
+    # ==================== 清理 ====================
+
+    def close(self) -> None:
+        """关闭客户端."""
+        self._running = False
+        self._sub.close()
+        self._req.close()
+        self._ctx.term()
+        logger.info("FeedClient 已关闭")
+
+
+# ==================== 聚合辅助函数 ====================
+
+def _interval_to_secs(interval: str) -> int:
+    """'1m'→60, '5m'→300, '15m'→900, '1h'→3600."""
+    units = {"m": 60, "h": 3600}
+    return int(interval[:-1]) * units[interval[-1]]
+
+
+def _parse_minute(timestamp: float | str) -> int:
+    """从时间戳提取 UTC 总分钟数（支持 epoch 毫秒 int 和 ISO 字符串）."""
+    if isinstance(timestamp, (int, float)):
+        return int(timestamp / 1000) // 60
+    from datetime import datetime
+    dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+    return int(dt.timestamp()) // 60
+
+
+def _aggregate_bars(bars: list[dict[str, Any]]) -> dict[str, Any]:
+    """多根 K 线聚合为一根（标准 OHLCV 合并，保留 time 字段兼容 TradingSystem）."""
+    ts = bars[0]["timestamp"]
+    return {
+        "timestamp": ts,
+        "time": bars[0].get("time", ts),
+        "open": bars[0]["open"],
+        "high": max(b["high"] for b in bars),
+        "low": min(b["low"] for b in bars),
+        "close": bars[-1]["close"],
+        "volume": sum(b.get("volume", 0) for b in bars),
+    }

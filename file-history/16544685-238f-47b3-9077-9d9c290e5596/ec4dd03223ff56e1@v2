@@ -1,0 +1,1367 @@
+#!/usr/bin/env python3
+"""回测引擎 — 策略信号 + TTP + MFE/MAE.
+
+职责（引擎只做这些）：
+  1. 加载策略 → 逐 K 线产信号（BUY/SELL/HOLD）
+  2. 信号反转 → 平仓 + 反手开仓
+  3. TTP 移动止盈 → 价格达标激活，回落触发平仓
+  4. 止损检查 → 价格反向超过阈值强平（模拟逐仓爆仓）
+  5. MFE/MAE → 持仓期间最大有利/不利偏移（后算止损/爆仓用）
+
+不管的（后算）：
+  - balance / 余额 / 爆仓判断 → B阶段去除（待做）
+  - PnL / 盈亏 → 从 entry_price + exit_price + direction 后算
+  - 手续费 / 滑点 / 资金费 → 固定参数后算
+  - regime 标签 → JOIN regime_timeline 后贴
+  - 注码 / position_size → 固定参数后算
+
+产出 11 字段：
+  combo_id, open_candle_idx, close_candle_idx, open_time, close_time,
+  direction, entry_price, exit_price, close_type, mfe, mae
+
+close_type 类型：
+  signal     — 反向信号平仓
+  stop_loss  — 止损/逐仓爆仓
+  ttp        — TTP 移动止盈触发
+  end_of_data — 数据结束强制平仓
+
+TTP 模式：
+  ttp_highlow=True  → 用 K 线 high/low 判断 TTP（更接近实盘）
+  ttp_highlow=False → 用 K 线 close 判断 TTP
+"""
+
+import json
+import logging
+import os
+import statistics
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
+
+# 通过 .wuji-root 定位项目根
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from core.indicator_cache import init_cache, validate_requires  # noqa: E402
+from core.risk import TTPConfig, TTPManager  # noqa: E402
+from core.strategy import get_strategy  # noqa: E402
+from core.strategy.base import Signal, Strategy  # noqa: E402
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Trade:
+    """交易记录."""
+
+    time: str
+    # BUY, SELL, CLOSE_BUY, CLOSE_SELL,
+    # TTP_CLOSE_BUY, TTP_CLOSE_SELL,
+    # REVERSE_BUY, REVERSE_SELL, LIQUIDATION
+    order_type: str
+    price: float
+    capital: float
+    pnl: float
+    balance: float  # 该笔交易后的余额
+    withdraw: float = 0  # 提款金额（默认0）
+    fee: float = 0  # 手续费（开+平合计）
+    slippage_cost: float = 0  # 滑点成本
+    funding_cost: float = 0  # 资金费用
+
+
+@dataclass
+class BacktestResult:
+    """回测结果."""
+
+    coin: str
+    interval: str
+    period: str
+
+    # 基本统计
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+
+    # 收益指标
+    total_return: float = 0
+    final_balance: float = 0  # 最终余额
+    max_balance: float = 0  # 最大余额
+    min_balance: float = 0  # 最小余额
+    win_rate: float = 0
+    avg_win: float = 0
+    avg_loss: float = 0
+
+    # 风险指标
+    max_drawdown: float = 0
+    max_profit: float = 0
+    max_loss: float = 0
+
+    # 风险调整收益
+    sharpe_ratio: float = 0
+    sortino_ratio: float = 0
+    calmar_ratio: float = 0
+
+    # 交易详情
+    trades: list[Trade] = field(default_factory=list)
+
+    # 信号统计
+    buy_signals: int = 0
+    sell_signals: int = 0
+
+    # 日均开仓量
+    daily_open_positions: float = 0  # 日均开仓数量
+
+    # 翻倍时长（天）
+    fastest_double_days: float = 0   # 最快一次翻倍耗时
+    avg_double_days: float = 0       # 平均翻倍耗时
+    double_count: int = 0            # 总翻倍次数
+
+
+class BacktestEngine:
+    """回测引擎."""
+
+    def __init__(
+        self,
+        coin: str,
+        interval: str = "1h",
+        days: int = 1095,
+        initial_capital: float = 500,
+        enable_ttp: bool = True,
+        ttp_highlow: bool = True,
+        stop_loss_pct: float = 0.1,
+        leverage: float = 10.0,
+        enable_withdraw: bool = False,  # 默认关闭自动提款功能
+        # True=固定注码（策略评估用）
+        # False=复利注码（实际收益估算）
+        fixed_bet: bool = False,
+        candles: list[dict[str, Any]] | None = None,  # 外部传入K线数据
+        fixed_bet_amount: float | None = None,  # 默认=初始本金×10%
+        fee_rate: float = 0.0,  # taker手续费率（每侧）
+        slippage_pct: float = 0.0,  # 滑点百分比（每侧）
+        funding_rate_8h: float = 0.0,  # 资金费率（每8小时）
+        # "linear"(USDT本位) | "inverse"(币本位)  # noqa: ERA001
+        margin_mode: str = "linear",
+    ) -> None:
+        self.coin = coin.upper()
+        self.interval = interval
+        self.days = days
+        self.initial_capital = initial_capital
+        self.enable_ttp = enable_ttp
+        self.ttp_highlow = ttp_highlow
+        self.stop_loss_pct = stop_loss_pct
+        self.leverage = leverage
+        self.enable_withdraw = enable_withdraw  # 提款开关
+        self.fixed_bet = fixed_bet
+        self.fixed_bet_amount = (
+            fixed_bet_amount
+            if fixed_bet_amount is not None
+            else self.initial_capital * 0.1
+        )
+        self.fee_rate = fee_rate
+        self.slippage_pct = slippage_pct
+        self.funding_rate_8h = funding_rate_8h
+        self.margin_mode = margin_mode  # linear(USDT) | inverse(币本位)
+
+        # TTP 管理器
+        ttp_config = TTPConfig(
+            ttp_enabled=enable_ttp,
+            ttp_buffer_pips=5.0,
+            ttp_trigger_pct=0.01,  # 1% 浮盈后启动
+        )
+        self.ttp_manager = TTPManager(ttp_config)
+
+        # 每日K线数量映射
+        self._bars_per_day = {
+            "1m": 1440,
+            "5m": 288,
+            "15m": 96,
+            "30m": 48,
+            "1h": 24,
+            "2h": 12,
+            "4h": 6,
+            "6h": 4,
+            "12h": 2,
+            "1d": 1,
+        }
+        self.bars_per_day = self._bars_per_day.get(interval, 24)
+
+        # 资金费结算间隔（K线数）
+        _bar_minutes = {
+            "1m": 1, "5m": 5, "15m": 15, "30m": 30,
+            "1h": 60, "2h": 120, "4h": 240, "1d": 1440,
+        }
+        self._bar_minutes = _bar_minutes.get(interval, 60)
+        self._bars_per_funding = (
+            int((8 * 60) / self._bar_minutes)
+            if self._bar_minutes > 0
+            else 999999
+        )
+
+        # 持仓跟踪（用于计算持仓时长和成本）
+        self._position_open_bar = -1
+
+        if candles is not None:
+            # 使用外部传入的K线，按天数截取
+            if self.days and len(candles) > self.days * self.bars_per_day:
+                self.candles = candles[-self.days * self.bars_per_day:]
+            else:
+                self.candles = candles
+        else:
+            self.candles = self._load_data()
+
+        if not self.candles:
+            logger.error("无法获取 %s K线数据", coin)
+            self.candles = []
+
+        self.trades: list[Trade] = []
+        # 每笔交易对应的K线索引
+        self.trade_candle_indices: list[int] = []
+        self.balance: list[float] = [initial_capital]
+        # 当前余额（实时更新）
+        self.current_balance: float = initial_capital
+
+        # 提款相关变量
+        self.withdraw_count = 0  # 提款次数
+        self.first_withdraw_day: int | None = None  # 第一次提款时的天数
+
+        bet_mode = "固定" if fixed_bet else "复利"
+        wd_status = "开启" if enable_withdraw else "关闭"
+        logger.info(
+            "回测初始化: %s %s (%d天) | K线: %d"
+            " | 注码: %s | 提款: %s",
+            coin, interval, days, len(self.candles),
+            bet_mode, wd_status,
+        )
+
+    def _get_trade_capital(self) -> float:
+        """计算本次开仓资金.
+
+        固定注码: 使用 fixed_bet_amount（默认=初始本金×10%）
+        复利注码: 用当前余额的10%（模拟实际交易）
+        """
+        if self.fixed_bet:
+            return self.fixed_bet_amount
+        return max(self.balance[-1] * 0.1, 100)
+
+    def _calc_raw_pnl(self, entry_p: float, exit_p: float,
+                      position_size: float, direction: str) -> float:
+        """统一 PnL 计算（linear/inverse 分支）.
+
+        linear:  PnL(USD) = diff / entry × position_size
+        inverse: PnL(BNB) = position_size × diff / exit
+                 推导: position_size(BNB) × entry = 名义USD
+                       名义USD × diff / (entry × exit)
+                       = position_size × diff / exit
+                       （entry 约掉，跟 Binance 官方一致）
+        """
+        diff = exit_p - entry_p if direction == "long" else entry_p - exit_p
+
+        if self.margin_mode == "linear":
+            return diff / entry_p * position_size
+        # inverse
+        return position_size * diff / exit_p
+
+    def _calc_trading_costs(
+        self, position_size: float, holding_bars: int,
+        entry_p: float | None = None, exit_p: float | None = None,
+    ) -> tuple[float, float, float]:
+        """计算交易成本（手续费+滑点+资金费）.
+
+        linear: 基于 position_size（USD 名义）
+        inverse: 基于 USD 名义
+                 = position_size(BNB) × entry_p，结算回 BNB
+        """
+        if self.margin_mode == "linear":
+            fee = position_size * self.fee_rate * 2
+            slippage = position_size * self.slippage_pct * 2
+            funding_count = (
+                int(holding_bars / self._bars_per_funding)
+                if self._bars_per_funding > 0
+                else 0
+            )
+            funding = position_size * self.funding_rate_8h * funding_count
+        else:  # inverse
+            assert entry_p is not None and exit_p is not None
+            notional_usd = position_size * entry_p
+            fee_usd = notional_usd * self.fee_rate * 2
+            slip_usd = notional_usd * self.slippage_pct * 2
+            funding_count = (
+                int(holding_bars / self._bars_per_funding)
+                if self._bars_per_funding > 0
+                else 0
+            )
+            fund_usd = notional_usd * self.funding_rate_8h * funding_count
+            fee = fee_usd / exit_p
+            slippage = slip_usd / exit_p
+            funding = fund_usd / exit_p
+        return fee, slippage, funding
+
+    def _load_data(self) -> list[dict[str, Any]]:
+        """加载K线数据."""
+        data_file = os.path.join(
+            DATA_DIR, "historical", self.coin,
+            f"{self.interval}.json",
+        )
+
+        if not os.path.exists(data_file):
+            logger.warning("数据文件不存在: %s", data_file)
+            return []
+
+        try:
+            with open(data_file, encoding="utf-8") as f:
+                data: list[Any] = json.load(f)
+        except Exception:
+            logger.exception("加载数据失败")
+            return []
+        else:
+            # 筛选指定天数的数据
+            if self.days and len(data) > self.days * self.bars_per_day:
+                data = data[-self.days * self.bars_per_day:]
+
+            logger.info(
+                "📁 加载数据: %d 条 | 文件: %s",
+                len(data), data_file,
+            )
+            return data
+
+    def _check_withdraw(self, day_index: int | None = None) -> float:
+        """检查是否需要提款.
+
+        Args:
+            day_index: 当前是第几天
+
+        Returns:
+            提款金额（0表示不需要提款）
+
+        """
+        # 如果关闭了提款功能，直接返回0
+        if not getattr(self, "enable_withdraw", False):
+            return 0
+
+        withdraw_threshold = 5000
+        withdraw_amount = 3000
+
+        if self.balance[-1] > withdraw_threshold:
+            # 更新提款统计
+            self.withdraw_count += 1
+            if self.first_withdraw_day is None and day_index is not None:
+                self.first_withdraw_day = day_index
+
+            return withdraw_amount
+        return 0
+
+    def generate_signals(self, strategy_name: str) -> list[str]:
+        """只产信号不执行交易。返回每根K线的信号列表。
+
+        信号产生只看 K 线数据，不看持仓状态。
+        4个种子共享同一套信号序列，执行器各自模拟。
+
+        Returns:
+            list[str]: 每根K线一个信号 ('BUY'/'SELL'/'HOLD')。
+            长度 = len(self.candles)，前 start_idx 根填 'HOLD'。
+        """
+        if not self.candles:
+            logger.error("没有K线数据，无法产信号")
+            return []
+
+        strategy = get_strategy(strategy_name)
+        if not strategy:
+            logger.error("策略不存在: %s", strategy_name)
+            return []
+
+        # 初始化 indicator_cache（同 run_backtest）
+        init_cache(self.coin, self.interval, self.candles)
+        strategy.interval = self.interval
+        strategy.current_idx = 0
+
+        if hasattr(strategy, "REQUIRES") and strategy.REQUIRES:
+            validate_requires(strategy_name, strategy.REQUIRES)
+
+        n_candles = len(self.candles)
+        start_idx = (
+            0 if not self.days
+            else max(0, n_candles - self.days * self.bars_per_day)
+        )
+        max_window = 200
+
+        signals: list[str] = ["HOLD"] * n_candles
+
+        for i in range(start_idx, n_candles):
+            strategy.current_idx = i
+            try:
+                if hasattr(strategy, "generate_signal"):
+                    window_start = max(0, i + 1 - max_window)
+                    klines = self.candles[window_start:i + 1]
+                    signal = strategy.generate_signal(self.coin, klines)
+                    if hasattr(signal, "signal"):
+                        action = signal.signal.value
+                    elif hasattr(signal, "value"):
+                        action = signal.value
+                    else:
+                        action = str(signal)
+                else:
+                    signal = strategy.get_signal(i)
+                    action = signal.value if hasattr(signal, "value") else str(signal)
+            except Exception:
+                logger.exception("信号生成错误 K线 %d", i)
+                action = "HOLD"
+
+            signals[i] = action
+
+        return signals
+
+    def run_backtest(
+        self, strategy_name: str, strategy: Strategy | None = None,
+    ) -> BacktestResult | None:
+        """运行回测."""
+        if not self.candles:
+            logger.error("没有K线数据，无法运行回测")
+            return None
+
+        # 创建策略（支持传入预配置的 strategy 对象）
+        if strategy is None:
+            strategy = get_strategy(strategy_name)
+            if not strategy:
+                logger.error("策略不存在: %s", strategy_name)
+                return None
+
+        logger.info("📊 回测策略: %s", strategy_name)
+
+        # 初始化 indicator_cache
+        # （同一 coin+interval 多策略共用，不会重复初始化）
+        init_cache(self.coin, self.interval, self.candles)
+
+        # 传递上下文给策略
+        # （indicator_cache 需要 interval 和 current_idx）
+        strategy.interval = self.interval
+        strategy.current_idx = 0
+
+        # 校验策略的 REQUIRES 声明
+        if hasattr(strategy, "REQUIRES") and strategy.REQUIRES:
+            validate_requires(strategy_name, strategy.REQUIRES)
+
+        closes = [c["close"] for c in self.candles]
+        highs = [c["high"] for c in self.candles]
+        lows = [c["low"] for c in self.candles]
+        # 支持 'timestamp' 和 'time' 两种格式
+        times = [
+            datetime.fromtimestamp(
+                c.get("timestamp", c.get("time", 0)) / 1000, tz=timezone.utc,
+            ).strftime("%Y-%m-%d %H:%M")
+            for c in self.candles
+        ]
+
+        position = "NO_POSITION"  # 当前持仓方向
+        entry_price = 0  # 开仓价格
+
+        # 信号计数
+        buy_signals = 0
+        sell_signals = 0
+
+        n_candles = len(self.candles)
+        start_idx = (
+            0 if not self.days
+            else max(0, n_candles - self.days * self.bars_per_day)
+        )
+
+        # 策略最多只需要最近 max_window 根 K 线，避免 O(n²) 的列表拷贝
+        max_window = 200
+
+        for i in range(start_idx, n_candles):
+            # 更新策略的当前K线索引（indicator_cache 用）
+            strategy.current_idx = i
+
+            try:
+                # 兼容两种信号生成方式
+                if hasattr(strategy, "generate_signal"):
+                    window_start = max(0, i + 1 - max_window)
+                    klines = self.candles[window_start:i + 1]
+                    signal = strategy.generate_signal(
+                        self.coin, klines,
+                    )
+                    if hasattr(signal, "signal"):
+                        action = signal.signal.value
+                    else:
+                        action = signal.value if isinstance(signal, Signal) else signal
+                else:
+                    signal = strategy.get_signal(i)
+                    action = signal.value if isinstance(signal, Signal) else signal
+            except Exception:
+                logger.exception("信号生成错误")
+                action = "HOLD"
+
+            current_price = closes[i]
+            current_time = times[i]
+
+            trade_capital = self._get_trade_capital()
+            position_size = trade_capital * self.leverage  # 开仓总额
+
+            # ===== BUY 持仓的移动止盈检测 =====
+            if self.enable_ttp and position == "BUY" and self.balance[-1] > 0:
+                # 使用统一的 TTP 管理器
+                position_info = {
+                    "coin": self.coin, "side": "LONG",
+                    "entry_price": entry_price,
+                }
+                result = self.ttp_manager.check(
+                    position=position_info,
+                    current_price=highs[i] if self.ttp_highlow else current_price,
+                    entry_price=entry_price,
+                    position_side="LONG",
+                )
+
+                # TTP 触发
+                if result.should_close:
+                    ttp_price = result.ttp_level or current_price
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, ttp_price,
+                        position_size, "long",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, ttp_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "TTP_CLOSE_BUY",
+                        ttp_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    position = "NO_POSITION"
+                    self.ttp_manager.reset()
+                    continue
+
+            # ===== SELL 持仓的移动止盈检测 =====
+            if self.enable_ttp and position == "SELL" and self.balance[-1] > 0:
+                # 使用统一的 TTPManager 处理
+                position_info = {
+                    "coin": self.coin, "side": "SHORT",
+                    "entry_price": entry_price,
+                }
+                result = self.ttp_manager.check(
+                    position=position_info,
+                    current_price=lows[i] if self.ttp_highlow else current_price,
+                    entry_price=entry_price,
+                    position_side="SHORT",
+                )
+
+                # TTP 触发
+                if result.should_close:
+                    ttp_price = result.ttp_level or current_price
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, ttp_price,
+                        position_size, "short",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, ttp_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "TTP_CLOSE_SELL",
+                        ttp_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    position = "NO_POSITION"
+                    self.ttp_manager.reset()
+                    continue
+
+            # 信号处理 - 按顺序检查
+            # 0. CLOSE信号处理（平仓不反手，单向策略专用）
+            if action == "CLOSE" and position != "NO_POSITION":
+                if position == "BUY":
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, current_price,
+                        position_size, "long",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_BUY",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                elif position == "SELL":
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, current_price,
+                        position_size, "short",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_SELL",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                position = "NO_POSITION"
+                self.ttp_manager.reset()
+                trade_capital = self._get_trade_capital()
+                position_size = trade_capital * self.leverage
+
+            # 1. BUY信号处理
+            if action == "BUY" and position != "BUY":
+                if position == "SELL":
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, current_price,
+                        position_size, "short",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_SELL",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                    # 提款后重新计算保证金（用更新后的余额）
+                    trade_capital = self._get_trade_capital()
+                    position_size = trade_capital * self.leverage
+
+                # 记录开仓
+                self.trades.append(Trade(
+                    current_time, "BUY",
+                    current_price, trade_capital,
+                    0, self.current_balance,
+                ))
+                self.trade_candle_indices.append(i)
+                self._position_open_bar = i
+                position = "BUY"
+                entry_price = current_price
+                buy_signals += 1
+
+            # 2. BUY持仓检测
+            elif position == "BUY":
+                # BUY止损检测
+                price_change = (current_price - entry_price) / entry_price
+                if price_change <= -self.stop_loss_pct:
+                    # 止损：固定金额，控制变量
+                    raw_pnl = -position_size * self.stop_loss_pct
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_BUY",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                    position = "NO_POSITION"
+                    # 止损后重算 trade_capital（同K线可能开新仓）
+                    trade_capital = self._get_trade_capital()
+                    position_size = trade_capital * self.leverage
+
+            # 3. SELL信号处理
+            if action == "SELL" and position != "SELL":
+                if position == "BUY":
+                    raw_pnl = self._calc_raw_pnl(
+                        entry_price, current_price,
+                        position_size, "long",
+                    )
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_BUY",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                    # 提款后重新计算保证金（用更新后的余额）
+                    trade_capital = self._get_trade_capital()
+                    position_size = trade_capital * self.leverage
+
+                # 记录开仓
+                self.trades.append(Trade(
+                    current_time, "SELL",
+                    current_price, trade_capital,
+                    0, self.current_balance,
+                ))
+                self.trade_candle_indices.append(i)
+                self._position_open_bar = i
+                position = "SELL"
+                entry_price = current_price
+                sell_signals += 1
+
+            # 4. SELL持仓检测
+            elif position == "SELL":
+                # SELL止损检测
+                price_change = (entry_price - current_price) / entry_price
+                if price_change <= -self.stop_loss_pct:
+                    # 止损：固定金额，控制变量
+                    raw_pnl = -position_size * self.stop_loss_pct
+                    holding = i - self._position_open_bar
+                    fee, slip, fund = self._calc_trading_costs(
+                        position_size, holding,
+                        entry_price, current_price,
+                    )
+                    pnl = raw_pnl - fee - slip - fund
+                    self.balance.append(self.balance[-1] + pnl)
+                    new_balance = self.balance[-1]
+
+                    # 检查提款
+                    day_index = (i - start_idx) // self.bars_per_day
+                    withdraw = self._check_withdraw(day_index)
+                    if withdraw > 0:
+                        self.balance[-1] = self.balance[-1] - withdraw
+                        new_balance = self.balance[-1]
+
+                    self.trades.append(Trade(
+                        current_time, "CLOSE_SELL",
+                        current_price, trade_capital, pnl,
+                        new_balance, withdraw,
+                        fee, slip, fund,
+                    ))
+                    self.trade_candle_indices.append(i)
+                    self.current_balance = new_balance
+
+                    if self.current_balance <= 0:
+                        self.trades.append(Trade(
+                            current_time, "LIQUIDATION",
+                            current_price, 0, 0,
+                            self.current_balance,
+                        ))
+                        self.trade_candle_indices.append(i)
+                        self.balance.append(0)
+                        position = "NO_POSITION"
+                        break
+
+                    position = "NO_POSITION"
+                    # 止损后重算 trade_capital（同K线可能开新仓）
+                    trade_capital = self._get_trade_capital()
+                    position_size = trade_capital * self.leverage
+
+        # 结束时平仓
+        final_price = self.candles[-1]["close"]
+
+        if position == "BUY":
+            raw_pnl = self._calc_raw_pnl(
+                entry_price, final_price,
+                position_size, "long",
+            )
+            holding = (n_candles - 1) - self._position_open_bar
+            fee, slip, fund = self._calc_trading_costs(
+                position_size, holding,
+                entry_price, final_price,
+            )
+            pnl = raw_pnl - fee - slip - fund
+            self.balance.append(self.balance[-1] + pnl)
+            new_balance = self.balance[-1]
+
+            # 检查提款
+            day_index = (n_candles - 1 - start_idx) // self.bars_per_day
+            withdraw = self._check_withdraw(day_index)
+            if withdraw > 0:
+                self.balance[-1] = self.balance[-1] - withdraw
+                new_balance = self.balance[-1]
+
+            last_candle = self.candles[-1]
+            ts = last_candle.get("timestamp", last_candle.get("time", 0))
+            final_time = datetime.fromtimestamp(
+                ts / 1000, tz=timezone.utc,
+            ).strftime("%Y-%m-%d %H:%M")
+            self.trades.append(Trade(
+                final_time, "CLOSE_BUY",
+                final_price, trade_capital, pnl,
+                new_balance, withdraw,
+                fee, slip, fund,
+            ))
+            self.trade_candle_indices.append(n_candles - 1)
+            self.current_balance = new_balance
+
+        elif position == "SELL":
+            raw_pnl = self._calc_raw_pnl(
+                entry_price, final_price,
+                position_size, "short",
+            )
+            holding = (n_candles - 1) - self._position_open_bar
+            fee, slip, fund = self._calc_trading_costs(
+                position_size, holding,
+                entry_price, final_price,
+            )
+            pnl = raw_pnl - fee - slip - fund
+            self.balance.append(self.balance[-1] + pnl)
+            new_balance = self.balance[-1]
+
+            # 检查提款
+            day_index = (n_candles - 1 - start_idx) // self.bars_per_day
+            withdraw = self._check_withdraw(day_index)
+            if withdraw > 0:
+                self.balance[-1] = self.balance[-1] - withdraw
+                new_balance = self.balance[-1]
+
+            last_candle = self.candles[-1]
+            ts = last_candle.get("timestamp", last_candle.get("time", 0))
+            final_time = datetime.fromtimestamp(
+                ts / 1000, tz=timezone.utc,
+            ).strftime("%Y-%m-%d %H:%M")
+            self.trades.append(Trade(
+                final_time, "CLOSE_SELL",
+                final_price, trade_capital, pnl,
+                new_balance, withdraw,
+                fee, slip, fund,
+            ))
+            self.trade_candle_indices.append(n_candles - 1)
+            self.current_balance = new_balance
+
+        return self._calculate_result(strategy_name, buy_signals, sell_signals)
+
+    def _calculate_result(
+        self, _strategy_name: str,
+        buy: int, sell: int,
+    ) -> BacktestResult:
+        """计算回测结果."""
+        close_types = [
+            "CLOSE_BUY", "CLOSE_SELL",
+            "TTP_CLOSE_BUY", "TTP_CLOSE_SELL",
+        ]
+        closing = [
+            t for t in self.trades
+            if t.order_type in close_types
+        ]
+
+        winning = [t for t in closing if t.pnl > 0]
+        losing = [t for t in closing if t.pnl <= 0]
+
+        # 最大回撤
+        equity = [e for e in self.balance if e > 0]
+        if not equity:
+            equity = [0]
+        max_eq = self.initial_capital
+        max_dd: float = 0
+        for e in equity:
+            max_eq = max(max_eq, e)
+            if max_eq > 0:
+                dd = (max_eq - e) / max_eq * 100
+                max_dd = max(max_dd, dd)
+
+        # 计算收益
+        final_balance = self.balance[-1]
+        total_return = (
+            (final_balance - self.initial_capital)
+            / self.initial_capital * 100
+        )
+
+        # 风险调整收益
+        returns = []
+        for i in range(1, len(self.balance)):
+            if self.balance[i-1] > 0:
+                ret = (self.balance[i] - self.balance[i-1]) / self.balance[i-1]
+                returns.append(ret)
+
+        sharpe = 0
+        sortino = 0
+
+        if len(returns) > 1 and statistics.stdev(returns) > 0:
+            risk_free_rate = 0.02 / 252  # 日无风险利率
+            mean_ret = statistics.mean(returns)
+            std_ret = statistics.stdev(returns)
+            ann = 252 ** 0.5
+            sharpe = (mean_ret - risk_free_rate) / std_ret * ann
+
+            negative_returns = [r for r in returns if r < 0]
+            if len(negative_returns) > 1:
+                std_neg = statistics.stdev(negative_returns)
+                sortino = (mean_ret - risk_free_rate) / std_neg * ann
+
+        # 卡玛比率
+        calmar = total_return / max_dd if max_dd > 0 else 0
+
+        # 胜率和盈亏比
+        win_rate = len(winning) / len(closing) * 100 if closing else 0
+        avg_win_pct = (
+            statistics.mean([t.pnl for t in winning])
+            / self.initial_capital * 100
+            if winning else 0
+        )
+        avg_loss_pct = (
+            abs(statistics.mean([t.pnl for t in losing])
+                / self.initial_capital * 100)
+            if losing else 0
+        )
+
+        # 日均开仓量
+        open_trades = [t for t in self.trades if t.order_type in ["BUY", "SELL"]]
+        fallback_days = max(
+            1, len(self.candles) // self.bars_per_day,
+        )
+        trading_days = (
+            self.days if self.days > 0 else fallback_days
+        )
+        daily_open = len(open_trades) / trading_days if open_trades else 0
+
+        # 翻倍时长计算
+        # 跟踪余额何时达到 initial×2, initial×4, initial×8, ...
+        double_times = []  # 每次翻倍的天数差
+        next_target = self.initial_capital * 2
+        prev_date = None  # 上一个里程碑的日期（首次用回测起始日期）
+
+        # 回测起始日期
+        if self.candles:
+            start_ts = self.candles[0].get("timestamp", self.candles[0].get("time", 0))
+            start_date = datetime.fromtimestamp(start_ts / 1000, tz=timezone.utc)
+            prev_date = start_date
+
+        # 遍历所有交易，找到余额首次达到每个翻倍里程碑的时刻
+        for t in self.trades:
+            if t.balance >= next_target and prev_date is not None:
+                try:
+                    hit_date = datetime.strptime(
+                        t.time, "%Y-%m-%d %H:%M",
+                    ).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    hit_date = datetime.strptime(
+                        t.time, "%Y-%m-%d",
+                    ).replace(tzinfo=timezone.utc)
+                days_diff = (hit_date - prev_date).days
+                days_diff = max(days_diff, 0)
+                double_times.append(days_diff)
+                prev_date = hit_date
+                # 移到下一个翻倍目标
+                next_target *= 2
+
+        d_count = len(double_times)
+        fastest_d = min(double_times) if double_times else 0
+        avg_d = sum(double_times) / d_count if d_count > 0 else 0
+
+        return BacktestResult(
+            coin=self.coin,
+            interval=self.interval,
+            period=f"{self.days}天",
+            total_trades=len(closing),
+            winning_trades=len(winning),
+            losing_trades=len(losing),
+            total_return=total_return,
+            final_balance=final_balance,
+            max_balance=max(self.balance) if self.balance else 0,
+            min_balance=min(self.balance) if self.balance else 0,
+            win_rate=win_rate,
+            avg_win=avg_win_pct,
+            avg_loss=avg_loss_pct,
+            max_drawdown=max_dd,
+            max_profit=max([t.pnl for t in closing]) if closing else 0,
+            max_loss=min([t.pnl for t in closing]) if closing else 0,
+            sharpe_ratio=sharpe,
+            sortino_ratio=sortino,
+            calmar_ratio=calmar,
+            trades=self.trades,
+            buy_signals=buy,
+            sell_signals=sell,
+            daily_open_positions=daily_open,
+            fastest_double_days=fastest_d,
+            avg_double_days=round(avg_d, 1),
+            double_count=d_count,
+        )
+
+    def save_report(
+        self, strategy_name: str, prefix: str = "TTP",
+    ) -> BacktestResult | None:
+        """保存回测报告."""
+        if not self.candles:
+            return None
+
+        # 计算avg_win/avg_loss金额
+        win_pnls = [
+            t.pnl for t in self.trades
+            if t.pnl > 0 and "CLOSE" in t.order_type
+        ]
+        loss_pnls = [
+            t.pnl for t in self.trades
+            if t.pnl < 0 and "CLOSE" in t.order_type
+        ]
+        avg_win = statistics.mean(win_pnls) if win_pnls else 0
+        avg_loss = abs(statistics.mean(loss_pnls)) if loss_pnls else 0
+
+        # 转换时长为中文
+        days_map = {
+            365: "1年",
+            730: "2年",
+            1095: "3年",
+            1825: "5年",
+        }
+        duration = days_map.get(self.days, f"{self.days}天")
+
+        # 系统名称
+        system_name = "backtest"
+
+        # 安全值转换
+        def safe_value(v: float | None) -> float:
+            if v is None:
+                return 0
+            if isinstance(v, float):
+                return round(v, 2)
+            return v
+
+        # 百分比格式化
+        def format_pct(v: float | None) -> str:
+            if v is None:
+                return "0.00%"
+            return f"{v:.2f}%"
+
+        result = self._calculate_result(strategy_name, 0, 0)
+
+        # 计算盈利因子和期望比率
+        winning = [t for t in self.trades if t.pnl > 0 and "CLOSE" in t.order_type]
+        losing = [t for t in self.trades if t.pnl < 0 and "CLOSE" in t.order_type]
+        gross_profit = sum(t.pnl for t in winning)
+        gross_loss = sum(t.pnl for t in losing)
+        profit_factor = gross_profit / abs(gross_loss) if gross_loss < 0 else 0
+
+        if result.win_rate > 0:
+            wr = result.win_rate / 100
+            expectancy = (wr * avg_win / 100) - ((1 - wr) * avg_loss / 100)
+        else:
+            expectancy = 0
+
+        # 连胜连亏
+        closing = [t for t in self.trades if "CLOSE" in t.order_type]
+        longest_win = 0
+        longest_loss = 0
+        current_win = 0
+        current_loss = 0
+        for t in closing:
+            if t.pnl > 0:
+                current_win += 1
+                current_loss = 0
+                longest_win = max(longest_win, current_win)
+            else:
+                current_loss += 1
+                current_win = 0
+                longest_loss = max(longest_loss, current_loss)
+
+        # TTP统计
+        ttp_count = len([t for t in self.trades if "TTP" in t.order_type])
+        signal_close = len([t for t in self.trades if "CLOSE" in t.order_type])
+
+        report_data = {
+            "strategy": strategy_name,
+            "config": {
+                "coin": self.coin,
+                "interval": self.interval,
+                "period": duration,
+                "initial_capital": self.initial_capital,
+                "leverage": self.leverage,
+                "stop_loss": f"{self.stop_loss_pct*100:.0f}%",
+                "enable_ttp": self.enable_ttp,
+                "trade_percent": 0.1,  # 每次开仓使用余额的10%
+                "bet_mode": "fixed" if self.fixed_bet else "compound",
+            },
+            "balance": {
+                "initial": self.initial_capital,
+                "final": safe_value(result.final_balance),
+                "max": safe_value(result.max_balance),
+                "min": safe_value(result.min_balance),
+                "withdraw_count": self.withdraw_count,
+                # 第一次提款时的天数
+                "first_time_withdraw": (
+                    f"第{self.first_withdraw_day}天"
+                    if self.first_withdraw_day is not None
+                    else "无"
+                ),
+            },
+            "results": {
+                "total_return": format_pct(safe_value(result.total_return)),  # 总收益%
+                # 最大回撤%
+                "max_drawdown": format_pct(
+                    safe_value(result.max_drawdown),
+                ),
+                "sharpe_ratio": safe_value(result.sharpe_ratio),  # 夏普比率
+                "sortino_ratio": safe_value(result.sortino_ratio),  # 索提诺比率
+                "calmar_ratio": safe_value(result.calmar_ratio),  # 卡玛比率
+                "total_trades": safe_value(result.total_trades),  # 总交易数
+                "winning_trades": safe_value(result.winning_trades),  # 盈利交易
+                "losing_trades": safe_value(result.losing_trades),  # 亏损交易
+                "win_rate": format_pct(safe_value(result.win_rate)),  # 胜率%
+                "avg_win": format_pct(safe_value(result.avg_win)),  # 平均盈利%
+                "avg_loss": format_pct(safe_value(result.avg_loss)),  # 平均亏损%
+                "max_win": f"${safe_value(result.max_profit)}",  # 最大单笔盈利金额
+                "max_loss": f"${safe_value(result.max_loss)}",  # 最大单笔亏损金额
+                "profit_factor": safe_value(profit_factor),  # 盈利因子
+                "expectancy_ratio": round(expectancy, 2),  # 期望比率
+                "longest_win": safe_value(longest_win),  # 最长连胜
+                "longest_loss": safe_value(longest_loss),  # 最长连亏
+                "ttp_count": ttp_count,  # TTP止盈次数
+                "signal_close": signal_close,  # 信号平仓次数
+                # 日均开仓量
+                "daily_open_positions": round(
+                    result.daily_open_positions, 2,
+                ),
+                # 最快翻倍天数
+                "fastest_double_days": safe_value(
+                    result.fastest_double_days,
+                ),
+                "avg_double_days": safe_value(result.avg_double_days),  # 平均翻倍天数
+                "double_count": result.double_count,  # 翻倍次数
+            },
+            "trades": [
+                {
+                    "time": t.time,
+                    "order_type": t.order_type,
+                    "price": t.price,
+                    "capital": t.capital,
+                    "pnl": t.pnl,
+                    "balance": t.balance,
+                    "withdraw": t.withdraw,  # 从Trade对象获取
+                }
+                for t in self.trades
+            ],
+        }
+
+        # 保存文件
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+        # 提款状态标识
+        has_withdraw = getattr(
+            self, "enable_withdraw", True,
+        )
+        withdraw_status = "有提款" if has_withdraw else "无提款"
+
+        prefix_str = f"{prefix}_" if prefix else ""
+        report_file = os.path.join(
+            REPORT_DIR,
+            f"{prefix_str}{self.coin}_{strategy_name}_{self.interval}_{duration}_{withdraw_status}_{system_name}_{timestamp}.json",
+        )
+
+        with open(report_file, "w", encoding="utf-8") as f:
+            json.dump(report_data, f, indent=2, ensure_ascii=False)
+
+        logger.info("📁 报告已保存: %s", report_file)
+
+        # 打印摘要
+        print("=" * 60)
+        print(f"💰 最终余额: ${result.final_balance:,.2f}")
+        print(f"💰 最大余额: ${result.max_balance:,.2f}")
+        print(f"💰 最小余额: ${result.min_balance:,.2f}")
+        print("=" * 60)
+        print(f"📈 总收益率: {format_pct(result.total_return)}")
+        print(f"📉 最大回撤: {format_pct(result.max_drawdown)}")
+        print(f"📊 日均开仓: {result.daily_open_positions:.2f}笔")
+        print(f"📊 夏普比率: {result.sharpe_ratio:.2f}")
+        print(f"📊 索提诺: {result.sortino_ratio:.2f}")
+        print(f"📊 卡玛比率: {result.calmar_ratio:.2f}")
+        print(f"🎯 胜率: {result.win_rate:.1f}%")
+        print(f"💰 总交易次数: {result.total_trades}")
+        print(f"📊 日均开仓: {result.daily_open_positions:.2f}笔")
+        if result.total_trades > 0:
+            ttp_pct = ttp_count / result.total_trades * 100
+            sig_pct = signal_close / result.total_trades * 100
+            print(f"🎯 TTP止盈: {ttp_count} ({ttp_pct:.1f}%)")
+            print(f"🎯 信号平仓: {signal_close} ({sig_pct:.1f}%)")
+        else:
+            print("🎯 TTP止盈: 0")
+            print("🎯 信号平仓: 0")
+        print("=" * 60)
+
+        return result
+
+
+def run_backtest(
+    coin: str, strategy_name: str,
+    interval: str = "1h", days: int = 1095,
+    initial_capital: float = 500,
+    enable_ttp: bool = True,
+    enable_withdraw: bool = False,
+) -> BacktestResult | None:
+    """便捷回测函数.
+
+    Args:
+        coin: 币种
+        strategy_name: 策略名称
+        interval: 时间周期
+        days: 回测天数
+        initial_capital: 初始资金
+        enable_ttp: 是否启用移动止盈
+        enable_withdraw: 是否启用自动提款
+
+    """
+    engine = BacktestEngine(
+        coin=coin,
+        interval=interval,
+        days=days,
+        initial_capital=initial_capital,
+        enable_ttp=enable_ttp,
+        stop_loss_pct=0.1,
+        leverage=10.0,
+        enable_withdraw=enable_withdraw,
+    )
+    result = engine.run_backtest(strategy_name)
+    engine.save_report(strategy_name)
+    return result

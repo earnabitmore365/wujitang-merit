@@ -1,0 +1,137 @@
+# Plan: indicator_cache 统一到 klines.duckdb
+
+## Context
+
+当前指标存储分裂在两个 DB：
+- `klines.duckdb`（44GB）：101 列预算指标，build_klines_indicators.py 批量写入
+- `indicator_cache.db`（22GB）：运行时新算的指标，get_indicator() 写入
+
+执事要求：**只用 klines.duckdb，一个源头**。
+策略需要指标 → 先从 klines.duckdb 找 → 没有就算 → 算完存回 klines.duckdb。
+
+---
+
+## 改动
+
+### Step 1: 改 `init_cache()` — 不再连 SQLite
+
+```python
+# 改前：连 indicator_cache.db（SQLite）
+_init_db(db_path)
+ctx["conn"] = sqlite3.connect(db_path)
+
+# 改后：保存 duckdb 路径，不建 SQLite 连接
+ctx["duckdb_path"] = duckdb_path or os.path.join(project_root, "data", "klines.duckdb")
+ctx["col_map_path"] = col_map_path or os.path.join(project_root, "data", "indicator_col_map.json")
+ctx["conn"] = None  # 不再用 SQLite
+```
+
+### Step 2: 改 `get_indicator()` — 去掉 SQLite 查询
+
+```python
+# 改前
+# 1. 内存缓存
+# 2. SQLite DB 缓存（indicator_cache.db）
+# 3. 现场计算 → 存 SQLite
+
+# 改后
+# 1. 内存缓存（含 preload_from_duckdb 加载的）
+# 2. 现场计算 → 存内存 + 写回 klines.duckdb
+```
+
+写回 klines.duckdb 的逻辑：
+```python
+# 新算的指标，追加到 _pending_writes 队列
+_pending_writes[namespace].append((coin, interval, name, pk, result))
+```
+
+不立即写 DuckDB（频繁小写入太慢）。在 `close_cache()` 时批量写入。
+
+### Step 3: 改 `close_cache()` — 批量写回 klines.duckdb
+
+```python
+def close_cache():
+    # 遍历 _pending_writes
+    # 对每个新指标：
+    #   1. 生成列名（如 "rsi_p30"）
+    #   2. ALTER TABLE klines ADD COLUMN IF NOT EXISTS "rsi_p30" DOUBLE
+    #   3. UPDATE klines SET "rsi_p30" = ? WHERE coin = ? AND interval = ? AND time = ?
+    #   4. 更新 indicator_col_map.json（加入新列映射）
+```
+
+### Step 4: 简化 `preload_from_duckdb()`
+
+现在 preload 是可选的"加速"步骤。改后变成**主要加载方式**——init_cache 时自动调用：
+
+```python
+def init_cache(coin, interval, candles, ...):
+    # ...
+    # 自动 preload（不用外部调用）
+    preload_from_duckdb(coin, interval, ctx["duckdb_path"], ctx["col_map_path"])
+```
+
+### Step 5: 删除 SQLite 相关代码
+
+- 删除 `_init_db()`（建 SQLite 表）
+- 删除 `import sqlite3`
+- 删除 `_compress()` / `_decompress()`（zlib 压缩，DuckDB 不需要）
+- 删除 get_indicator 里的 SQLite 查询分支
+
+### Step 6: 更新文档
+
+**`indicator_cache.py` 文件头 docstring**：
+```
+查找顺序：内存缓存 → klines.duckdb 预加载
+→ 现场计算（算完存内存 + 批量写回 klines.duckdb）
+
+不再使用 indicator_cache.db（SQLite），所有指标统一存在 klines.duckdb。
+```
+
+**`data/README_KLINES_SEED.md`**：更新指标存储描述
+
+**`ARCHITECTURE.md`**：更新 indicator_cache 架构图
+
+### Step 7: wuji-verify FILE_DOCS 更新
+
+### Step 8: CHANGELOG + 自审
+
+---
+
+## 关键文件
+
+| 文件 | 操作 |
+|------|------|
+| `src/core/indicator_cache.py` | 重构：SQLite → DuckDB 写回 |
+| `data/indicator_col_map.json` | 新指标自动追加 |
+| `data/README_KLINES_SEED.md` | 更新指标存储描述 |
+| `ARCHITECTURE.md` | 更新架构图 |
+
+---
+
+## 新链路
+
+```
+策略调 get_indicator('rsi', period=30)
+    ↓ 内存缓存？→ 有就返回（preload 加载的 or 之前算过的）
+    ↓ 没有 → REGISTRY['rsi'](candles, period=30) 现场算
+    ↓ 存内存缓存 + 加入 _pending_writes 队列
+    ↓
+close_cache() 时批量写回 klines.duckdb
+    ↓ ALTER TABLE ADD COLUMN（如果是新指标）
+    ↓ UPDATE 写入值
+    ↓ 更新 indicator_col_map.json
+    ↓
+下次 init_cache 同一 coin/interval 时
+    ↓ preload_from_duckdb 自动加载（含新指标）
+    ↓ get_indicator 直接命中内存
+```
+
+---
+
+## 验证标准
+
+- `import sqlite3` 在 indicator_cache.py 中消失
+- `indicator_cache.db` 不再被创建
+- 策略调 get_indicator 能正常获取预算指标（preload）
+- 新指标算完后出现在 klines.duckdb 的列里
+- indicator_col_map.json 自动追加新指标映射

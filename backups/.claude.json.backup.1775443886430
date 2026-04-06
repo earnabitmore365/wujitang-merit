@@ -1,5 +1,5 @@
 {
-  "numStartups": 109,
+  "numStartups": 111,
   "installMethod": "native",
   "autoUpdates": false,
   "theme": "dark-daltonized",
@@ -33,21 +33,21 @@
     "mobile-app": 107,
     "default-permission-mode-config": 90,
     "shift-enter": 106,
-    "custom-agents": 96,
-    "agent-flag": 96,
+    "custom-agents": 111,
+    "agent-flag": 111,
     "ide-upsell-external-terminal": 29,
     "permissions": 104,
     "rename-conversation": 103,
     "custom-commands": 103,
     "frontend-design-plugin": 57,
-    "feedback-command": 96,
+    "feedback-command": 111,
     "color-when-multi-clauding": 102,
     "git-worktrees": 102,
     "guest-passes": 108,
     "desktop-shortcut": 97,
-    "terminal-setup": 101
+    "terminal-setup": 111
   },
-  "promptQueueUseCount": 5764,
+  "promptQueueUseCount": 5768,
   "btwUseCount": 6,
   "cachedGrowthBookFeatures": {
     "tengu_log_datadog_events": true,
@@ -929,7 +929,7 @@
       "lastAPIDuration": 16014375,
       "lastAPIDurationWithoutRetries": 16013418,
       "lastToolDuration": 3243049,
-      "lastDuration": 88077618,
+      "lastDuration": 89173429,
       "lastLinesAdded": 4684,
       "lastLinesRemoved": 2028,
       "lastTotalInputTokens": 493757,
@@ -937,8 +937,8 @@
       "lastTotalCacheCreationInputTokens": 2920752,
       "lastTotalCacheReadInputTokens": 521769532,
       "lastTotalWebSearchRequests": 16,
-      "lastFpsAverage": 0.22,
-      "lastFpsLow1Pct": 29.81,
+      "lastFpsAverage": 0.04,
+      "lastFpsLow1Pct": 18.49,
       "lastModelUsage": {
         "claude-sonnet-4-6[1m]": {
           "inputTokens": 348,
@@ -975,20 +975,20 @@
       },
       "lastSessionId": "0d592ed5-64e4-41d4-99d2-3299b8d4bced",
       "lastSessionMetrics": {
-        "frame_duration_ms_count": 29,
-        "frame_duration_ms_min": 0.22195800000000077,
-        "frame_duration_ms_max": 33.54929199999992,
-        "frame_duration_ms_avg": 3.0152442068985335,
-        "frame_duration_ms_p50": 2.0062920000054874,
-        "frame_duration_ms_p95": 4.111466399999289,
-        "frame_duration_ms_p99": 25.381656719999896,
+        "frame_duration_ms_count": 27,
+        "frame_duration_ms_min": 0.246167000000014,
+        "frame_duration_ms_max": 54.086541000000125,
+        "frame_duration_ms_avg": 4.574228518516503,
+        "frame_duration_ms_p50": 3.0533339999997224,
+        "frame_duration_ms_p95": 7.866529500004048,
+        "frame_duration_ms_p99": 42.16807626000003,
         "hook_duration_ms_count": 1,
-        "hook_duration_ms_min": 51,
-        "hook_duration_ms_max": 51,
-        "hook_duration_ms_avg": 51,
-        "hook_duration_ms_p50": 51,
-        "hook_duration_ms_p95": 51,
-        "hook_duration_ms_p99": 51
+        "hook_duration_ms_min": 133,
+        "hook_duration_ms_max": 133,
+        "hook_duration_ms_avg": 133,
+        "hook_duration_ms_p50": 133,
+        "hook_duration_ms_p95": 133,
+        "hook_duration_ms_p99": 133
       }
     }
   },
@@ -1220,7 +1220,7 @@
         "amount_minor_units": 31000,
         "currency": "AUD"
       },
-      "timestamp": 1775439144050
+      "timestamp": 1775442845242
     }
   },
   "migrationVersion": 11

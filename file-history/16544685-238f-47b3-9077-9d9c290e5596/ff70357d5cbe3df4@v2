@@ -1,0 +1,552 @@
+{
+  "adx_p14__adx": [
+    "adx",
+    "{\"period\": 14}",
+    "adx"
+  ],
+  "adx_p14__minus_di": [
+    "adx",
+    "{\"period\": 14}",
+    "minus_di"
+  ],
+  "adx_p14__plus_di": [
+    "adx",
+    "{\"period\": 14}",
+    "plus_di"
+  ],
+  "ao_f5_s34": [
+    "ao",
+    "{\"fast\": 5, \"slow\": 34}",
+    null
+  ],
+  "aroon_p25__down": [
+    "aroon",
+    "{\"period\": 25}",
+    "down"
+  ],
+  "aroon_p25__osc": [
+    "aroon",
+    "{\"period\": 25}",
+    "osc"
+  ],
+  "aroon_p25__up": [
+    "aroon",
+    "{\"period\": 25}",
+    "up"
+  ],
+  "aroon_p7__down": [
+    "aroon",
+    "{\"period\": 7}",
+    "down"
+  ],
+  "aroon_p7__osc": [
+    "aroon",
+    "{\"period\": 7}",
+    "osc"
+  ],
+  "aroon_p7__up": [
+    "aroon",
+    "{\"period\": 7}",
+    "up"
+  ],
+  "atr_p10": [
+    "atr",
+    "{\"period\": 10}",
+    null
+  ],
+  "atr_p14": [
+    "atr",
+    "{\"period\": 14}",
+    null
+  ],
+  "atr_p20": [
+    "atr",
+    "{\"period\": 20}",
+    null
+  ],
+  "atr_p7": [
+    "atr",
+    "{\"period\": 7}",
+    null
+  ],
+  "bb_p10_s1.5__lower": [
+    "bb",
+    "{\"period\": 10, \"std\": 1.5}",
+    "lower"
+  ],
+  "bb_p10_s1.5__middle": [
+    "bb",
+    "{\"period\": 10, \"std\": 1.5}",
+    "middle"
+  ],
+  "bb_p10_s1.5__upper": [
+    "bb",
+    "{\"period\": 10, \"std\": 1.5}",
+    "upper"
+  ],
+  "bb_p20_s1.0__lower": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.0}",
+    "lower"
+  ],
+  "bb_p20_s1.0__middle": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.0}",
+    "middle"
+  ],
+  "bb_p20_s1.0__upper": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.0}",
+    "upper"
+  ],
+  "bb_p20_s1.5__lower": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.5}",
+    "lower"
+  ],
+  "bb_p20_s1.5__middle": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.5}",
+    "middle"
+  ],
+  "bb_p20_s1.5__upper": [
+    "bb",
+    "{\"period\": 20, \"std\": 1.5}",
+    "upper"
+  ],
+  "bb_p20_s2.0__lower": [
+    "bb",
+    "{\"period\": 20, \"std\": 2.0}",
+    "lower"
+  ],
+  "bb_p20_s2.0__middle": [
+    "bb",
+    "{\"period\": 20, \"std\": 2.0}",
+    "middle"
+  ],
+  "bb_p20_s2.0__upper": [
+    "bb",
+    "{\"period\": 20, \"std\": 2.0}",
+    "upper"
+  ],
+  "bop": [
+    "bop",
+    "{}",
+    null
+  ],
+  "cci_p20": [
+    "cci",
+    "{\"period\": 20}",
+    null
+  ],
+  "cci_p7": [
+    "cci",
+    "{\"period\": 7}",
+    null
+  ],
+  "chaikin_osc_f3_s10": [
+    "chaikin_osc",
+    "{\"fast\": 3, \"slow\": 10}",
+    null
+  ],
+  "cmf_p20": [
+    "cmf",
+    "{\"period\": 20}",
+    null
+  ],
+  "cmo_p9": [
+    "cmo",
+    "{\"period\": 9}",
+    null
+  ],
+  "connors_rsi_p100_r2_s3": [
+    "connors_rsi",
+    "{\"percentile_period\": 100, \"rsi_period\": 2, \"streak_rsi_period\": 3}",
+    null
+  ],
+  "coppock_r14_r11_w10": [
+    "coppock",
+    "{\"roc_long\": 14, \"roc_short\": 11, \"wma_period\": 10}",
+    null
+  ],
+  "dema_p5": [
+    "dema",
+    "{\"period\": 5}",
+    null
+  ],
+  "demand_index_p20": [
+    "demand_index",
+    "{\"period\": 20}",
+    null
+  ],
+  "ehlers_itl_a0.07": [
+    "ehlers_itl",
+    "{\"alpha\": 0.07}",
+    null
+  ],
+  "ema_p13": [
+    "ema",
+    "{\"period\": 13}",
+    null
+  ],
+  "ema_p20": [
+    "ema",
+    "{\"period\": 20}",
+    null
+  ],
+  "ema_p3": [
+    "ema",
+    "{\"period\": 3}",
+    null
+  ],
+  "ema_p8": [
+    "ema",
+    "{\"period\": 8}",
+    null
+  ],
+  "ema_p9": [
+    "ema",
+    "{\"period\": 9}",
+    null
+  ],
+  "emv_p14_v10000.0": [
+    "emv",
+    "{\"period\": 14, \"volume_divisor\": 10000.0}",
+    null
+  ],
+  "fisher_transform_p9": [
+    "fisher_transform",
+    "{\"period\": 9}",
+    null
+  ],
+  "fvg_l20_m0.001__bear_gap_high": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bear_gap_high"
+  ],
+  "fvg_l20_m0.001__bear_gap_low": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bear_gap_low"
+  ],
+  "fvg_l20_m0.001__bear_signal": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bear_signal"
+  ],
+  "fvg_l20_m0.001__bull_gap_high": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bull_gap_high"
+  ],
+  "fvg_l20_m0.001__bull_gap_low": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bull_gap_low"
+  ],
+  "fvg_l20_m0.001__bull_signal": [
+    "fvg",
+    "{\"lookback\": 20, \"min_gap_pct\": 0.001}",
+    "bull_signal"
+  ],
+  "hma_p9": [
+    "hma",
+    "{\"period\": 9}",
+    null
+  ],
+  "kama_e10_f2_s30": [
+    "kama",
+    "{\"er_period\": 10, \"fast_sc\": 2, \"slow_sc\": 30}",
+    null
+  ],
+  "klinger_f34_s13_s55__ko": [
+    "klinger",
+    "{\"fast_period\": 34, \"signal_period\": 13, \"slow_period\": 55}",
+    "ko"
+  ],
+  "klinger_f34_s13_s55__signal": [
+    "klinger",
+    "{\"fast_period\": 34, \"signal_period\": 13, \"slow_period\": 55}",
+    "signal"
+  ],
+  "linreg_slope_p10": [
+    "linreg_slope",
+    "{\"period\": 10}",
+    null
+  ],
+  "macd_f12_s9_s26__histogram": [
+    "macd",
+    "{\"fast\": 12, \"signal\": 9, \"slow\": 26}",
+    "histogram"
+  ],
+  "macd_f12_s9_s26__macd": [
+    "macd",
+    "{\"fast\": 12, \"signal\": 9, \"slow\": 26}",
+    "macd"
+  ],
+  "macd_f12_s9_s26__signal": [
+    "macd",
+    "{\"fast\": 12, \"signal\": 9, \"slow\": 26}",
+    "signal"
+  ],
+  "macd_f5_s4_s13__histogram": [
+    "macd",
+    "{\"fast\": 5, \"signal\": 4, \"slow\": 13}",
+    "histogram"
+  ],
+  "macd_f5_s4_s13__macd": [
+    "macd",
+    "{\"fast\": 5, \"signal\": 4, \"slow\": 13}",
+    "macd"
+  ],
+  "macd_f5_s4_s13__signal": [
+    "macd",
+    "{\"fast\": 5, \"signal\": 4, \"slow\": 13}",
+    "signal"
+  ],
+  "mass_index_e9_s25": [
+    "mass_index",
+    "{\"ema_period\": 9, \"sum_period\": 25}",
+    null
+  ],
+  "obv": [
+    "obv",
+    "{}",
+    null
+  ],
+  "parabolic_sar__is_bull": [
+    "parabolic_sar",
+    "{}",
+    "is_bull"
+  ],
+  "parabolic_sar__sar": [
+    "parabolic_sar",
+    "{}",
+    "sar"
+  ],
+  "roc_p10": [
+    "roc",
+    "{\"period\": 10}",
+    null
+  ],
+  "roc_p20": [
+    "roc",
+    "{\"period\": 20}",
+    null
+  ],
+  "rsi_p14": [
+    "rsi",
+    "{\"period\": 14}",
+    null
+  ],
+  "rsi_p5": [
+    "rsi",
+    "{\"period\": 5}",
+    null
+  ],
+  "rvi_p10_s4__rvi": [
+    "rvi",
+    "{\"period\": 10, \"signal_period\": 4}",
+    "rvi"
+  ],
+  "rvi_p10_s4__signal": [
+    "rvi",
+    "{\"period\": 10, \"signal_period\": 4}",
+    "signal"
+  ],
+  "sma_p10": [
+    "sma",
+    "{\"period\": 10}",
+    null
+  ],
+  "sma_p12": [
+    "sma",
+    "{\"period\": 12}",
+    null
+  ],
+  "sma_p14": [
+    "sma",
+    "{\"period\": 14}",
+    null
+  ],
+  "sma_p20_svolume": [
+    "sma",
+    "{\"period\": 20, \"source\": \"volume\"}",
+    null
+  ],
+  "sma_p20": [
+    "sma",
+    "{\"period\": 20}",
+    null
+  ],
+  "sma_p25": [
+    "sma",
+    "{\"period\": 25}",
+    null
+  ],
+  "sma_p34": [
+    "sma",
+    "{\"period\": 34}",
+    null
+  ],
+  "sma_p50": [
+    "sma",
+    "{\"period\": 50}",
+    null
+  ],
+  "sma_p5": [
+    "sma",
+    "{\"period\": 5}",
+    null
+  ],
+  "sma_p7": [
+    "sma",
+    "{\"period\": 7}",
+    null
+  ],
+  "stochastic_d3_k5__d": [
+    "stochastic",
+    "{\"d_period\": 3, \"k_period\": 5}",
+    "d"
+  ],
+  "stochastic_d3_k5__k": [
+    "stochastic",
+    "{\"d_period\": 3, \"k_period\": 5}",
+    "k"
+  ],
+  "supertrend_m2.0_p7__direction": [
+    "supertrend",
+    "{\"multiplier\": 2.0, \"period\": 7}",
+    "direction"
+  ],
+  "supertrend_m3.0_p10__direction": [
+    "supertrend",
+    "{\"multiplier\": 3.0, \"period\": 10}",
+    "direction"
+  ],
+  "tema_p8": [
+    "tema",
+    "{\"period\": 8}",
+    null
+  ],
+  "trix_s9_t15__signal": [
+    "trix",
+    "{\"signal_period\": 9, \"trix_period\": 15}",
+    "signal"
+  ],
+  "trix_s9_t15__trix": [
+    "trix",
+    "{\"signal_period\": 9, \"trix_period\": 15}",
+    "trix"
+  ],
+  "tvi_m0.001_s10__tvi": [
+    "tvi",
+    "{\"min_tick\": 0.001, \"sma_period\": 10}",
+    "tvi"
+  ],
+  "tvi_m0.001_s10__tvi_sma": [
+    "tvi",
+    "{\"min_tick\": 0.001, \"sma_period\": 10}",
+    "tvi_sma"
+  ],
+  "ulcer_index_p14": [
+    "ulcer_index",
+    "{\"period\": 14}",
+    null
+  ],
+  "ultimate_oscillator_p7_p14_p28_w4_w2_w1": [
+    "ultimate_oscillator",
+    "{\"period1\": 7, \"period2\": 14, \"period3\": 28, \"weight1\": 4, \"weight2\": 2, \"weight3\": 1}",
+    null
+  ],
+  "volume_momentum_p10": [
+    "volume_momentum",
+    "{\"period\": 10}",
+    null
+  ],
+  "vortex_p14__vi_minus": [
+    "vortex",
+    "{\"period\": 14}",
+    "vi_minus"
+  ],
+  "vortex_p14__vi_plus": [
+    "vortex",
+    "{\"period\": 14}",
+    "vi_plus"
+  ],
+  "vpt_p20_s10__vpt": [
+    "vpt",
+    "{\"period\": 20, \"sma_period\": 10}",
+    "vpt"
+  ],
+  "vpt_p20_s10__vpt_sma": [
+    "vpt",
+    "{\"period\": 20, \"sma_period\": 10}",
+    "vpt_sma"
+  ],
+  "vroc_p20": [
+    "vroc",
+    "{\"period\": 20}",
+    null
+  ],
+  "vwap_p20": [
+    "vwap",
+    "{\"period\": 20}",
+    null
+  ],
+  "williams_r_p5": [
+    "williams_r",
+    "{\"period\": 5}",
+    null
+  ],
+  "zscore_p14": [
+    "zscore",
+    "{\"period\": 14}",
+    null
+  ],
+  "ad": [
+    "ad",
+    "{}",
+    null
+  ],
+  "fvg_detect__bull": [
+    "fvg_detect",
+    "{\"min_gap_pct\": 0.0, \"relaxed_window\": 5}",
+    "bull"
+  ],
+  "fvg_detect__bear": [
+    "fvg_detect",
+    "{\"min_gap_pct\": 0.0, \"relaxed_window\": 5}",
+    "bear"
+  ],
+  "fvg_detect__bull_relaxed": [
+    "fvg_detect",
+    "{\"min_gap_pct\": 0.0, \"relaxed_window\": 5}",
+    "bull_relaxed"
+  ],
+  "fvg_detect__bear_relaxed": [
+    "fvg_detect",
+    "{\"min_gap_pct\": 0.0, \"relaxed_window\": 5}",
+    "bear_relaxed"
+  ],
+  "cmf_p50": [
+    "cmf",
+    "{\"period\": 50}",
+    null
+  ],
+  "volume_ratio_p20": [
+    "volume_ratio",
+    "{\"period\": 20}",
+    null
+  ],
+  "obv_slope_p10": [
+    "obv_slope",
+    "{\"period\": 10}",
+    null
+  ],
+  "ad_roc_p20": [
+    "ad_roc",
+    "{\"period\": 20}",
+    null
+  ]
+}

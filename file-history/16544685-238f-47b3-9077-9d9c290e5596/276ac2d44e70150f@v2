@@ -1,0 +1,41 @@
+#!/bin/bash
+# start_trading.sh — 启动 Gateway + Trader
+# 用法: bash trading/start_trading.sh  (从项目根目录执行)
+#   或: cd trading && bash start_trading.sh
+
+# 定位项目根（相对于本脚本位置）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+# 杀旧进程
+pkill -f feed_gateway 2>/dev/null
+pkill -f unified_trader 2>/dev/null
+pkill -f trader_bot 2>/dev/null
+sleep 2
+
+# 启动 Gateway（9 币种 1m）
+nohup python3 src/data/feed_gateway.py \
+    --coins SOL,ETH,XRP,BTC,BNB,ADA,AVAX,LINK,DOT \
+    --intervals 1m,1m,1m,1m,1m,1m,1m,1m,1m \
+    >> logs/gateway.log 2>&1 &
+
+echo "Gateway PID: $!"
+sleep 15  # 等 Gateway 稳定（WS 连接 + 首批 K 线）
+
+# 启动 Trader
+nohup python3 trading/unified_trader.py >> logs/unified.log 2>&1 &
+echo "Trader PID: $!"
+
+# 启动 Bot（Telegram 命令查询）
+nohup python3 trading/trader_bot.py >> logs/bot.log 2>&1 &
+echo "Bot PID: $!"
+
+sleep 10
+echo "=== 进程状态 ==="
+ps aux | grep python3 | grep -v grep | grep -v unattended
+echo "=== Gateway 最后 3 行 ==="
+tail -3 logs/gateway.log
+echo "=== Trader 最后 3 行 ==="
+tail -3 logs/unified.log

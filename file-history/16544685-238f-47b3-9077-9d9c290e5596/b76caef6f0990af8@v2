@@ -1,0 +1,276 @@
+# Bitget V2 Mix 合约 API 参考
+
+> 改 Bitget adapter 前必读。改完后更新本文档。
+> 最后更新：2026-04-06
+> 注：官方文档全站 403（Cloudflare 反爬），信息来自 WebSearch + GitHub SDK 源码交叉验证。
+
+---
+
+## 概述
+
+Bitget V2 Mix API 是 USDT/USDC/COIN 保证金永续合约接口。特点：需要 PASSPHRASE 认证、签名用 Base64 编码。
+
+| 项目 | 值 |
+|------|-----|
+| REST Base URL | `https://api.bitget.com` |
+| WS Public | `wss://ws.bitget.com/v2/ws/public` |
+| WS Private | `wss://ws.bitget.com/v2/ws/private` |
+| WS Demo Public | `wss://wspap.bitget.com/v2/ws/public` |
+| WS Demo Private | `wss://wspap.bitget.com/v2/ws/private` |
+| 认证方式 | HMAC-SHA256 + **Base64** + PASSPHRASE |
+| Python SDK | `pip install python-bitget` |
+
+---
+
+## 认证
+
+### 与其他交易所的关键差异
+
+1. **需要 PASSPHRASE**：创建 API Key 时设置的口令，每次请求都要带
+2. **签名用 Base64**：HMAC-SHA256 后做 Base64 编码（不是十六进制）
+3. **prehash 含 requestPath**：签名字符串包含完整路径
+
+### REST 签名
+
+```
+prehash = timestamp + METHOD + requestPath + queryString + body
+signature = Base64(HMAC-SHA256(secretKey, prehash))
+```
+
+```python
+import hmac, hashlib, base64, time
+
+timestamp = str(int(time.time() * 1000))
+method = "POST"
+path = "/api/v2/mix/order/place-order"
+body = '{"symbol":"BTCUSDT","productType":"USDT-FUTURES",...}'
+
+prehash = timestamp + method + path + body
+sign = base64.b64encode(
+    hmac.new(secret_key.encode(), prehash.encode(), hashlib.sha256).digest()
+).decode()
+
+headers = {
+    "ACCESS-KEY": api_key,
+    "ACCESS-SIGN": sign,
+    "ACCESS-TIMESTAMP": timestamp,
+    "ACCESS-PASSPHRASE": passphrase,
+    "Content-Type": "application/json",
+}
+```
+
+### WebSocket 认证
+
+连接后发 login，签名字符串固定为 `timestamp + "GET" + "/user/verify"`：
+
+```json
+{
+  "op": "login",
+  "args": [{
+    "apiKey": "your_key",
+    "passphrase": "your_passphrase",
+    "timestamp": "1695865615662",
+    "sign": "Base64(HMAC-SHA256(ts+'GET'+'/user/verify', secret))"
+  }]
+}
+```
+
+---
+
+## REST API
+
+### 下单 — `POST /api/v2/mix/order/place-order`
+
+限速：10 次/秒/UID
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | String | 是 | 如 `BTCUSDT` |
+| productType | String | 是 | `USDT-FUTURES` / `COIN-FUTURES` / `USDC-FUTURES` |
+| marginMode | String | 是 | `isolated`（逐仓）/ `crossed`（全仓） |
+| marginCoin | String | 是 | 保证金币种，如 `USDT` |
+| size | String | 是 | 数量 |
+| side | String | 是 | `buy` / `sell` |
+| tradeSide | String | 是 | `open`（开仓）/ `close`（平仓） |
+| orderType | String | 是 | `limit` / `market` |
+| price | String | 否 | 限价单必填 |
+| force | String | 否 | `gtc` / `ioc` / `fok` / `post_only` |
+| clientOid | String | 否 | 自定义 ID |
+| reduceOnly | String | 否 | `YES` / `NO` |
+| presetStopSurplusPrice | String | 否 | 预设止盈价 |
+| presetStopLossPrice | String | 否 | 预设止损价 |
+
+**Bitget 特有**：`tradeSide` 必填（`open`/`close`），其他交易所用 `reduceOnly` 替代。
+
+### 撤单 — `POST /api/v2/mix/order/cancel-order`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| symbol | String | 是 |
+| productType | String | 是 |
+| orderId | String | 二选一 |
+| clientOid | String | 二选一 |
+
+相关：批量撤 `batch-cancel-orders`，全撤 `cancel-all-orders`
+
+### 查持仓 — `GET /api/v2/mix/position/all-position`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| productType | String | 是 |
+| marginCoin | String | 否 |
+
+返回：`holdSide`(long/short), `marginMode`, `total`, `available`, `unrealizedPL`, `openPriceAvg`, `liquidationPrice`, `leverage`
+
+单个持仓：`GET /api/v2/mix/position/single-position`（加 `symbol`）
+
+### 查余额 — `GET /api/v2/mix/account/accounts`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| productType | String | 是 |
+
+返回：`available`, `frozen`, `equity`, `unrealizedPL`, `marginMode`, `leverage`
+
+### 查 K 线 — `GET /api/v2/mix/market/candles`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | String | 是 | |
+| productType | String | 是 | |
+| granularity | String | 是 | 1m/3m/5m/15m/30m/1H/2H/4H/6H/8H/12H/1D/3D/1W/1M |
+| startTime | String | 否 | 毫秒时间戳 |
+| endTime | String | 否 | |
+| limit | String | 否 | 默认 100 |
+
+返回数组：`[timestamp, open, high, low, close, baseVolume, quoteVolume]`
+
+历史 K 线：`GET /api/v2/mix/market/history-candles`
+
+---
+
+## WebSocket
+
+### 心跳
+
+每 **30 秒**发字符串 `"ping"`，回复 `"pong"`。超过 2 分钟无 ping 断开。
+
+### 订阅格式
+
+```json
+{
+  "op": "subscribe",
+  "args": [{
+    "instType": "USDT-FUTURES",
+    "channel": "ticker",
+    "instId": "BTCUSDT"
+  }]
+}
+```
+
+### 常用频道
+
+| 类型 | channel | 说明 |
+|------|---------|------|
+| 公共 | `ticker` | 行情 |
+| 公共 | `candle5m` | K 线（candle + 周期） |
+| 公共 | `books5` | 5 档深度 |
+| 公共 | `trade` | 逐笔成交 |
+| 私有 | `positions` | 持仓更新 |
+| 私有 | `orders` | 订单更新 |
+| 私有 | `account-crossed` | 全仓账户 |
+
+限制：240 次订阅/小时/连接，每连接最多 1000 频道。
+
+---
+
+## 限速
+
+| 类型 | 限制 |
+|------|------|
+| 全局 IP | 6000 次/分钟 |
+| IP 超限恢复 | 5 分钟 |
+| 下单 | 10 次/秒/UID |
+| 批量下单 | 5 次/秒/UID |
+| 触发超限 | HTTP 429 |
+
+---
+
+## 合约特有概念
+
+### productType
+
+| 值 | 说明 |
+|----|------|
+| `USDT-FUTURES` | USDT 保证金永续（主流） |
+| `COIN-FUTURES` | 币本位永续 |
+| `USDC-FUTURES` | USDC 保证金永续 |
+| `SUSDT-FUTURES` | 模拟盘 |
+
+### marginMode
+
+| 值 | 说明 |
+|----|------|
+| `isolated` | 逐仓 |
+| `crossed` | 全仓 |
+
+### holdSide
+
+| 值 | 说明 |
+|----|------|
+| `long` | 多头 |
+| `short` | 空头 |
+
+### tradeSide（Bitget 特有）
+
+| 值 | 说明 |
+|----|------|
+| `open` | 开仓 |
+| `close` | 平仓 |
+
+其他交易所用 `reduceOnly=true` 表示平仓，Bitget 用显式的 `tradeSide`。
+
+---
+
+## Python SDK
+
+```bash
+pip install python-bitget
+```
+
+```python
+from pybitget import Client
+
+client = Client(api_key, api_secret, passphrase=passphrase)
+
+# 查账户
+result = client.mix_get_accounts(productType='USDT-FUTURES')
+
+# WebSocket
+from pybitget.stream import BitgetWsClient, SubscribeReq
+
+ws = BitgetWsClient(
+    api_key=api_key, api_secret=api_secret,
+    passphrase=passphrase, verbose=True
+).build()
+
+channels = [SubscribeReq("USDT-FUTURES", "ticker", "BTCUSDT")]
+ws.subscribe(channels, callback)
+```
+
+也可用 `ccxt`：`pip install ccxt`
+
+---
+
+## 参考链接
+
+- [API 文档](https://www.bitget.com/api-doc/common/intro)（需浏览器访问，爬虫 403）
+- [签名说明](https://www.bitget.com/api-doc/common/signature)
+- [python-bitget GitHub](https://github.com/cuongitl/python-bitget)
+- [官方 SDK](https://github.com/BitgetLimited/v3-bitget-api-sdk)
+
+---
+
+## 踩过的坑
+
+（暂无，踩了就写）

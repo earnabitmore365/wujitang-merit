@@ -1,0 +1,982 @@
+# BitMEX API 完整参考手册
+
+> 黑丝整理，2026-03-23
+> 来源：BitMEX 官方文档 + API Explorer + GitHub api-connectors + 实盘踩坑经验
+
+---
+
+## 目录
+
+1. [环境与认证](#1-环境与认证)
+2. [REST API — 下单](#2-rest-api--下单)
+3. [订单类型详解](#3-订单类型详解)
+4. [执行指令 execInst](#4-执行指令-execinst)
+5. [Hedge Mode（对冲模式）](#5-hedge-mode对冲模式)
+6. [止损 / 止盈](#6-止损--止盈)
+7. [OCO / OTO 关联订单](#7-oco--oto-关联订单)
+8. [追踪止损 Trailing Stop](#8-追踪止损-trailing-stop)
+9. [杠杆设置](#9-杠杆设置)
+10. [查询与撤单](#10-查询与撤单)
+11. [仓位管理](#11-仓位管理)
+12. [余额查询](#12-余额查询)
+13. [合约参数](#13-合约参数)
+14. [REST API 限速](#14-rest-api-限速)
+15. [WebSocket API](#15-websocket-api)
+16. [K 线历史数据](#16-k-线历史数据)
+17. [我们的适配器用法](#17-我们的适配器用法)
+18. [已知坑与踩过的雷](#18-已知坑与踩过的雷)
+
+---
+
+## 1. 环境与认证
+
+### 1.1 Base URL
+
+| 环境 | REST | WebSocket |
+|------|------|-----------|
+| **主网** | `https://www.bitmex.com/api/v1` | `wss://ws.bitmex.com/realtime` |
+| **测试网** | `https://testnet.bitmex.com/api/v1` | `wss://ws.testnet.bitmex.com/realtime` |
+
+### 1.2 REST 认证
+
+每个请求需要 3 个 Header：
+
+```
+api-key:     你的 API Key
+api-expires: Unix 时间戳（秒），必须大于当前时间（通常 +5 秒）
+api-signature: HMAC-SHA256(secret, verb + path + expires + body)
+```
+
+**签名算法**：
+```python
+import hashlib, hmac, time
+
+expires = int(time.time()) + 5
+message = f"{verb}{path}{expires}{body}"
+signature = hmac.new(
+    api_secret.encode(), message.encode(), hashlib.sha256
+).hexdigest()
+```
+
+### 1.3 WebSocket 认证
+
+**方法 1：连接时认证（Query String）**
+```
+wss://ws.bitmex.com/realtime?api-key=KEY&api-signature=SIG&api-expires=12345
+```
+
+**方法 2：连接后认证（Message）**
+```json
+{"op": "authKeyExpires", "args": ["API_KEY", 12345, "SIGNATURE"]}
+```
+
+WS 签名算法：
+```python
+signature = hex(HMAC_SHA256(secret, 'GET/realtime' + str(expires)))
+```
+
+---
+
+## 2. REST API — 下单
+
+### `POST /api/v1/order`
+
+#### 参数完整表
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `symbol` | string | YES | 合约代码：XBTUSDT, ETHUSDT, SOLUSDT, XRPUSDT 等 |
+| `side` | string | | `Buy` 或 `Sell`（不指定时默认 Buy） |
+| `orderQty` | int | | 合约数量（正数；负数可代替 side=Sell） |
+| `price` | double | | 限价（Limit / StopLimit / LimitIfTouched 用） |
+| `stopPx` | double | | 触发价（Stop / StopLimit / MarketIfTouched / LimitIfTouched 用） |
+| `ordType` | string | | 订单类型（见第3节），默认 `Limit` |
+| `execInst` | string | | 执行指令，逗号分隔（见第4节） |
+| `strategy` | string | | **Hedge Mode 必填**：`Long` 或 `Short`（见第5节） |
+| `timeInForce` | string | | `Day` / `GoodTillCancel`(默认) / `ImmediateOrCancel` / `FillOrKill` |
+| `clOrdID` | string | | 客户端订单ID（最长36字符，会原样返回） |
+| `clOrdLinkID` | string | | 关联订单分组ID（OCO/OTO 用，见第7节） |
+| `contingencyType` | string | | `OneCancelsTheOther` / `OneTriggersTheOther` |
+| `pegPriceType` | string | | `PrimaryPeg` / `MarketPeg` / `TrailingStopPeg` |
+| `pegOffsetValue` | double | | Peg 偏移值（跟踪止损距离） |
+| `displayQty` | int | | 显示数量（0 = 隐单/冰山单） |
+| `text` | string | | 订单备注 |
+
+#### 返回关键字段
+
+| 字段 | 说明 |
+|------|------|
+| `orderID` | 交易所分配的订单ID |
+| `ordStatus` | `New` / `PartiallyFilled` / `Filled` / `Canceled` / `Rejected` |
+| `avgPx` | 平均成交价 |
+| `cumQty` | 累计成交量（合约数） |
+| `leavesQty` | 剩余未成交量 |
+| `strategy` | `Long` / `Short` / `OneWay` |
+
+---
+
+## 3. 订单类型详解
+
+| ordType | 用途 | 必需参数 | 说明 |
+|---------|------|---------|------|
+| `Market` | 市价单 | orderQty | 立即以最优价成交 |
+| `Limit` | 限价单 | orderQty, price | 挂在指定价位等成交 |
+| `Stop` | 止损单 | orderQty, stopPx | 价格触及 stopPx 后变成市价单 |
+| `StopLimit` | 止损限价 | orderQty, stopPx, price | 触及 stopPx 后变成限价单 |
+| `MarketIfTouched` | 触价市价 | orderQty, stopPx | 用于止盈：价格到了就市价平 |
+| `LimitIfTouched` | 触价限价 | orderQty, stopPx, price | 用于止盈：价格到了挂限价 |
+| `Pegged` | 浮动挂单 | pegPriceType, pegOffsetValue | 价格跟随 bid/ask 浮动 |
+
+### 通俗理解
+
+- **Stop**（止损）：价格跌到某个位置就卖出（或涨到某个位置就买入），防止亏太多
+- **MarketIfTouched**（止盈）：跟 Stop 相反方向 — 价格涨到某个位置就卖出锁定利润
+- **Limit**：挂一个价格等着成交，不一定能成交
+- **Market**：不管什么价格立刻成交，一定能成交但价格可能滑点
+
+---
+
+## 4. 执行指令 execInst
+
+可以多个组合，用逗号分隔。例：`Close,LastPrice`
+
+| execInst | 说明 |
+|----------|------|
+| `ParticipateDoNotInitiate` | **Post-Only / Maker Only**：只能挂单（maker），如果会立即成交则拒绝。用于吃 maker 手续费返佣 |
+| `ReduceOnly` | **只能减仓**：不会增加持仓，只用于平仓。防止平仓单变成反向开仓 |
+| `Close` | **平仓**：包含 ReduceOnly 功能 + 会自动取消同方向的冲突限价单。**推荐用于止损止盈** |
+| `LastPrice` | 用**最新成交价**作为止损/止盈触发价 |
+| `MarkPrice` | 用**标记价格**触发（防止人为操控最新价触发止损） |
+| `IndexPrice` | 用**指数价格**触发 |
+| `LastWithinMark` | Last 触发但限制在 Mark 价格带内（双重保护） |
+| `Fixed` | Pegged 单必须加这个 |
+
+### Close vs ReduceOnly 的区别
+
+| | ReduceOnly | Close |
+|--|-----------|-------|
+| 只减仓不增仓 | YES | YES |
+| 取消同方向冲突限价单 | NO | **YES** |
+| 推荐场景 | 普通平仓 | **止损/止盈**（避免冲突） |
+
+---
+
+## 5. Hedge Mode（对冲模式）
+
+### 什么是 Hedge Mode
+
+普通模式（OneWay）：一个币只能持有一个方向的仓位（多或空），买卖会互相对冲。
+Hedge Mode：**同一个币可以同时持有多头和空头仓位**，两个仓位完全独立，各有独立的入场价和盈亏。
+
+### strategy 字段
+
+Hedge Mode 下，**每一个订单都必须指定 `strategy` 字段**，告诉交易所这个订单作用于哪个仓位。
+
+| 操作 | side | strategy | 白话 |
+|------|------|----------|------|
+| 开多 | `Buy` | `Long` | 买入开多头 |
+| 开空 | `Sell` | `Short` | 卖出开空头 |
+| 平多 | `Sell` | `Long` | 卖出平多头 |
+| 平空 | `Buy` | `Short` | 买入平空头 |
+| 止损（多） | `Sell` | `Long` | 多头止损 |
+| 止损（空） | `Buy` | `Short` | 空头止损 |
+| 止盈（多） | `Sell` | `Long` | 多头止盈 |
+| 止盈（空） | `Buy` | `Short` | 空头止盈 |
+
+**规律**：`strategy` 永远填你要操作的那个仓位的方向。平多头就填 `Long`，平空头就填 `Short`。
+
+### 不填 strategy 会怎样
+
+返回 `{"error":{"message":"Invalid strategy: null"}}`。我们之前的 SL 挂单就是这么报错的。
+
+### Cross Margin（全仓）vs Isolated Margin（逐仓）
+
+| | Cross（全仓） | Isolated（逐仓） |
+|--|-------------|-----------------|
+| 保证金来源 | 整个账户余额共享 | 每个仓位独立 |
+| 爆仓风险 | 一个仓亏会吃掉另一个仓的利润 | 最多亏掉分配的保证金 |
+| 杠杆设置 | leverage=0 | leverage=0.01~100 |
+| Hedge Mode 推荐 | **YES** | 可以但不推荐 |
+
+---
+
+## 6. 止损 / 止盈
+
+### 重要：BitMEX 没有 `/position/tpsl` 端点
+
+止损止盈不是用什么特殊接口，就是用普通的 `POST /api/v1/order`，只是 ordType 用 Stop 或 MarketIfTouched。
+
+### 止损单（Stop Loss）
+
+```python
+# 多头止损：价格跌到 1872 就卖出平仓
+{
+    'symbol': 'ETHUSDT',
+    'side': 'Sell',
+    'orderQty': 480800,       # 合约数量
+    'stopPx': 1872.0,         # 触发价
+    'ordType': 'Stop',        # 止损类型
+    'execInst': 'Close,LastPrice',  # 平仓 + 用最新价触发
+    'strategy': 'Long',       # 操作的是多头仓位
+}
+
+# 空头止损：价格涨到 2300 就买入平仓
+{
+    'symbol': 'ETHUSDT',
+    'side': 'Buy',
+    'orderQty': 480800,
+    'stopPx': 2300.0,
+    'ordType': 'Stop',
+    'execInst': 'Close,LastPrice',
+    'strategy': 'Short',      # 操作的是空头仓位
+}
+```
+
+### 止盈单（Take Profit）
+
+```python
+# 多头止盈：价格涨到 2500 就卖出锁定利润
+{
+    'symbol': 'ETHUSDT',
+    'side': 'Sell',
+    'orderQty': 480800,
+    'stopPx': 2500.0,         # 触发价
+    'price': 2500.0,          # 限价（LimitIfTouched 用）
+    'ordType': 'LimitIfTouched',  # 或 MarketIfTouched（市价）
+    'execInst': 'Close,LastPrice',
+    'strategy': 'Long',
+}
+```
+
+---
+
+## 7. OCO / OTO 关联订单
+
+### OCO（One Cancels the Other）— 止损+止盈绑定
+
+两个订单用同一个 `clOrdLinkID` 关联，一个触发后另一个自动取消：
+
+```python
+SL_ORDER = {
+    'symbol': 'ETHUSDT',
+    'side': 'Sell',
+    'orderQty': 480800,
+    'stopPx': 1872.0,
+    'ordType': 'Stop',
+    'execInst': 'Close,LastPrice',
+    'strategy': 'Long',
+    'clOrdLinkID': 'eth-bracket-001',           # 同一个 ID
+    'contingencyType': 'OneCancelsTheOther',
+}
+
+TP_ORDER = {
+    'symbol': 'ETHUSDT',
+    'side': 'Sell',
+    'orderQty': 480800,
+    'stopPx': 2500.0,
+    'ordType': 'MarketIfTouched',
+    'execInst': 'Close,LastPrice',
+    'strategy': 'Long',
+    'clOrdLinkID': 'eth-bracket-001',           # 同一个 ID
+    'contingencyType': 'OneCancelsTheOther',
+}
+```
+
+### OTO（One Triggers the Other）— 开仓后自动触发止损止盈
+
+主单成交后，从单自动激活：
+
+```python
+# 主单（开多）
+{'symbol': 'ETHUSDT', 'side': 'Buy', 'orderQty': 480800,
+ 'price': 2080, 'ordType': 'Limit', 'strategy': 'Long',
+ 'clOrdLinkID': 'eth-oto-001', 'contingencyType': 'OneTriggersTheOther'}
+
+# 从单1：止损（主单成交后自动挂上）
+{'symbol': 'ETHUSDT', 'side': 'Sell', 'orderQty': 480800,
+ 'stopPx': 1872, 'ordType': 'Stop', 'execInst': 'Close,LastPrice',
+ 'strategy': 'Long', 'clOrdLinkID': 'eth-oto-001'}
+
+# 从单2：止盈
+{'symbol': 'ETHUSDT', 'side': 'Sell', 'orderQty': 480800,
+ 'stopPx': 2500, 'ordType': 'MarketIfTouched', 'execInst': 'Close,LastPrice',
+ 'strategy': 'Long', 'clOrdLinkID': 'eth-oto-001'}
+```
+
+---
+
+## 8. 追踪止损 Trailing Stop
+
+交易所原生支持，价格朝有利方向移动时 stopPx 自动跟随，反向移动时锁定不动。
+
+```python
+{
+    'symbol': 'ETHUSDT',
+    'side': 'Sell',
+    'orderQty': 480800,
+    'stopPx': 2000.0,              # 初始触发价
+    'ordType': 'Stop',
+    'pegPriceType': 'TrailingStopPeg',
+    'pegOffsetValue': -100,         # 追踪距离（价格到最高点 - 100 时触发）
+    'execInst': 'Close,LastPrice',
+    'strategy': 'Long',
+}
+```
+
+- stopPx 每秒自动更新（底层价格移动 > 0.1% 时）
+- pegOffsetValue 为负数表示距离最高点的距离
+
+---
+
+## 9. 杠杆设置
+
+### `POST /api/v1/position/leverage`
+
+| 参数 | 说明 |
+|------|------|
+| `symbol` | 合约代码 |
+| `leverage` | `0` = 全仓模式，`0.01~100` = 逐仓 + 固定杠杆 |
+
+```python
+# 设置 ETHUSDT 10x 杠杆（逐仓）
+adapter._post('/api/v1/position/leverage', data={
+    'symbol': 'ETHUSDT', 'leverage': 10
+})
+
+# 切换到全仓模式
+adapter._post('/api/v1/position/leverage', data={
+    'symbol': 'ETHUSDT', 'leverage': 0
+})
+```
+
+---
+
+## 10. 查询与撤单
+
+### 查询订单 `GET /api/v1/order`
+
+```python
+# 查未成交订单
+adapter._get('/api/v1/order', query={
+    'filter': '{"open": true}'
+})
+
+# 查特定订单
+adapter._get('/api/v1/order', query={
+    'filter': '{"orderID": "xxx-xxx-xxx"}'
+})
+```
+
+返回关键字段：`orderID`, `ordStatus`, `avgPx`, `cumQty`, `leavesQty`
+
+### 撤单 `DELETE /api/v1/order`
+
+```python
+# 撤单个订单
+adapter._delete('/api/v1/order', data={'orderID': 'xxx-xxx-xxx'})
+
+# 按客户端 ID 撤
+adapter._delete('/api/v1/order', data={'clOrdID': 'my-order-001'})
+```
+
+### 撤所有 `DELETE /api/v1/order/all`
+
+```python
+# 撤所有
+adapter._delete('/api/v1/order/all')
+
+# 只撤某个币种
+adapter._delete('/api/v1/order/all', data={'symbol': 'ETHUSDT'})
+```
+
+---
+
+## 11. 仓位管理
+
+### 查仓位 `GET /api/v1/position`
+
+```python
+adapter._get('/api/v1/position', query={
+    'filter': '{"isOpen": true}'
+})
+```
+
+返回关键字段：
+
+| 字段 | 说明 |
+|------|------|
+| `symbol` | 合约 |
+| `currentQty` | 当前持仓量（合约数，正=多，负=空） |
+| `avgEntryPrice` | 平均入场价 |
+| `liquidationPrice` | 强平价 |
+| `unrealisedPnl` | 未实现盈亏 |
+| `leverage` | 杠杆倍数 |
+| `crossMargin` | 是否全仓 |
+| `strategy` | `Long` / `Short` / `OneWay` |
+
+---
+
+## 12. 余额查询
+
+### `GET /api/v1/user/margin`
+
+```python
+adapter._get('/api/v1/user/margin', query={'currency': 'USDt'})
+```
+
+| 字段 | 单位 | 说明 |
+|------|------|------|
+| `walletBalance` | 微美元(÷1e6) | 总余额 |
+| `availableMargin` | 微美元(÷1e6) | 可用保证金 |
+| `maintMargin` | 微美元(÷1e6) | 已用维持保证金 |
+| `unrealisedPnl` | 微美元(÷1e6) | 未实现盈亏 |
+
+**注意**：USDt 单位是 1e6（微美元），XBt 单位是 1e8（聪）。
+`available_usd = availableMargin / 1_000_000`
+
+---
+
+## 13. 合约参数
+
+### 查合约信息 `GET /api/v1/instrument`
+
+```python
+adapter._get('/api/v1/instrument', query={'symbol': 'ETHUSDT'})
+```
+
+| 字段 | 说明 | 用途 |
+|------|------|------|
+| `underlyingToPositionMultiplier` (u2p) | 1 币 = u2p 张合约 | 币数量 → 合约数量转换 |
+| `lotSize` | 最小下单量（合约数） | orderQty 必须是 lotSize 的整数倍 |
+| `tickSize` | 最小价格变动 | price 必须是 tickSize 的整数倍 |
+| `maxOrderQty` | 单笔最大下单量 | 超过会被拒绝 |
+| `settlCurrency` | 结算币种 | |
+| `isInverse` | 是否反向合约 | |
+
+### 转换公式
+
+```python
+# 币数量 → 合约数量
+contracts = int(coin_qty * u2p)
+contracts = (contracts // lotSize) * lotSize  # 向下取整到 lotSize 倍数
+
+# 合约数量 → 币数量
+coin_qty = contracts / u2p
+```
+
+### 各币种实际参数（2026-03-23 查询，主网=测试网一致）
+
+| 币种 | 合约代码 | u2p | lotSize | tickSize | 白话 |
+|------|---------|-----|---------|----------|------|
+| BTC | XBTUSDT | 1,000,000 | 100 | 0.1 | 1 BTC = 100万合约，最少下100张 |
+| ETH | ETHUSDT | 100,000 | 1,000 | 0.01 | 1 ETH = 10万合约，最少下1000张 |
+| SOL | SOLUSDT | 10,000 | 100 | 0.01 | 1 SOL = 1万合约，最少下100张 |
+| XRP | XRPUSDT | 100 | 100 | 0.0001 | 1 XRP = 100合约，最少下100张 |
+| BNB | BNBUSDT | 10,000 | 100 | 0.01 | 1 BNB = 1万合约，最少下100张 |
+| ADA | ADAUSDT | 100 | 1,000 | 0.0001 | 1 ADA = 100合约，最少下1000张 |
+| AVAX | AVAXUSDT | 10,000 | 1,000 | 0.001 | 1 AVAX = 1万合约，最少下1000张 |
+| LINK | LINKUSDT | 1,000 | 100 | 0.001 | 1 LINK = 1000合约，最少下100张 |
+| DOT | DOTUSDT | 1,000 | 1,000 | 0.001 | 1 DOT = 1000合约，最少下1000张 |
+
+**结算币种**：全部是 USDt
+
+**快速换算示例**：
+- 下 0.48 ETH → `0.48 × 100,000 = 48,000` 合约 → `48,000 // 1000 * 1000 = 48,000` ✅
+- 下 706 XRP → `706 × 100 = 70,600` 合约 → `70,600 // 100 * 100 = 70,600` ✅
+- 下 0.001 BTC → `0.001 × 1,000,000 = 1,000` 合约 → `1,000 // 100 * 100 = 1,000` ✅
+
+---
+
+## 14. REST API 限速
+
+### 两层限速
+
+| 层级 | 限制 | 适用 |
+|------|------|------|
+| **分钟级** | 未认证 30/分钟，认证 60/分钟 | 所有端点 |
+| **秒级** | 10/秒 | POST/PUT/DELETE 订单端点 |
+
+### 429 Too Many Requests
+
+超限后返回 HTTP 429，响应头：
+
+| Header | 说明 |
+|--------|------|
+| `x-ratelimit-remaining-1s` | 当前秒内剩余请求数 |
+| `x-ratelimit-reset` | 限额重置的 Unix 时间戳 |
+| `retry-after` | 建议等待秒数 |
+
+**处理建议**：
+1. 监测 `x-ratelimit-remaining-1s`，接近 0 时延迟
+2. 收到 429 按 `retry-after` 等待
+3. 连续违规（1 小时内多次）可能被封禁 1 小时
+4. 交易操作优先于查询操作
+
+---
+
+## 15. WebSocket API
+
+### 15.1 连接
+
+```
+主网：wss://ws.bitmex.com/realtime
+测试网：wss://ws.testnet.bitmex.com/realtime
+```
+
+### 15.2 订阅
+
+```json
+{"op": "subscribe", "args": ["tradeBin1m:XBTUSDT", "trade:ETHUSDT"]}
+{"op": "unsubscribe", "args": ["tradeBin1m:XBTUSDT"]}
+```
+
+也可以连接时订阅：
+```
+wss://ws.bitmex.com/realtime?subscribe=tradeBin1m:XBTUSDT,trade:ETHUSDT
+```
+
+### 15.3 订阅限制
+
+- **每条连接最多 50 个 topic**
+- 连接频率：20 次/小时
+- 超限返回 429
+
+### 15.4 心跳
+
+- 使用 ping/pong frames（hybi-13 标准）
+- 或发送文本 `ping`，服务器回复 `pong`
+- 无消息时每 5 秒自动 ping
+
+### 15.5 公开频道（不需认证）
+
+| 频道 | 说明 | 数据用途 |
+|------|------|---------|
+| `tradeBin1m` | 1 分钟 K 线 | 策略信号 |
+| `tradeBin5m` | 5 分钟 K 线 | 策略信号 |
+| `tradeBin1h` | 1 小时 K 线 | 策略信号 |
+| `tradeBin1d` | 1 天 K 线 | 日级分析 |
+| `trade` | 逐笔成交 | 实时价格 |
+| `quote` | 最新 bid/ask | 挂单参考价 |
+| `quoteBin1m` | 1 分钟报价 | |
+| `orderBookL2_25` | 盘口 Top 25 | 盘口分析 |
+| `orderBook10` | 盘口 Top 10 | 轻量版盘口 |
+| `instrument` | 合约参数更新 | 资金费率等 |
+| `liquidation` | 强平订单 | |
+| `funding` | 资金费率 | |
+| `insurance` | 保险基金 | |
+| `settlement` | 结算事件 | |
+
+### 15.6 私有频道（需认证）
+
+| 频道 | 说明 |
+|------|------|
+| `order` | 订单创建/修改/撤销/成交更新 |
+| `execution` | 逐笔成交回报（一个订单可能多个 execution） |
+| `position` | 仓位变化 |
+| `margin` | 保证金余额变化 |
+| `wallet` | 钱包充提 |
+| `transact` | 充值/提现状态 |
+
+### 15.7 数据消息格式
+
+每条消息包含 `table`（频道名）、`action`（操作类型）、`data`（数据数组）：
+
+```json
+{
+    "table": "tradeBin1m",
+    "action": "insert",
+    "data": [{
+        "timestamp": "2026-03-23T12:01:00.000Z",
+        "symbol": "XBTUSDT",
+        "open": 68700,
+        "high": 68750,
+        "low": 68680,
+        "close": 68720,
+        "volume": 1234567
+    }]
+}
+```
+
+| action | 含义 |
+|--------|------|
+| `partial` | 初次订阅的完整快照 |
+| `insert` | 新数据（新 K 线、新成交等） |
+| `update` | 已有数据更新（盘口数量变化等） |
+| `delete` | 数据删除（盘口价位消失等） |
+
+### 15.8 Dead Man's Switch
+
+防止断网后仓位裸奔：
+
+```json
+{"op": "cancelAllAfter", "args": [60000]}
+```
+
+设置 60 秒超时。如果 60 秒内没有再次调用，所有订单自动取消。
+推荐每 15 秒调用一次，超时设 60 秒。
+
+---
+
+## 16. K 线历史数据
+
+### `GET /api/v1/trade/bucketed`
+
+```python
+adapter._get('/api/v1/trade/bucketed', query={
+    'binSize': '1m',           # 1m / 5m / 1h / 1d
+    'symbol': 'XBTUSDT',
+    'count': 250,              # 最多 1000
+    'reverse': True,           # 最新的在前
+    'partial': False,          # 不要未完成的 K 线
+    'startTime': '2026-03-22T00:00:00Z',  # 可选
+    'endTime': '2026-03-23T00:00:00Z',    # 可选
+})
+```
+
+返回字段：`timestamp`, `symbol`, `open`, `high`, `low`, `close`, `trades`, `volume`, `vwap`, `lastSize`, `turnover`, `homeNotional`, `foreignNotional`
+
+---
+
+## 17. 我们的适配器用法
+
+适配器文件：`src/exchange/bitmex/adapter.py`
+
+### 下单
+
+```python
+from exchange.base import OrderRequest, OrderSide, OrderType
+
+# 市价开多
+order = OrderRequest(
+    coin='ETH', side=OrderSide.BUY,
+    order_type=OrderType.MARKET, size=0.48  # 币数量，adapter 自动转合约
+)
+result = adapter.place_order(order)
+
+# 限价开空（Post-Only）
+order = OrderRequest(
+    coin='SOL', side=OrderSide.SELL,
+    order_type=OrderType.LIMIT, size=11.5, price=87.50
+)
+result = adapter.place_order(order)
+```
+
+### 止损止盈
+
+```python
+# 多头止损（Sell + Long）
+adapter.place_stop_loss(
+    coin='ETH', stop_price=1872.0,
+    size=0.48, side=OrderSide.SELL
+)
+
+# 多头止盈
+adapter.place_take_profit(
+    coin='ETH', tp_price=2500.0,
+    size=0.48, side=OrderSide.SELL
+)
+```
+
+### 查余额
+
+```python
+balance = adapter.get_balance()
+# {'usdc': 2100.0, 'available': 2082.86, 'margin_used': 17.14, ...}
+```
+
+### 查仓位
+
+```python
+positions = adapter.get_positions()
+# [Position(coin='ETH', side='LONG', size=0.48, ...), ...]
+```
+
+### 币数量 ↔ 合约数量
+
+```python
+contracts = adapter.coin_to_contracts('ETH', 0.48)  # → 480800
+# adapter.place_order 内部自动调用，外部通常不需要手动调
+```
+
+---
+
+## 18. 已知坑与踩过的雷
+
+### 坑 1：Hedge Mode 下 strategy 字段必填
+不填返回 `"Invalid strategy: null"`。**每一个订单都要填**，包括止损止盈。
+
+### 坑 2：Close vs ReduceOnly
+Hedge Mode 下用 `Close` 不要用 `ReduceOnly`。Close 会自动取消冲突的限价单，更安全。
+
+### 坑 3：余额单位是微美元
+`GET /user/margin` 返回的 USDt 金额单位是 1e6（微美元），必须除以 1,000,000。
+`walletBalance: 2100000000` → 实际余额 $2,100
+
+### 坑 4：合约数量不是币数量
+下单的 `orderQty` 是合约数量，不是币数量。必须通过 `underlyingToPositionMultiplier` 转换。
+例：0.48 ETH × u2p = 480,800 合约
+
+### 坑 5：lotSize 取整
+合约数量必须是 `lotSize` 的整数倍，否则被拒。向下取整：
+`contracts = (contracts // lotSize) * lotSize`
+
+### 坑 6：WS 订阅上限 50 不是 20
+每条 WS 连接最多 50 个 topic。之前以为是 20，过于保守地分批 18 个。
+
+### 坑 7：Post-Only 可能被拒
+`ParticipateDoNotInitiate` 的限价单如果会立即成交（价格穿越了 spread），会被拒绝。
+要么调整价格重试，要么接受成为 taker。
+
+### 坑 8：不存在 /position/tpsl 端点
+止损止盈就是用普通下单接口 `POST /order`，没有专门的仓位级 SL/TP 接口。
+
+### 坑 9：429 限速可能导致封禁
+连续超限（1 小时内多次 429）可能被临时封禁 1 小时。注意控制请求频率。
+
+### 坑 10：adapter Maker 追价
+adapter 原来有内置追价循环（每 2 秒撤单重挂），跟 LimitOrderExecutor 的重试逻辑冲突。
+**已修复**：adapter 现在只挂一次单，追价由 LimitOrderExecutor 负责。
+
+---
+
+## 19. Adapter ↔ BitMEX API 映射表
+
+| adapter 方法 | BitMEX 端点 | HTTP | 说明 |
+|-------------|-------------|------|------|
+| `_place_market_order()` | `/api/v1/order` | POST | ordType=Market |
+| `_place_maker_order()` | `/api/v1/order` | POST | ordType=Limit, execInst=ParticipateDoNotInitiate |
+| `place_stop_loss()` | `/api/v1/order` | POST | ordType=Stop, execInst=Close,LastPrice |
+| `place_take_profit()` | `/api/v1/order` | POST | ordType=LimitIfTouched, execInst=Close,LastPrice |
+| `cancel_order()` | `/api/v1/order` | DELETE | 单个取消 |
+| `cancel_all_orders()` | `/api/v1/order/all` | DELETE | 批量取消 |
+| `get_order_status()` | `/api/v1/order` | GET | filter=orderID |
+| `get_positions()` | `/api/v1/position` | GET | filter=isOpen:true |
+| `get_position()` | `/api/v1/position` | GET | filter=symbol |
+| `set_leverage()` | `/api/v1/position/leverage` | POST | |
+| `get_balance()` | `/api/v1/user/margin` | GET | currency=USDt |
+| `get_price()` | `/api/v1/instrument` | GET | columns=lastPrice（WS 优先） |
+| `get_orderbook()` | `/api/v1/orderBook/L2` | GET | depth=25 |
+| `get_klines()` | `/api/v1/trade/bucketed` | GET | binSize=1m/5m/1h/1d |
+| `get_funding_rate()` | `/api/v1/instrument` | GET | columns=fundingRate |
+| `get_instrument_info()` | `/api/v1/instrument` | GET | u2p/lotSize/tickSize |
+| `health_check()` | `/api/v1` | GET | 健康检查 |
+
+### 没有用但可以扩展的端点
+
+| 端点 | HTTP | 说明 |
+|------|------|------|
+| `/api/v1/order` | PUT | 修改订单价格/数量（可用于追价优化） |
+| `/api/v1/order/cancelAllAfter` | POST | Dead Man's Switch（可接入防断网保护） |
+| `/api/v1/execution` | GET | 原始成交记录（可用于对账） |
+| `/api/v1/execution/tradeHistory` | GET | 影响余额的成交 |
+| `/api/v1/position/isolate` | POST | 切换逐仓/全仓 |
+| `/api/v1/position/riskLimit` | POST | 更新风险限额 |
+| `/api/v2/order` | POST | V2 下单（参数同 V1） |
+| `/api/v2/order/bulkorder` | POST | 批量条件单（需特殊权限） |
+
+---
+
+## 20. V2 Order 端点
+
+V2 基础路径 `/api/v2/`，参数结构与 V1 完全一致。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v2/order` | 下单 |
+| PUT | `/api/v2/order` | 修改订单 |
+| DELETE | `/api/v2/order` | 取消订单 |
+| DELETE | `/api/v2/order/all` | 取消所有 |
+| POST | `/api/v2/order/bulkorder` | 批量条件单（⚠️ 需特殊权限，普通用户被拒） |
+| POST | `/api/v2/order/cancelAllAfter` | Dead Man's Switch |
+
+---
+
+## 21. 完整 REST API 端点清单（21 分类 / 120+ 端点）
+
+> 来源：[Swagger JSON](https://www.bitmex.com/api/explorer/swagger.json) + [API Explorer](https://docs.bitmex.com/zh-CN/api-explorer)
+
+<details>
+<summary>点击展开全部端点</summary>
+
+### 公告 (2)
+| GET | `/announcement` | 获取公告 |
+| GET | `/announcement/urgent` | 紧急横幅 |
+
+### API Key (1)
+| GET | `/apiKey` | 获取 API Key 列表 |
+
+### 聊天 (5)
+| GET/POST | `/chat` | 获取/发送聊天 |
+| GET | `/chat/channels` | 频道列表 |
+| GET | `/chat/connected` | 在线用户 |
+| GET | `/chat/pinned` | 置顶消息 |
+
+### 排行榜 (2)
+| GET | `/leaderboard` | 排行榜 |
+| GET | `/leaderboard/name` | 获取别名 |
+
+### 全局通知 (1)
+| GET | `/globalNotification` | 全局通知 |
+
+### 订单簿 (1)
+| GET | `/orderBook/L2` | 深度行情（参数：symbol 必填，depth 默认25） |
+
+### 用户 (22)
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/user` | 用户信息 |
+| GET | `/user/margin` | 余额/保证金 |
+| GET | `/user/wallet` | 钱包 |
+| GET | `/user/walletHistory` | 钱包历史 |
+| GET | `/user/walletSummary` | 钱包摘要 |
+| GET | `/user/executionHistory` | 每日成交 |
+| GET | `/user/depositAddress` | 充值地址 |
+| GET | `/user/staking` | 质押 |
+| GET/POST/DELETE | `/user/unstakingRequests` | 取消质押 |
+| GET | `/user/staking/instruments` | 质押工具 |
+| POST | `/user/walletTransfer` | 内部转账 |
+| POST | `/user/requestWithdrawal` | 提款 |
+| POST | `/user/cancelPendingWithdrawal` | 取消提款 |
+| POST | `/user/preferences` | 偏好设置 |
+| POST | `/user/logout` | 登出 |
+| GET | `/user/commission` | 佣金 |
+| GET | `/user/quoteFillRatio` | 报价填充率 |
+| GET | `/user/tradingSettings` | 交易设置 |
+
+### 用户事件 (1)
+| GET | `/userEvent` | 用户事件日志 |
+
+### 地址 (2)
+| GET/POST | `/address` | 获取/新建地址 |
+
+### 地址配置 (1)
+| GET | `/address/config` | 地址配置 |
+
+### 用户联盟 (1)
+| GET | `/user/affiliates` | 联盟状态 |
+
+### 公会 (8)
+| GET/POST/PUT | `/guild` | 获取/创建/编辑公会 |
+| POST | `/guild/join` | 加入 |
+| POST | `/guild/leave` | 离开 |
+| POST | `/guild/kick` | 踢人 |
+| POST | `/guild/shareTrades` | 分享交易 |
+| POST | `/guild/archive` | 归档 |
+
+### 储备证明 (2)
+| GET | `/porl/nonce` | Nonce |
+| GET | `/porl/snapshots` | 快照 |
+
+### 推荐码 (7)
+| GET/POST | `/referralCode` | 列表/创建 |
+| GET/PUT/DELETE | `/referralCode/{code}` | 查/改/删 |
+| GET | `/referralCode/check` | 检查有效性 |
+
+### 交易 (6)
+| GET | `/execution` | 原始成交记录 |
+| GET | `/execution/tradeHistory` | 影响余额的成交 |
+| GET | `/user/executionHistory` | 每日成交汇总 |
+| GET | `/user/quoteFillRatio` | 报价填充率 |
+| GET | `/user/tradingVolume` | 交易量 |
+| GET | `/user/volumeRank` | 排名 |
+
+### 市场 (18)
+| GET | `/funding` | 资金费率历史 |
+| GET | `/instrument` | 合约信息查询 |
+| GET | `/instrument/active` | 活跃合约 |
+| GET | `/instrument/indices` | 价格指数 |
+| GET | `/instrument/activeAndIndices` | 活跃+指数 |
+| GET | `/instrument/activeIntervals` | 合约系列 |
+| GET | `/instrument/compositeIndex` | 指数组成 |
+| GET | `/instrument/usdVolume` | USD 成交量 |
+| GET | `/insurance` | 保险基金 |
+| GET | `/liquidation` | 强平订单 |
+| GET | `/quote` | 报价 |
+| GET | `/quote/bucketed` | 分组报价 |
+| GET | `/settlement` | 结算历史 |
+| GET | `/stats` | 交易所统计 |
+| GET | `/stats/history` | 历史统计 |
+| GET | `/stats/historyUSD` | USD 统计 |
+| GET | `/trade` | 逐笔成交 |
+| GET | `/trade/bucketed` | K线数据 |
+
+### 订单 V1 (6)
+| GET | `/order` | 获取订单 |
+| POST | `/order` | **下单** |
+| PUT | `/order` | 修改订单 |
+| DELETE | `/order` | 取消订单 |
+| DELETE | `/order/all` | 取消所有 |
+| POST | `/order/cancelAllAfter` | Dead Man's Switch |
+
+### 仓位与保证金 (10)
+| GET | `/position` | **获取持仓** |
+| POST | `/position/isolate` | 逐仓/全仓 |
+| POST | `/position/riskLimit` | 风险限额 |
+| POST | `/position/transferMargin` | 调入/调出保证金 |
+| POST | `/position/leverage` | **设置杠杆** |
+| POST | `/position/crossLeverage` | 全仓杠杆 |
+| POST | `/user/marginingMode` | 保证金模式 |
+| GET | `/user/marginingMode` | 查询保证金模式 |
+| GET | `/user/margin` | **查询余额** |
+| POST | `/user/positionMode` | 持仓模式 |
+
+### 资金 (12)
+| GET | `/user/wallet` | 钱包 |
+| GET | `/user/walletHistory` | 钱包历史 |
+| GET | `/user/walletSummary` | 摘要 |
+| GET | `/user/staking` | 质押 |
+| GET | `/user/unstakingRequests` | 取消质押 |
+| GET | `/user/staking/instruments` | 质押工具 |
+| POST | `/user/walletTransfer` | 内部转账 |
+| GET | `/user/csa` | CSA |
+| GET | `/wallet/assets` | 资产配置 |
+| GET | `/wallet/networks` | 网络配置 |
+| GET | `/wallet/conversionHaircut` | 兑换折率 |
+| GET | `/wallet/currencies` | 钱包币种 |
+
+### 经纪商 (11)
+| GET | `/broker/accountRange` | 账户范围 |
+| POST | `/broker/create` | 创建账户 |
+| POST | `/broker/update` | 更新 |
+| POST | `/broker/addNewAccount` | 添加 |
+| POST | `/broker/changeAccountRestriction` | 状态 |
+| POST | `/broker/createBrokerageFeeTier` | 费率等级 |
+| POST | `/broker/updateBrokerFeeAccountMap` | 费率映射 |
+| POST | `/broker/updateBrokerageFeeTier` | 更新费率 |
+| POST | `/broker/updateDerivativesFeeDiscount` | 衍生品折扣 |
+| POST | `/broker/updateSpotFeeDiscount` | 现货折扣 |
+| POST | `/broker/updateUserFeeTierMap` | 用户费率 |
+
+### 订单 V2 (6)
+| POST | `/api/v2/order` | 下单 |
+| PUT | `/api/v2/order` | 修改 |
+| DELETE | `/api/v2/order` | 取消 |
+| DELETE | `/api/v2/order/all` | 取消所有 |
+| POST | `/api/v2/order/bulkorder` | 批量条件单（需特殊权限） |
+| POST | `/api/v2/order/cancelAllAfter` | Dead Man's Switch |
+
+</details>
+
+---
+
+## 踩过的坑
+
+### 坑1: Gateway 拉历史 K 线不应访问私有属性 (2026-04-06)
+**现象**: `feed_gateway._load_history()` 创建 `BitMEXAdapter` 后手动设 `adapter._ws = None` 和 `adapter._connected = True`，绕过 WebSocket 连接。
+**根因**: Gateway 只需要 REST 拉 K 线，不需要 WS。但没有公开接口支持"只连 REST"。
+**解决**: 新增 `connect_rest_only()` 公开方法，Gateway 改调它。不再访问私有属性。
+
+### 坑2: monitor.py 硬编码 Nitro 路径导致 Vultr 部署失败 (2026-04-06)
+**现象**: `BASE_DIR = '/home/pc_heisi_claude/trading'` 硬编码，部署到 Vultr 时路径不存在。
+**根因**: 原来只部署在 Nitro 一台机器上，路径写死。
+**解决**: 改用 `path_config.ROOT` + 相对路径，任何机器都能跑。
+
+---
+
+## 参考链接
+
+- [REST API Explorer（中文）](https://docs.bitmex.com/zh-CN/api-explorer)
+- [Swagger JSON](https://www.bitmex.com/api/explorer/swagger.json)
+- [WebSocket API](https://www.bitmex.com/app/wsAPI)
+- [API Key Usage](https://www.bitmex.com/app/apiKeysUsage)
+- [GitHub api-connectors](https://github.com/BitMEX/api-connectors)

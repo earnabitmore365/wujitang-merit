@@ -1,0 +1,851 @@
+"""
+公共 curses UI 组件库
+trade_menu 可以继承 BaseMenu
+"""
+
+import curses
+import time
+import threading
+import unicodedata
+
+
+# ── 颜色常量 ──
+class Color:
+    TITLE    = 1   # 标题（青蓝）
+    SELECTED = 2   # 高亮选中（亮绿）
+    HINT     = 3   # 提示（黄色）
+    TEXT     = 4   # 正文（白灰）
+    DANGER   = 5   # 错误/警告（红）
+    ACCENT   = 6   # 强调（紫）
+    DIM      = 7   # 禁用/灰色
+    SUCCESS  = 8   # 成功/日志（绿）
+    PNL_POS  = 9   # 盈利（绿）
+    PNL_NEG  = 10  # 亏损（红）
+    BORDER   = 11  # 边框线
+
+
+# ── 边框字符 ──
+class Box:
+    TL, TR, BL, BR = '╭', '╮', '╰', '╯'
+    H, V = '─', '│'
+    LT, RT = '├', '┤'
+    TT, BT = '┬', '┴'
+
+
+class BaseMenu:
+    """通用 curses UI 基类"""
+
+    def __init__(self, stdscr, title=" Abby 交易系统 "):
+        self.stdscr = stdscr
+        self.stdscr.nodelay(False)
+        self.stdscr.keypad(True)
+        self.title = title
+        self.selected_indices = []
+        self._saved_selections = {}
+        self._saved_configs = []
+
+        curses.start_color()
+        curses.use_default_colors()
+        curses.curs_set(0)
+
+        BG = 236
+        curses.init_pair(Color.TITLE,    81,  BG)
+        curses.init_pair(Color.SELECTED, 46,  BG)
+        curses.init_pair(Color.HINT,     226, BG)
+        curses.init_pair(Color.TEXT,      251, BG)
+        curses.init_pair(Color.DANGER,   196, BG)
+        curses.init_pair(Color.ACCENT,   171, BG)
+        curses.init_pair(Color.DIM,      244, BG)
+        curses.init_pair(Color.SUCCESS,  40,  BG)
+        curses.init_pair(Color.PNL_POS,  46,  BG)
+        curses.init_pair(Color.PNL_NEG,  196, BG)
+        curses.init_pair(Color.BORDER,   240, BG)
+
+        self.height, self.width = stdscr.getmaxyx()
+        self.stdscr.bkgd(' ', curses.color_pair(Color.TEXT))
+
+    # ════════════════════════════════════════════
+    #  安全写入
+    # ════════════════════════════════════════════
+
+    @staticmethod
+    def _dw(text):
+        """显示宽度：CJK 字符占 2 列，其余 1 列"""
+        w = 0
+        for c in str(text):
+            w += 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
+        return w
+
+    @staticmethod
+    def _trunc(text, max_cols):
+        """按显示宽度截断"""
+        w = 0
+        for i, c in enumerate(str(text)):
+            cw = 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
+            if w + cw > max_cols:
+                return text[:i]
+            w += cw
+        return str(text)
+
+    @staticmethod
+    def _pad(text, target_dw):
+        """用空格填充到目标显示宽度"""
+        w = 0
+        for c in str(text):
+            w += 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
+        return str(text) + ' ' * max(0, target_dw - w)
+
+    def _safe(self, y, x, text, attr=0):
+        """边界安全写入，按显示宽度截断"""
+        h, w = self.height, self.width
+        if y < 0 or y >= h or x >= w:
+            return
+        max_cols = w - x - 1
+        if max_cols <= 0:
+            return
+        s = self._trunc(text, max_cols)
+        try:
+            self.stdscr.addstr(y, x, s, attr)
+        except curses.error:
+            pass
+
+    # ════════════════════════════════════════════
+    #  边框绘制基元
+    # ════════════════════════════════════════════
+
+    def _box_top(self, y, x, w, title=""):
+        """╭─ title ───────╮"""
+        border = curses.color_pair(Color.BORDER)
+        title_attr = curses.color_pair(Color.TITLE) | curses.A_BOLD
+        if title:
+            t = f" {title} "
+            t_dw = self._dw(t)
+            fill = w - 3 - t_dw  # ╭(1) + ─(1) + title(t_dw) + fill + ╮(1) = w
+            if fill < 0:
+                fill = 0
+            self._safe(y, x, Box.TL + Box.H, border)
+            self._safe(y, x + 2, t, title_attr)
+            self._safe(y, x + 2 + t_dw, Box.H * fill + Box.TR, border)
+        else:
+            self._safe(y, x, Box.TL + Box.H * (w - 2) + Box.TR, border)
+
+    def _box_bottom(self, y, x, w):
+        """╰──────────────╯"""
+        border = curses.color_pair(Color.BORDER)
+        self._safe(y, x, Box.BL + Box.H * (w - 2) + Box.BR, border)
+
+    def _box_sep(self, y, x, w, title=""):
+        """├─ title ───────┤"""
+        border = curses.color_pair(Color.BORDER)
+        title_attr = curses.color_pair(Color.TITLE) | curses.A_BOLD
+        if title:
+            t = f" {title} "
+            t_dw = self._dw(t)
+            fill = w - 2 - t_dw - 1
+            if fill < 0:
+                fill = 0
+            self._safe(y, x, Box.LT + Box.H, border)
+            self._safe(y, x + 2, t, title_attr)
+            self._safe(y, x + 2 + t_dw, Box.H * fill + Box.RT, border)
+        else:
+            self._safe(y, x, Box.LT + Box.H * (w - 2) + Box.RT, border)
+
+    def _box_sep_split(self, y, x, w, t1, t2, split):
+        """├─ t1 ──────┬─ t2 ──────┤"""
+        border = curses.color_pair(Color.BORDER)
+        title_attr = curses.color_pair(Color.TITLE) | curses.A_BOLD
+        s1 = f" {t1} " if t1 else ""
+        s2 = f" {t2} " if t2 else ""
+        s1_dw = self._dw(s1)
+        s2_dw = self._dw(s2)
+        fill1 = split - 2 - s1_dw
+        fill2 = w - split - 1 - s2_dw - 1
+        if fill1 < 0:
+            fill1 = 0
+        if fill2 < 0:
+            fill2 = 0
+        self._safe(y, x, Box.LT + Box.H, border)
+        self._safe(y, x + 2, s1, title_attr)
+        self._safe(y, x + 2 + s1_dw, Box.H * fill1 + Box.TT + Box.H, border)
+        col2_x = x + split + 1
+        self._safe(y, col2_x, s2, title_attr)
+        self._safe(y, col2_x + s2_dw, Box.H * fill2 + Box.RT, border)
+
+    def _box_line(self, y, x, w, text="", color=None):
+        """│ text                    │"""
+        border = curses.color_pair(Color.BORDER)
+        attr = curses.color_pair(color) if color else curses.color_pair(Color.TEXT)
+        self._safe(y, x, Box.V, border)
+        content = f" {text}"
+        cdw = self._dw(content)
+        pad = w - 2 - cdw
+        if pad < 0:
+            content = self._trunc(content, w - 3)
+            pad = 0
+        self._safe(y, x + 1, content + " " * pad, attr)
+        self._safe(y, x + w - 1, Box.V, border)
+
+    def _box_two_col(self, y, x, w, split, left="", right="", l_color=None, r_color=None):
+        """│ left        │ right              │"""
+        border = curses.color_pair(Color.BORDER)
+        l_attr = curses.color_pair(l_color) if l_color else curses.color_pair(Color.TEXT)
+        r_attr = curses.color_pair(r_color) if r_color else curses.color_pair(Color.TEXT)
+
+        self._safe(y, x, Box.V, border)
+
+        l_content = f" {left}"
+        l_dw = self._dw(l_content)
+        l_pad = split - 1 - l_dw
+        if l_pad < 0:
+            l_content = self._trunc(l_content, split - 2)
+            l_pad = 0
+        self._safe(y, x + 1, l_content + " " * l_pad, l_attr)
+
+        self._safe(y, x + split, Box.V, border)
+
+        r_content = f" {right}"
+        r_dw = self._dw(r_content)
+        r_pad = w - split - 2 - r_dw
+        if r_pad < 0:
+            r_content = self._trunc(r_content, w - split - 3)
+            r_pad = 0
+        self._safe(y, x + split + 1, r_content + " " * r_pad, r_attr)
+
+        self._safe(y, x + w - 1, Box.V, border)
+
+    # ════════════════════════════════════════════
+    #  画面组件
+    # ════════════════════════════════════════════
+
+    def clear_screen(self):
+        self.stdscr.clear()
+        self.stdscr.bkgd(' ', curses.color_pair(Color.TEXT))
+
+    def _refresh_size(self):
+        self.height, self.width = self.stdscr.getmaxyx()
+
+    def draw_header(self, selections=None, configs=None):
+        """绘制顶部标题栏 + 已选配置/选项，返回下一行 y"""
+        self._refresh_size()
+        w = self.width
+        bw = min(w, 60)  # box 宽度上限
+
+        self._box_top(0, 0, bw, self.title)
+        self._box_bottom(1, 0, bw)
+
+        y = 3
+
+        cfgs = configs if configs is not None else self._saved_configs
+        if cfgs:
+            self._safe(y, 0, "已选定配置:", curses.color_pair(Color.HINT))
+            y += 1
+            max_show = min(len(cfgs), 5)
+            for i in range(max_show):
+                c = cfgs[i]
+                name = c['name'] if isinstance(c, dict) else c
+                line = f"  {i + 1}. {name}"
+                self._safe(y, 0, self._trunc(line, w - 1), curses.color_pair(Color.ACCENT))
+                y += 1
+            if len(cfgs) > max_show:
+                self._safe(y, 0, f"  ... 还有 {len(cfgs) - max_show} 个", curses.color_pair(Color.DIM))
+                y += 1
+            y += 1
+
+        if selections:
+            self._safe(y, 0, "已选择:", curses.color_pair(Color.HINT))
+            y += 1
+            for key, value in selections.items():
+                if key.startswith('__') or key == '可用币种':
+                    continue
+                line = f"  {key}: {value}"
+                self._safe(y, 0, self._trunc(line, w - 1), curses.color_pair(Color.ACCENT))
+                y += 1
+            y += 1
+
+        return y
+
+    # ════════════════════════════════════════════
+    #  输入组件：列表选择
+    # ════════════════════════════════════════════
+
+    def navigate_options(self, options, title, multi=False, selections=None,
+                         searchable=False, disabled_indices=None):
+        if disabled_indices is None:
+            disabled_indices = set()
+        else:
+            disabled_indices = set(disabled_indices)
+
+        # 恢复之前的多选状态
+        if title in self._saved_selections:
+            saved = self._saved_selections[title]
+            if saved and len(saved) > 0 and max(saved) < len(options):
+                self.selected_indices = saved.copy()
+            else:
+                self.selected_indices = []
+        else:
+            self.selected_indices = []
+
+        # 多选模式：添加全选选项
+        if multi:
+            display_options = ["── 全选 ──"] + list(options)
+            idx_offset = 1  # 实际选项的偏移
+        else:
+            display_options = list(options)
+            idx_offset = 0
+
+        search_query = ""
+        selected_idx = idx_offset  # 跳过全选项，默认选第一个实际选项
+        # 跳过禁用项
+        while selected_idx < len(display_options) and (selected_idx - idx_offset) in disabled_indices:
+            selected_idx += 1
+        if selected_idx >= len(display_options):
+            selected_idx = idx_offset
+
+        max_visible = self.height - 15
+        offset = 0
+
+        while True:
+            self._refresh_size()
+            max_visible = self.height - 15
+            w = self.width
+            bw = min(w - 2, 58)
+
+            # 搜索过滤（不影响全选项）
+            if searchable and search_query:
+                filtered_real = [opt for opt in options if search_query.lower() in opt.lower()]
+            else:
+                filtered_real = list(options)
+
+            if multi:
+                filtered_options = ["── 全选 ──"] + filtered_real
+            else:
+                filtered_options = filtered_real
+
+            if not filtered_options:
+                filtered_options = display_options
+
+            if selected_idx >= len(filtered_options):
+                selected_idx = max(0, len(filtered_options) - 1)
+
+            if selected_idx >= offset + max_visible:
+                offset = selected_idx - max_visible + 1
+            elif selected_idx < offset:
+                offset = selected_idx
+
+            visible = filtered_options[offset:offset + max_visible]
+            adjusted = selected_idx - offset
+
+            self.clear_screen()
+            start_y = self.draw_header(selections)
+
+            # 标题和提示
+            self._box_top(start_y, 0, bw, title)
+            y = start_y + 1
+
+            if searchable:
+                search_display = search_query if search_query else ""
+                self._box_line(y, 0, bw, f"搜索: {search_display}_", Color.HINT)
+                y += 1
+
+            if multi:
+                hint = "[上下]移动 [空格]选择 [Enter]确认 [Esc]返回"
+            else:
+                hint = "[上下]移动 [Enter]确认 [Esc]返回"
+            if searchable:
+                hint += " [字母]搜索"
+            self._box_line(y, 0, bw, hint, Color.DANGER)
+            y += 1
+
+            self._box_sep(y, 0, bw)
+            y += 1
+
+            if multi and self.selected_indices:
+                self._box_line(y, 0, bw, f"已选择: {len(self.selected_indices)} 项", Color.HINT)
+                y += 1
+
+            # 选项列表
+            for i, option in enumerate(visible):
+                if y >= self.height - 2:
+                    break
+                real_idx = i + offset
+                is_select_all = multi and real_idx == 0
+
+                if is_select_all:
+                    # 全选项
+                    all_selected = len(self.selected_indices) == len(options) and len(options) > 0
+                    mark = "◼" if all_selected else "◻"
+                    is_current = real_idx == selected_idx
+                    if is_current:
+                        self._box_line(y, 0, bw, f"► {mark} {option}", Color.HINT)
+                    else:
+                        self._box_line(y, 0, bw, f"  {mark} {option}", Color.DIM)
+                else:
+                    orig_idx = options.index(option) if option in options else real_idx - idx_offset
+                    is_disabled = orig_idx in disabled_indices
+                    is_current = real_idx == selected_idx
+
+                    if multi:
+                        mark = "◼" if orig_idx in self.selected_indices else "◻"
+                    else:
+                        mark = "►" if is_current else " "
+
+                    label = f"  {mark} {option}"
+                    if is_current and not is_disabled:
+                        # 高亮当前行
+                        border = curses.color_pair(Color.BORDER)
+                        self._safe(y, 0, Box.V, border)
+                        text = f" {mark} {option}"
+                        tdw = self._dw(text)
+                        pad = bw - 2 - tdw
+                        if pad < 0:
+                            text = self._trunc(text, bw - 3)
+                            pad = 0
+                        self._safe(y, 1, text + " " * pad,
+                                   curses.color_pair(Color.SELECTED) | curses.A_REVERSE)
+                        self._safe(y, bw - 1, Box.V, border)
+                    elif is_disabled:
+                        self._box_line(y, 0, bw, label, Color.DIM)
+                    else:
+                        self._box_line(y, 0, bw, label, Color.TEXT)
+
+                y += 1
+
+            # 滚动提示
+            total = len(filtered_options)
+            if total > max_visible:
+                self._box_line(y, 0, bw, f"  [{offset + 1}-{min(offset + max_visible, total)}/{total}]", Color.DIM)
+                y += 1
+
+            self._box_bottom(y, 0, bw)
+            self.stdscr.refresh()
+
+            key = self.stdscr.getch()
+
+            if key == curses.KEY_UP:
+                selected_idx = selected_idx - 1 if selected_idx > 0 else len(filtered_options) - 1
+            elif key == curses.KEY_DOWN:
+                selected_idx = selected_idx + 1 if selected_idx < len(filtered_options) - 1 else 0
+            elif key == ord(' '):
+                if multi and filtered_options:
+                    if selected_idx == 0:
+                        # 全选/取消全选
+                        if len(self.selected_indices) == len(options):
+                            self.selected_indices = []
+                        else:
+                            self.selected_indices = list(range(len(options)))
+                    else:
+                        orig = options.index(filtered_options[selected_idx])
+                        if orig not in disabled_indices:
+                            if orig in self.selected_indices:
+                                self.selected_indices.remove(orig)
+                            else:
+                                self.selected_indices.append(orig)
+            elif key in [10, 13]:
+                if filtered_options:
+                    if multi and selected_idx == 0:
+                        # 全选项上按Enter = 全选并确认
+                        if len(self.selected_indices) == 0:
+                            self.selected_indices = list(range(len(options)))
+                        self._saved_selections[title] = self.selected_indices.copy()
+                        return [options[i] for i in self.selected_indices]
+
+                    if multi:
+                        if self.selected_indices:
+                            self._saved_selections[title] = self.selected_indices.copy()
+                            return [options[i] for i in self.selected_indices]
+                        return [options[0]]
+                    else:
+                        sel = filtered_options[selected_idx]
+                        if sel in options:
+                            orig = options.index(sel)
+                            if orig in disabled_indices:
+                                continue
+                        return sel
+            elif key == 27:
+                if multi and self.selected_indices:
+                    self._saved_selections[title] = self.selected_indices.copy()
+                return "BACK"
+            elif searchable:
+                if key in [curses.KEY_BACKSPACE, 127, 8]:
+                    search_query = search_query[:-1]
+                    selected_idx = idx_offset
+                    offset = 0
+                elif 32 <= key <= 126:
+                    search_query += chr(key)
+                    selected_idx = idx_offset
+                    offset = 0
+
+    # ════════════════════════════════════════════
+    #  输入组件：是/否
+    # ════════════════════════════════════════════
+
+    def get_yes_no(self, title, default=True, selections=None):
+        options = ["YES", "NO"]
+        selected_idx = 0 if default else 1
+
+        while True:
+            self._refresh_size()
+            w = self.width
+            bw = min(w - 2, 58)
+
+            self.clear_screen()
+            y = self.draw_header(selections)
+
+            self._box_top(y, 0, bw, title)
+            y += 1
+            self._box_line(y, 0, bw, "[左右]选择  [Enter]确认  [Esc]返回", Color.DANGER)
+            y += 1
+            self._box_sep(y, 0, bw)
+            y += 1
+
+            # 选项行
+            border = curses.color_pair(Color.BORDER)
+            self._safe(y, 0, Box.V, border)
+            x_pos = 2
+            for i, opt in enumerate(options):
+                mark = "●" if i == selected_idx else "○"
+                label = f" {mark} {opt} "
+                if i == selected_idx:
+                    self._safe(y, x_pos, label,
+                               curses.color_pair(Color.SELECTED) | curses.A_REVERSE)
+                else:
+                    self._safe(y, x_pos, label, curses.color_pair(Color.TEXT))
+                x_pos += self._dw(label) + 4
+            pad = bw - 1 - x_pos
+            if pad > 0:
+                self._safe(y, x_pos, " " * pad, curses.color_pair(Color.TEXT))
+            self._safe(y, bw - 1, Box.V, border)
+            y += 1
+
+            self._box_line(y, 0, bw, "")
+            y += 1
+            self._box_bottom(y, 0, bw)
+
+            self.stdscr.refresh()
+            key = self.stdscr.getch()
+
+            if key == curses.KEY_LEFT:
+                selected_idx = max(0, selected_idx - 1)
+            elif key == curses.KEY_RIGHT:
+                selected_idx = min(1, selected_idx + 1)
+            elif key in [10, 13]:
+                return selected_idx == 0
+            elif key == 27:
+                return "BACK"
+
+    # ════════════════════════════════════════════
+    #  输入组件：数字输入
+    # ════════════════════════════════════════════
+
+    def get_number(self, title, default, selections=None, min_val=None, max_val=None):
+        input_str = ""
+
+        while True:
+            self._refresh_size()
+            w = self.width
+            bw = min(w - 2, 58)
+
+            self.clear_screen()
+            y = self.draw_header(selections)
+
+            self._box_top(y, 0, bw, title)
+            y += 1
+            self._box_line(y, 0, bw, "[数字]输入 [Backspace]删除 [Enter]确认 [Esc]返回", Color.DANGER)
+            y += 1
+            self._box_sep(y, 0, bw)
+            y += 1
+
+            display = input_str if input_str else str(default)
+            self._box_line(y, 0, bw, f"当前值: {display}", Color.TEXT)
+            y += 1
+            self._box_line(y, 0, bw, f"默认值: {default} (留空使用默认)", Color.DIM)
+            y += 1
+            self._box_line(y, 0, bw, "")
+            y += 1
+            self._box_line(y, 0, bw, f"输入: {input_str}_", Color.HINT)
+            y += 1
+
+            self._box_line(y, 0, bw, "")
+            y += 1
+            self._box_bottom(y, 0, bw)
+
+            self.stdscr.refresh()
+            key = self.stdscr.getch()
+
+            if key == 27:
+                return "BACK"
+            elif key in [10, 13]:
+                if input_str.strip():
+                    try:
+                        val = int(input_str)
+                    except ValueError:
+                        try:
+                            val = float(input_str)
+                        except ValueError:
+                            val = default
+                else:
+                    val = default
+                if min_val is not None:
+                    val = max(min_val, val)
+                if max_val is not None:
+                    val = min(max_val, val)
+                return val
+            elif key in [curses.KEY_BACKSPACE, 127, 8]:
+                if input_str:
+                    input_str = input_str[:-1]
+            elif 48 <= key <= 57:  # 数字
+                input_str += chr(key)
+            elif key == 46 and '.' not in input_str:  # 小数点
+                input_str += '.'
+
+    # ════════════════════════════════════════════
+    #  输入组件：多字段表单
+    # ════════════════════════════════════════════
+
+    def show_form(self, title, fields, selections=None):
+        """多字段表单页
+        fields: list of dict, 每项:
+            name: 字段名
+            type: 'number' | 'yes_no'
+            default: 默认值
+            min_val, max_val: (number类型) 范围
+            suffix: 显示后缀 (如 'x', '%')
+        返回: dict {name: value} 或 "BACK"
+        """
+        values = {}
+        for f in fields:
+            values[f['name']] = f['default']
+
+        active = 0
+        editing = False
+        edit_str = ""
+
+        while True:
+            self._refresh_size()
+            w = self.width
+            bw = min(w - 2, 58)
+
+            self.clear_screen()
+            y = self.draw_header(selections)
+
+            self._box_top(y, 0, bw, title)
+            y += 1
+            self._box_line(y, 0, bw, "[上下]切换 [左右/数字]调整 [Enter]确认 [Esc]返回", Color.DANGER)
+            y += 1
+            self._box_sep(y, 0, bw)
+            y += 1
+
+            self._box_line(y, 0, bw, "")
+            y += 1
+
+            for i, f in enumerate(fields):
+                name = f['name']
+                val = values[name]
+                suffix = f.get('suffix', '')
+                is_active = i == active
+
+                if f['type'] == 'yes_no':
+                    display = "开启" if val else "关闭"
+                elif f['type'] == 'number':
+                    if is_active and editing:
+                        display = f"{edit_str}_"
+                    else:
+                        display = f"{val}"
+                    display += suffix
+                else:
+                    display = str(val)
+
+                marker = "►" if is_active else " "
+                label = f"{marker} {self._pad(name, 14)}"
+
+                # 值用方括号包裹
+                val_display = f"[ {self._pad(display, 10)} ]"
+                line = f"{label} {val_display}"
+
+                color = Color.SELECTED if is_active else Color.TEXT
+                self._box_line(y, 0, bw, line, color)
+                y += 1
+
+            self._box_line(y, 0, bw, "")
+            y += 1
+            self._box_sep(y, 0, bw)
+            y += 1
+            self._box_line(y, 0, bw, "[上下] 切换字段  [Enter] 全部确认", Color.DIM)
+            y += 1
+            self._box_bottom(y, 0, bw)
+
+            self.stdscr.refresh()
+            key = self.stdscr.getch()
+
+            f = fields[active]
+
+            if key == 27:
+                return "BACK"
+            elif key == curses.KEY_UP:
+                editing = False
+                edit_str = ""
+                active = (active - 1) % len(fields)
+            elif key == curses.KEY_DOWN:
+                editing = False
+                edit_str = ""
+                active = (active + 1) % len(fields)
+            elif key in [10, 13]:
+                # 如果在编辑数字，先保存
+                if editing and f['type'] == 'number':
+                    try:
+                        val = int(edit_str) if '.' not in edit_str else float(edit_str)
+                    except ValueError:
+                        val = f['default']
+                    if f.get('min_val') is not None:
+                        val = max(f['min_val'], val)
+                    if f.get('max_val') is not None:
+                        val = min(f['max_val'], val)
+                    values[f['name']] = val
+                    editing = False
+                    edit_str = ""
+                else:
+                    # 返回所有值
+                    return values
+            elif f['type'] == 'yes_no':
+                if key in [curses.KEY_LEFT, curses.KEY_RIGHT, ord(' ')]:
+                    values[f['name']] = not values[f['name']]
+            elif f['type'] == 'number':
+                if key == curses.KEY_LEFT:
+                    editing = False
+                    edit_str = ""
+                    step = f.get('step', 1)
+                    values[f['name']] = values[f['name']] - step
+                    if f.get('min_val') is not None:
+                        values[f['name']] = max(f['min_val'], values[f['name']])
+                elif key == curses.KEY_RIGHT:
+                    editing = False
+                    edit_str = ""
+                    step = f.get('step', 1)
+                    values[f['name']] = values[f['name']] + step
+                    if f.get('max_val') is not None:
+                        values[f['name']] = min(f['max_val'], values[f['name']])
+                elif 48 <= key <= 57:
+                    editing = True
+                    edit_str += chr(key)
+                elif key == 46 and '.' not in edit_str:
+                    editing = True
+                    edit_str += '.'
+                elif key in [curses.KEY_BACKSPACE, 127, 8]:
+                    if edit_str:
+                        edit_str = edit_str[:-1]
+                        if not edit_str:
+                            editing = False
+
+    # ════════════════════════════════════════════
+    #  确认页
+    # ════════════════════════════════════════════
+
+    def show_confirm(self, title, items, selections=None):
+        """确认页，显示 key-value 列表
+        items: list of (key, value) tuples
+        返回: True (确认) 或 "BACK"
+        """
+        while True:
+            self._refresh_size()
+            w = self.width
+            bw = min(w - 2, 58)
+
+            self.clear_screen()
+            # 不画 draw_header，直接画确认框
+            y = 2
+
+            self._box_top(y, 0, bw, title)
+            y += 1
+
+            for key, value in items:
+                line = f"  {self._pad(key, 12)} {value}"
+                self._box_line(y, 0, bw, line, Color.TEXT)
+                y += 1
+
+            self._box_sep(y, 0, bw)
+            y += 1
+            self._box_line(y, 0, bw, "[Enter] 开始运行  [Esc] 返回修改", Color.DANGER)
+            y += 1
+            self._box_bottom(y, 0, bw)
+
+            self.stdscr.refresh()
+            key = self.stdscr.getch()
+
+            if key in [10, 13]:
+                return True
+            elif key == 27:
+                return "BACK"
+
+    # ════════════════════════════════════════════
+    #  加载动画
+    # ════════════════════════════════════════════
+
+    def show_loading(self, title, task_fn):
+        """spinner + 后台线程执行任务"""
+        spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        result = [None]
+        error = [None]
+        done = threading.Event()
+
+        def worker():
+            try:
+                result[0] = task_fn()
+            except Exception as e:
+                error[0] = e
+            finally:
+                done.set()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        frame = 0
+        bw = min(self.width - 2, 58)
+        self.stdscr.nodelay(True)
+        try:
+            while not done.is_set():
+                self.clear_screen()
+                y = 2
+                self._box_top(y, 0, bw, self.title)
+                y += 1
+                self._box_line(y, 0, bw, "")
+                y += 1
+                spinner = spinner_chars[frame % len(spinner_chars)]
+                self._box_line(y, 0, bw, f"  {spinner} {title}...", Color.HINT)
+                y += 1
+                self._box_line(y, 0, bw, "")
+                y += 1
+                self._box_bottom(y, 0, bw)
+                self.stdscr.refresh()
+                frame += 1
+                time.sleep(0.1)
+                self.stdscr.getch()  # 消耗缓冲
+        finally:
+            self.stdscr.nodelay(False)
+
+        # 结果
+        self.clear_screen()
+        y = 2
+        self._box_top(y, 0, bw, self.title)
+        y += 1
+
+        if error[0]:
+            self._box_line(y, 0, bw, f"  ✗ {title} 失败", Color.DANGER)
+            y += 1
+            err_msg = str(error[0])[:bw - 6]
+            self._box_line(y, 0, bw, f"  {err_msg}", Color.DANGER)
+            y += 1
+            self._box_line(y, 0, bw, "")
+            y += 1
+            self._box_line(y, 0, bw, "  按任意键返回...", Color.DIM)
+            y += 1
+            self._box_bottom(y, 0, bw)
+            self.stdscr.refresh()
+            self.stdscr.getch()
+            return None
+        else:
+            self._box_line(y, 0, bw, f"  ✓ {title} 完成", Color.SUCCESS)
+            y += 1
+            self._box_bottom(y, 0, bw)
+            self.stdscr.refresh()
+            time.sleep(0.8)
+            return result[0]

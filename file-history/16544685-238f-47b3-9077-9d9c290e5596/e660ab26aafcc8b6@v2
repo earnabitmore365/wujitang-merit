@@ -1,0 +1,245 @@
+"""
+哨兵扫描器 v2 — 4 方向 regime 转换检测，含镜像增强
+
+4 个方向:
+  红变黄 → 检测初牛（初牛时期做多命中率高的策略）
+  黄变绿 → 检测牛  （牛市时期做多命中率高的策略）
+  绿变黄 → 检测初熊（初熊时期做空命中率高的策略）
+  黄变红 → 检测熊  （熊市时期做空命中率高的策略）
+
+镜像增强:
+  初牛 ↔ 初熊 对称，做多 ↔ 做空 对称
+  做多策略在初牛命中 → 视为做空策略在初熊的镜像样本
+  做空策略在初熊命中 → 视为做多策略在初牛的镜像样本
+  样本量: 初熊 72万 + 初牛镜像 490万 = 562万
+
+用法:
+  python3 sentinel_scan_transitions.py              # 全部4方向
+  python3 sentinel_scan_transitions.py --target 初熊  # 只看初熊
+"""
+import sqlite3
+import os
+import sys
+import argparse
+from collections import defaultdict
+
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, RESULT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+SEED_DB = os.path.join(REPORT_DIR, 'seed_signal.db')
+
+COINS_ORDER = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'TRX', 'AVAX', 'LINK', 'DOT',
+               'BTC_COIN', 'ETH_COIN', 'BNB_COIN']
+
+# 4 方向定义
+# key = (target_regime, preferred_direction)
+# preferred_direction: 这个 regime 下哪个方向应该命中率高
+TRANSITIONS = {
+    '红变黄': {'target': '初牛', 'pref_dir': 'long',  'mirror_regime': '初熊', 'mirror_dir': 'short'},
+    '黄变绿': {'target': '牛',   'pref_dir': 'long',  'mirror_regime': '熊',   'mirror_dir': 'short'},
+    '绿变黄': {'target': '初熊', 'pref_dir': 'short', 'mirror_regime': '初牛', 'mirror_dir': 'long'},
+    '黄变红': {'target': '熊',   'pref_dir': 'short', 'mirror_regime': '牛',   'mirror_dir': 'long'},
+}
+
+
+def load_data():
+    """从 seed_signal.db 加载全部 1m regime 分化数据"""
+    conn = sqlite3.connect(SEED_DB)
+    conn.row_factory = sqlite3.Row
+
+    sql = """
+    SELECT
+        cs.strategy, cs.coin,
+        pt.direction,
+        rfl.regime_fact,
+        COUNT(*) as total,
+        SUM(CASE
+            WHEN pt.direction='long' AND pt.exit_price > pt.entry_price THEN 1
+            WHEN pt.direction='short' AND pt.exit_price < pt.entry_price THEN 1
+            ELSE 0
+        END) as correct
+    FROM combo_summary cs
+    JOIN paired_trades pt ON pt.combo_id = cs.id
+    JOIN regime_fact_labels rfl ON rfl.trade_id = pt.id
+    WHERE cs.interval = '1m'
+    GROUP BY cs.strategy, cs.coin, pt.direction, rfl.regime_fact
+    """
+
+    print("正在从 seed_signal.db 加载 1m 全量数据...")
+    rows = conn.execute(sql).fetchall()
+    conn.close()
+    print(f"  加载完成: {len(rows):,} 条分组记录\n")
+
+    # 组织: {(strategy, coin, direction): {regime: (correct, total)}}
+    data = {}
+    for r in rows:
+        key = (r['strategy'], r['coin'], r['direction'])
+        if key not in data:
+            data[key] = {}
+        data[key][r['regime_fact']] = (r['correct'], r['total'])
+
+    return data
+
+
+def scan_transition(data, transition_name, trans_cfg, top_n=10):
+    """
+    扫描指定方向的哨兵候选
+
+    对于"绿变黄"(检测初熊):
+      - 看做空策略在初熊时期的命中率（真实）
+      - + 同策略做多在初牛时期的命中率翻转（镜像）
+      - 排序: 目标regime命中率 vs 对立regime命中率的分化度
+    """
+    target = trans_cfg['target']
+    pref_dir = trans_cfg['pref_dir']
+    mirror_regime = trans_cfg['mirror_regime']
+    mirror_dir = trans_cfg['mirror_dir']
+
+    results = []
+
+    # 按 (strategy, coin) 分组
+    combos = defaultdict(dict)
+    for (strategy, coin, direction), regimes in data.items():
+        combos[(strategy, coin)][direction] = regimes
+
+    for (strategy, coin), dir_data in combos.items():
+        # 真实数据: 首选方向在目标regime的命中率
+        real_regimes = dir_data.get(pref_dir, {})
+        real_correct, real_total = real_regimes.get(target, (0, 0))
+
+        # 必须在首选方向有真实交易（跨所有regime），
+        # 否则纯镜像数据不可用（策略根本不产生该方向的信号）
+        total_real_trades = sum(t for _, t in real_regimes.values())
+        if total_real_trades < 50:
+            continue
+
+        # 镜像数据: 镜像方向在镜像regime的命中率
+        # 做多在初牛命中 → 视为做空在初熊命中
+        mirror_regimes = dir_data.get(mirror_dir, {})
+        mirror_correct, mirror_total = mirror_regimes.get(mirror_regime, (0, 0))
+
+        # 合并（真实 + 镜像）
+        combined_correct = real_correct + mirror_correct
+        combined_total = real_total + mirror_total
+
+        if combined_total < 50:
+            continue
+
+        target_acc = combined_correct / combined_total
+
+        # 对比: 首选方向在对立regime的命中率（也加镜像）
+        # 真实: short在牛市 / 镜像: long在熊市 → 当成short在牛市的补充
+        opp_real_correct, opp_real_total = real_regimes.get(mirror_regime, (0, 0))
+        opp_mirror_correct, opp_mirror_total = mirror_regimes.get(target, (0, 0))
+        opp_combined_correct = opp_real_correct + opp_mirror_correct
+        opp_combined_total = opp_real_total + opp_mirror_total
+        opposite_acc = opp_combined_correct / opp_combined_total if opp_combined_total > 0 else 0
+
+        # 其他regime的命中率（参考）
+        all_regimes = ['牛', '初牛', '盘整', '初熊', '熊']
+        regime_acc = {}
+        for reg in all_regimes:
+            c, t = real_regimes.get(reg, (0, 0))
+            regime_acc[reg] = c / t if t > 0 else 0
+
+        # 分化度 = 目标regime命中率 - 对立regime命中率
+        diff = target_acc - opposite_acc
+
+        results.append({
+            'strategy': strategy,
+            'coin': coin,
+            'direction': pref_dir,
+            'target_acc': target_acc,
+            'target_real_total': real_total,
+            'target_mirror_total': mirror_total,
+            'target_combined_total': combined_total,
+            'opposite_acc': opposite_acc,
+            'diff': diff,
+            'regime_acc': regime_acc,
+        })
+
+    return sorted(results, key=lambda x: x['diff'], reverse=True)
+
+
+def print_results(transition_name, trans_cfg, results, top_n=10):
+    """输出扫描结果"""
+    target = trans_cfg['target']
+    pref_dir = trans_cfg['pref_dir']
+    mirror_regime = trans_cfg['mirror_regime']
+    dir_label = '做多' if pref_dir == 'long' else '做空'
+
+    print(f"\n{'='*100}")
+    print(f"  {transition_name} → 检测 '{target}' ({dir_label}方向命中率高 = 好哨兵)")
+    print(f"  镜像增强: {target}真实样本 + {mirror_regime}翻转样本")
+    print(f"{'='*100}")
+
+    # 按币种分组
+    by_coin = defaultdict(list)
+    for r in results:
+        by_coin[r['coin']].append(r)
+
+    for coin in COINS_ORDER:
+        candidates = by_coin.get(coin, [])
+        if not candidates:
+            continue
+
+        top = candidates[:top_n]
+
+        print(f"\n  [{coin}] Top {min(top_n, len(top))}:")
+        print(f"  {'策略':<25} {target+'准':>7} {'真实':>6} {'镜像':>6} "
+              f"{mirror_regime+'准':>7} {'分化':>7} {'牛准':>6} {'熊准':>6} "
+              f"{'初牛准':>6} {'初熊准':>6} {'盘整准':>6}")
+        print(f"  {'-'*110}")
+
+        for c in top:
+            ra = c['regime_acc']
+            print(f"  {c['strategy']:<25} {c['target_acc']:>6.1%} "
+                  f"{c['target_real_total']:>6} {c['target_mirror_total']:>6} "
+                  f"{c['opposite_acc']:>6.1%} {c['diff']:>+6.1%} "
+                  f"{ra.get('牛', 0):>5.1%} {ra.get('熊', 0):>5.1%} "
+                  f"{ra.get('初牛', 0):>5.1%} {ra.get('初熊', 0):>5.1%} "
+                  f"{ra.get('盘整', 0):>5.1%}")
+
+    # 汇总: 每币种最佳
+    print(f"\n  --- 汇总: {transition_name} 每币种最佳哨兵 ---")
+    print(f"  {'币种':<12} {'策略':<25} {target+'准':>7} {'分化':>7} {'样本':>8}")
+    print(f"  {'-'*65}")
+    for coin in COINS_ORDER:
+        candidates = by_coin.get(coin, [])
+        if candidates:
+            best = candidates[0]
+            print(f"  {coin:<12} {best['strategy']:<25} "
+                  f"{best['target_acc']:>6.1%} {best['diff']:>+6.1%} "
+                  f"{best['target_combined_total']:>8}")
+        else:
+            print(f"  {coin:<12} (无数据)")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='哨兵扫描器 v2 — 4方向 + 镜像增强')
+    parser.add_argument('--target', type=str, default=None,
+                        choices=['初牛', '牛', '初熊', '熊'],
+                        help='只扫描指定方向')
+    parser.add_argument('--top', type=int, default=5, help='每币种显示 top N (default: 5)')
+    args = parser.parse_args()
+
+    data = load_data()
+
+    if args.target:
+        targets = {k: v for k, v in TRANSITIONS.items() if v['target'] == args.target}
+    else:
+        targets = TRANSITIONS
+
+    for name, cfg in targets.items():
+        results = scan_transition(data, name, cfg, top_n=args.top)
+        print_results(name, cfg, results, top_n=args.top)
+
+
+if __name__ == '__main__':
+    main()

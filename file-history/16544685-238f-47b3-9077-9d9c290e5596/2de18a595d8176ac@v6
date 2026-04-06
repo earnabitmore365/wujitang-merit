@@ -1,0 +1,306 @@
+# K线种子系统
+
+> 无极自动交易 — 回测数据管线
+> 最后更新：2026-04-05
+
+## 数据流水线
+
+```
+data/historical/（原始 JSON）
+    ↓  data/build_klines_indicators.py 阶段 1+2
+data/klines.duckdb（原始 OHLCV + 101 指标列，24 品种 × 10 周期，~44 GB）
+    ↓  src/backtest/generate_seed.py --seed4
+reports/seed_signal.db        # signal_only：纯信号（无TTP）
+reports/seed_ttp_close.db     # ttp_close：TTP 用 close 价触发
+reports/seed_ttp_hl.db        # ttp_highlow：TTP 用 high/low 触发
+reports/seed_dual.db          # dual_hold：允许同时持有多空
+    ↓  backtest/build_seed_report.py
+reports/seed_report.duckdb    # 统一报告（4 种子合并 + 14 字段后算，~42 GB）
+    ↓  backtest/gate/gate_runner.py
+results/gate_*/report.db      # Gate 策略选拔报告
+```
+
+---
+
+## 目录结构
+
+```
+src/backtest/
+├── backtest.py                  # 核心回测引擎（BacktestEngine）
+├── generate_seed.py             # 种子生成器：4段分段回测 + 校准匹配 + fallback
+├── incremental_backtest.py      # 增量断点续跑
+└── verify_seed.py               # 种子完整性验证
+
+backtest/
+├── build_seed_report.py         # 4 SQLite → 1 DuckDB 报告（合并 + 14 字段后算）
+├── gate/                        # Gate 策略选拔管线（初考/专考/组考/MC）
+├── pipeline/                    # 增量管线（daily_pipeline, refresh_summary）
+├── regime/                      # Regime 标签生成
+├── engine/                      # 回测引擎副本
+└── dashboard/                   # 种子看板
+
+data/
+├── klines.duckdb                # 主数据库（~44 GB，6500 万行，109 列）
+├── indicator_col_map.json       # 101 个指标列映射配置
+└── historical/                  # 原始 OHLCV JSON（按币种/周期分目录）
+
+reports/
+├── seed_signal.db               # signal_only 种子
+├── seed_ttp_close.db            # ttp_close 种子
+├── seed_ttp_hl.db               # ttp_highlow 种子
+├── seed_dual.db                 # dual_hold 种子
+└── seed_report.duckdb           # 统一报告（4 种子合并 + 后算）
+
+src/core/
+├── indicator_cache.py           # 统一指标计算 + 缓存（45 种指标，REGISTRY）
+└── strategy/                    # 105 个策略定义
+```
+
+---
+
+## klines.duckdb
+
+| 维度 | 数值 |
+|------|------|
+| 行数 | ~6500 万 |
+| 列数 | 109（8 基础 + 101 指标） |
+| 品种 | 24（12 原生 + 12 mirror） |
+| 周期 | 10（1m/5m/15m/30m/1h/2h/4h/8h/12h/1d） |
+| 大小 | ~44 GB |
+
+基础列：`coin, interval, time, open, high, low, close, volume`
+
+指标列命名规则：`{指标名}_p{参数}` 或 `{指标名}_f{fast}_s{signal}_s{slow}__{子键}`
+
+---
+
+## 种子数据库（SQLite，--seed4 产出）
+
+| 文件 | 模式 | combo 数 | trades 数 |
+|------|------|----------|-----------|
+| seed_signal.db | signal_only（纯信号，无 TTP） | 23,753 | 3.7 亿 |
+| seed_ttp_close.db | TTP close 价触发 | 23,753 | 4.0 亿 |
+| seed_ttp_hl.db | TTP high/low 触发 | 23,753 | 4.2 亿 |
+| seed_dual.db | dual_hold 同时持有多空 | 23,753 | 4.4 亿 |
+
+每个种子覆盖：24 币种 × 105 策略 × 10 周期。1m 用分段回测加速（4段并跑 + 校准匹配 + fallback）。
+
+### 表结构
+
+**combo_summary**（36 列）：
+
+| 分类 | 字段 |
+|------|------|
+| 标识 | id (AUTOINCREMENT PK), strategy, coin, interval |
+| 引擎直出 | total_return, total_trades, winning/losing_trades, win_rate, avg_win/loss_pct, profit_factor, ttp_count, signal_close_count, longest_win/loss_streak, max_consec_loss_amt, reward_risk, max_win, max_loss |
+| 后算（build_seed_report.py 补全） | final_balance, max_drawdown, sharpe_ratio, sortino_ratio, calmar_ratio, cagr, double_count, fastest/avg_double_days, daily_open_positions, total_fees, max/min_balance, expectancy_ratio |
+| 元数据 | backtest_time |
+
+**paired_trades**（11 字段，combo_id 关联 combo_summary.id）：
+
+`combo_id, open_candle_idx, close_candle_idx, open_time, close_time, direction, entry_price, exit_price, close_type, mfe, mae`
+
+跨种子引用用 `(strategy, coin, interval)` 三元组，不用 id。
+
+**regime_timeline**（7 列）：`coin, interval, candle_idx, candle_time_ms, regime, adx, sma_direction`
+
+**run_metadata**（KV 对）：`initial_capital=500, leverage=10, fee_rate=0.00035, slippage_pct=0.0002, funding_rate_8h=0.0001`
+
+---
+
+## seed_report.duckdb（统一报告）
+
+4 个 SQLite 种子合并 → 逐笔后算 16 字段 → 汇总后算 12 字段 → 统一查询入口。
+
+| 维度 | 数值 |
+|------|------|
+| combo_summary | 95,012 行 × 49 列 |
+| paired_trades | 16.4 亿条 × 31 列 |
+| 大小 | ~375 GB |
+| 索引 | combo_summary 2 个（paired_trades 不建，列式扫描 0.02s） |
+
+逐笔后算新增：r_value, holding_bars, pnl, balance_after, regime_at_open_1, risk_reward_ratio 等。
+汇总后算新增：skewness, kurtosis, tail_ratio, ulcer_index, drawdown_duration_bars 等。
+完整字段参考：`文档/种子/seed_report_field_reference.md`，schema 详见 `文档/种子/duckdb.md` 第 16 节。
+
+构建脚本：`backtest/build_seed_report.py`
+
+---
+
+## 查询种子数据
+
+> **原则：DuckDB 优先。** 4 个 SQLite 已合并到 seed_report.duckdb，用 seed_type 筛选。
+> DuckDB 列式存储查 16 亿条 paired_trades 只需 0.02s，不需要额外索引。
+> 详细 API：`文档/种子/duckdb.md`（DuckDB）、`文档/种子/sqlite.md`（SQLite）
+
+### DuckDB 查询（推荐）
+
+```python
+import duckdb
+
+con = duckdb.connect('reports/seed_report.duckdb', read_only=True)
+
+# 查某策略在 4 种模式下的表现
+con.execute('''
+    SELECT seed_type, total_return, sharpe_ratio, max_drawdown, total_trades
+    FROM combo_summary
+    WHERE strategy = 'rsi_reversal' AND coin = 'BTC' AND interval = '1m'
+    ORDER BY seed_type
+''').fetchall()
+
+# 查某策略的交易明细
+con.execute('''
+    SELECT direction, entry_price, exit_price, close_type, mfe, mae,
+           close_candle_idx - open_candle_idx AS holding_bars
+    FROM paired_trades
+    WHERE seed_type = 'signal_only'
+      AND strategy = 'rsi_reversal' AND coin = 'BTC' AND interval = '1m'
+    ORDER BY open_candle_idx
+''').fetchall()
+
+# 找高 Sharpe 策略
+con.execute('''
+    SELECT strategy, coin, seed_type, sharpe_ratio, calmar_ratio, total_trades
+    FROM combo_summary
+    WHERE interval = '1m' AND sharpe_ratio > 2.0
+    ORDER BY sharpe_ratio DESC LIMIT 20
+''').fetchall()
+
+con.close()
+```
+
+### 推算衍生字段
+
+paired_trades 只存 11 个原始字段。以下字段按需推算：
+
+```python
+# holding_bars（持仓K线数）
+holding_bars = close_candle_idx - open_candle_idx
+
+# r_value（收益比率）— 与 generate_seed.py save_sim_combo 一致
+LEVERAGE = 10.0
+FEE_RATE = 0.00035       # 每侧
+SLIPPAGE_PCT = 0.0002    # 每侧
+FUNDING_RATE_8H = 0.0001
+# bars_per_funding: 1m=480, 5m=96, 15m=32, 30m=16, 1h=8, 2h=4, 4h=2, 8h=1, 12h=1, 1d=1
+
+if direction == 'long':
+    raw = (exit_price - entry_price) / entry_price * LEVERAGE
+else:
+    raw = (entry_price - exit_price) / entry_price * LEVERAGE
+
+fee = FEE_RATE * 2          # 开+平
+slip = SLIPPAGE_PCT * 2     # 开+平
+funding = FUNDING_RATE_8H * (holding_bars // bars_per_funding)
+r_value = raw - fee - slip - funding
+```
+
+DuckDB SQL 版本：
+
+```sql
+SELECT *,
+    close_candle_idx - open_candle_idx AS holding_bars,
+    CASE WHEN direction = 'long'
+        THEN (exit_price - entry_price) / NULLIF(entry_price, 0) * 10
+        ELSE (entry_price - exit_price) / NULLIF(entry_price, 0) * 10
+    END - 0.0007 - 0.0004
+    - 0.0001 * FLOOR((close_candle_idx - open_candle_idx) / 480)
+    AS r_value
+FROM paired_trades
+WHERE seed_type = 'signal_only' AND strategy = 'rsi_reversal'
+```
+
+### SQLite 直接查（仅在需要写入种子 DB 时使用）
+
+```python
+import sqlite3
+conn = sqlite3.connect('file:reports/seed_signal.db?mode=ro', uri=True)
+conn.row_factory = sqlite3.Row
+rows = conn.execute('SELECT * FROM combo_summary WHERE interval = ?', ('1m',)).fetchall()
+conn.close()
+```
+
+---
+
+## 指标系统
+
+**种子防污染**：klines.duckdb 的唯一写入口是 `data/build_klines_indicators.py`。
+其他所有代码（indicator_cache, 策略, 回测）只能 read_only 连接，杜绝运行时污染。
+
+**核心文件**：
+- `src/core/indicator_cache.py` — 指标函数注册表（REGISTRY）+ 运行时内存缓存
+- `data/build_klines_indicators.py` — 唯一写入口，批量计算+新列自动补算
+
+```python
+from core.indicator_cache import get_indicator, init_cache, close_cache
+
+init_cache(coin='BTC', interval='1h', candles=all_candles)
+# 自动从 klines.duckdb 预加载已有指标（read_only）
+
+rsi = get_indicator('rsi', period=14)        # 已有 → 内存直返
+custom = get_indicator('zscore', period=30)   # 没有 → 现场算存内存（不写 DB）
+
+close_cache()  # 清理内存缓存（不碰 DB）
+```
+
+**链路**：klines.duckdb 预加载（read_only）→ 内存缓存 → 未命中现场算存内存。
+**单一源头**：所有指标统一存在 klines.duckdb，运行时不写回。
+
+**50 种指标**：rsi, atr, sma, ema, macd, bb, vwap, stochastic, fvg, fvg_detect, ad, adx, aroon, ao, bop, cci, cmf, cmo, roc, chaikin_osc, connors_rsi, coppock, dema, tema, demand_index, emv, ehlers_itl, fisher_transform, hma, kama, klinger, linreg_slope, mass_index, obv, parabolic_sar, rvi, supertrend, trix, tvi, ulcer_index, ultimate_oscillator, volume_momentum, vortex, vpt, vroc, williams_r, zscore, volume_ratio, obv_slope, ad_roc
+
+注册新指标：
+1. indicator_cache.py 写 `compute_xxx(klines, **params)` + 加入 REGISTRY
+2. indicator_col_map.json 加列名映射
+3. 跑 `python3 data/build_klines_indicators.py` → 自动检测新列并补算
+
+---
+
+## indicator_col_map.json
+
+101 个条目。key = DuckDB 列名，value = `[函数名, 参数 JSON, 子键]`：
+
+```json
+{
+  "adx_p14__adx":      ["adx",   "{\"period\": 14}",  "adx"],
+  "rsi_p14":           ["rsi",   "{\"period\": 14}",  null],
+  "sma_p20":           ["sma",   "{\"period\": 20}",  null],
+  "macd_f12_s9_s26__macd": ["macd", "{\"fast\":12,\"slow\":26,\"signal\":9}", "macd"]
+}
+```
+
+---
+
+## 已知问题
+
+### DuckDB 反模式
+
+1. **executemany 大数据** → 内存爆炸。用 CTAS 或 INSERT SELECT
+2. **ATTACH SQLite 直接查** → 150 倍慢。先 INSERT SELECT 到原生表
+3. **大表建索引** → OOM（16GB 内存不够建 16 亿条索引）。不建 paired_trades 索引，靠列式扫描（0.02s）
+4. **Python nan/inf** → DuckDB 报错。写入前清洗
+5. **多进程写入** → 不支持。多进程读用 read_only=True
+
+详见 `文档/种子/duckdb.md`
+
+### 分段回测
+
+1m 数据（210 万根）用 4 段并跑 + 校准匹配加速。详见 `文档/种子/segmented_backtest.md`。
+
+---
+
+## 踩过的坑
+
+### 坑1: `_parse_minute` 硬编码字符串偏移 (2026-04-06)
+**现象**: `feed_client.py` 的 `_parse_minute()` 用 `int(str(timestamp)[14:16])` 提取分钟数，假设 ISO 格式固定为 `YYYY-MM-DDTHH:MM:SS`。
+**根因**: 硬编码字符位置，格式稍有变化（时区后缀不同、毫秒位数不同）就解析错误，导致 K 线聚合边界对不齐。
+**解决**: 改用 `datetime.fromisoformat()` 安全解析，不依赖固定偏移。
+
+### 坑2: WebSocket 价格除以百万 (2026-04-06)
+**现象**: HyperLiquid `websocket.py` 里 `price_float = float(price) / 1000000`，BTC 价格从 85000 变成 0.085。
+**根因**: 注释说"价格需要除以 1000000"但 HL API 的 `px` 字段是字符串小数，不是微单位整数。
+**解决**: 删除 `/ 1000000`，直接 `float(price)`。
+
+### 坑3: Mirror 翻转 SMA200 是幻觉 (2026-04-06)
+**现象**: 三套系统用三种不同的翻转轴（max+min固定轴 / 滚动SMA200 / 固定SMA200），大周期 mirror 数据出现 entry_price=1e-8 导致 r_value 爆炸到万亿。
+**根因**: "翻转需要轴"这个前提就是错的。SMA200 是在错误基础上层层打补丁（max_price → SMA200 → 滚动SMA200 → 负值保护 → 1m翻转再聚合），从来没人问"为什么需要轴"。
+**解决**: 老祖+顾问确认——**直接价格取负**（收益率自然反转）。不需要轴、不需要预热、负数价格合法。5 行代码替换 30 行。旧 mirror 数据全部删除并用新方法重建。

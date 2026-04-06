@@ -1,0 +1,688 @@
+"""build_klines_indicators.py — klines.duckdb 唯一写入口，完整供应链.
+
+四阶段构建脚本：
+  0.   Binance 增量下载：ccxt 拉最新 K 线 → data/historical/*.json（断点续传）
+  0.5  JSON 导入：data/historical/*.json 增量写入 klines.duckdb
+  1.   生成镜像 K线：价格取负，存为 {coin}_mirror 行（增量补差）
+  2.   计算指标：按 indicator_col_map.json 批量计算（断点续传 + 新列补算）
+
+种子防污染：本脚本是 klines.duckdb 的唯一写入口。
+其他所有代码（indicator_cache, 策略, 回测）只能 read_only 连接。
+
+用法：
+    python3 build_klines_indicators.py              # 完整流程（下载+导入+mirror+指标）
+    python3 build_klines_indicators.py --skip-download  # 跳过下载（本地 JSON 已有）
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import duckdb
+
+# ─────────────────────────────────────────
+# 通过 .wuji-root 定位项目根
+# ─────────────────────────────────────────
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, ".wuji-root")):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, SRC_DIR  # noqa: E402
+
+# ─────────────────────────────────────────
+# 路径常量
+# ─────────────────────────────────────────
+_DB_PATH = Path(DATA_DIR) / "klines.duckdb"
+_COL_MAP_PATH = Path(DATA_DIR) / "indicator_col_map.json"
+_HISTORICAL_DIR = Path(DATA_DIR) / "historical"
+
+# generate_seed.py 和 indicator_cache.py 的 sys.path 注入
+_BACKTEST_DIR = str(Path(ROOT) / "data")
+_CORE_DIR = str(Path(SRC_DIR) / "core")
+
+for _dir in [_BACKTEST_DIR, _CORE_DIR, SRC_DIR]:
+    if _dir not in sys.path:
+        sys.path.insert(0, _dir)
+
+# ─────────────────────────────────────────
+# 导入业务函数（路径注入后才能 import）
+# ─────────────────────────────────────────
+from core.indicator_cache import REGISTRY  # noqa: E402
+
+
+# ─────────────────────────────────────────
+# 阶段 0：Binance 增量下载
+# ─────────────────────────────────────────
+
+# 币种配置
+_USDT_PAIRS = [
+    'BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'BNB/USDT', 'SOL/USDT',
+    'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT',
+]
+
+_COIN_MARGINED_PAIRS = [
+    'BTC/USD:BTC', 'ETH/USD:ETH', 'BNB/USD:BNB',
+]
+
+# 每周期目标行数（≈4年短周期，≈8年长周期）
+_DOWNLOAD_TARGETS = {
+    '1m': 2102000, '5m': 420000, '15m': 140000, '30m': 70000,
+    '1h': 70000, '2h': 35000, '4h': 17500, '8h': 8750, '12h': 5840, '1d': 2920,
+}
+
+_TIMEFRAME_MS = {
+    '1m': 60_000, '5m': 300_000, '15m': 900_000, '30m': 1_800_000,
+    '1h': 3_600_000, '2h': 7_200_000, '4h': 14_400_000,
+    '8h': 28_800_000, '12h': 43_200_000, '1d': 86_400_000,
+}
+
+
+def _symbol_to_coin(symbol: str) -> str:
+    """BTC/USDT → BTC, BTC/USD:BTC → BTC_COIN"""
+    if ':' in symbol:
+        return f"{symbol.split('/')[0]}_COIN"
+    return symbol.split('/')[0]
+
+
+def _download_coin(ex, symbol: str, timeframe: str, target: int) -> int:
+    """单个币种单个周期的增量下载（断点续传）。"""
+    coin = _symbol_to_coin(symbol)
+    coin_dir = _HISTORICAL_DIR / coin
+    coin_dir.mkdir(parents=True, exist_ok=True)
+    out_file = coin_dir / f"{timeframe}.json"
+    ms_per_bar = _TIMEFRAME_MS[timeframe]
+
+    # 加载已有数据
+    existing, existing_ts = [], set()
+    if out_file.exists():
+        try:
+            data = json.loads(out_file.read_text())
+            if data:
+                existing = sorted(data, key=lambda d: d['time'])
+                existing_ts = {d['time'] for d in existing}
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    skip_backward = len(existing) >= target
+    all_ohlcv = []
+
+    # 币本位合约 API 限制查询跨度不超过 200 天
+    # 1000条 × 8h = 333天 > 200天 → 减 limit
+    is_delivery = ':' in symbol
+    if is_delivery:
+        max_bars = min(1000, int(199 * 86_400_000 / ms_per_bar))
+    else:
+        max_bars = 1000
+
+    # 往前补历史
+    if existing:
+        oldest_ts = existing[0]['time']
+    else:
+        try:
+            latest = ex.fetch_ohlcv(symbol, timeframe, limit=max_bars)
+            if not latest:
+                return 0
+            all_ohlcv.extend(latest)
+            oldest_ts = latest[0][0]
+        except Exception as e:
+            print(f"    初始拉取出错: {e}")
+            return 0
+
+    total_have = len(existing) + len(all_ohlcv)
+    while not skip_backward and total_have < target:
+        try:
+            since = oldest_ts - (max_bars * ms_per_bar)
+            ohlcv = ex.fetch_ohlcv(symbol, timeframe, since=since, limit=max_bars)
+            if not ohlcv:
+                break
+            new_data = [c for c in ohlcv if c[0] < oldest_ts]
+            if not new_data:
+                break
+            all_ohlcv = new_data + all_ohlcv
+            oldest_ts = new_data[0][0]
+            total_have = len(existing) + len(all_ohlcv)
+            time.sleep(0.5 if timeframe == '1m' else 1.0)
+        except Exception as e:
+            print(f"    拉取出错: {e}")
+            time.sleep(5)
+
+    # 往后补最新
+    if existing:
+        newest_ts = existing[-1]['time']
+        now_ms = int(time.time() * 1000)
+        if now_ms - newest_ts > ms_per_bar * 2:
+            since_fwd = newest_ts + ms_per_bar
+            while since_fwd < now_ms:
+                try:
+                    ohlcv = ex.fetch_ohlcv(symbol, timeframe, since=since_fwd, limit=max_bars)
+                    if not ohlcv:
+                        break
+                    new_fwd = [c for c in ohlcv if c[0] > newest_ts]
+                    if not new_fwd:
+                        break
+                    all_ohlcv.extend(new_fwd)
+                    since_fwd = new_fwd[-1][0] + ms_per_bar
+                    newest_ts = new_fwd[-1][0]
+                    time.sleep(0.5 if timeframe == '1m' else 1.0)
+                except Exception as e:
+                    print(f"    补充最新出错: {e}")
+                    time.sleep(5)
+
+    if not all_ohlcv and not existing:
+        return 0
+
+    # 合并去重排序
+    merged = {d['time']: d for d in existing}
+    for c in all_ohlcv:
+        ts = c[0]
+        if ts not in merged:
+            merged[ts] = {"time": ts, "open": c[1], "high": c[2],
+                          "low": c[3], "close": c[4], "volume": c[5]}
+
+    result = sorted(merged.values(), key=lambda d: d['time'])
+    if len(result) > target:
+        result = result[-target:]
+
+    out_file.write_text(json.dumps(result, separators=(',', ':')))
+    added = len(result) - len(existing)
+    if added > 0:
+        first_d = ex.iso8601(result[0]['time'])[:10]
+        last_d = ex.iso8601(result[-1]['time'])[:10]
+        print(f"  {coin}/{timeframe}: {len(result):,} 条 ({first_d}~{last_d}) [+{added:,}]")
+    return added
+
+
+def download_all_coins() -> None:
+    """阶段 0：从 Binance 增量下载 K 线到 data/historical/"""
+    import ccxt
+
+    print("=== 阶段 0：Binance 增量下载 ===")
+    ex_spot = ccxt.binance({'enableRateLimit': True})
+    ex_deliv = ccxt.binance({'enableRateLimit': True,
+                             'options': {'defaultType': 'delivery'}})
+
+    all_pairs = _USDT_PAIRS + _COIN_MARGINED_PAIRS
+    print(f"交易对: {len(all_pairs)} 个, 周期: {len(_DOWNLOAD_TARGETS)} 个")
+
+    if _COIN_MARGINED_PAIRS:
+        print("加载币本位合约市场...")
+        ex_deliv.load_markets()
+
+    total_added = 0
+    for tf, target in _DOWNLOAD_TARGETS.items():
+        for symbol in all_pairs:
+            ex = ex_deliv if ':' in symbol else ex_spot
+            added = _download_coin(ex, symbol, tf, target)
+            total_added += added
+
+    print(f"阶段 0 完成，新增 {total_added:,} 条\n")
+
+
+# ─────────────────────────────────────────
+# 阶段 0.5：JSON → klines.duckdb 导入
+# ─────────────────────────────────────────
+
+def import_json_to_duckdb(con: duckdb.DuckDBPyConnection) -> None:
+    """将 data/historical/*.json 增量导入 klines 表。"""
+    print("=== 阶段 0.5：JSON → klines.duckdb 导入 ===")
+
+    if not _HISTORICAL_DIR.exists():
+        print("  historical/ 目录不存在，跳过")
+        return
+
+    total_inserted = 0
+    for coin_dir in sorted(_HISTORICAL_DIR.iterdir()):
+        if not coin_dir.is_dir() or coin_dir.name.startswith('.'):
+            continue
+        coin = coin_dir.name
+
+        for json_file in sorted(coin_dir.glob("*.json")):
+            interval = json_file.stem
+            data = json.loads(json_file.read_text())
+            if not data:
+                continue
+
+            # 查 DB 里该 coin/interval 的最大 time
+            row = con.execute(
+                "SELECT MAX(time) FROM klines WHERE coin = ? AND interval = ?",
+                [coin, interval],
+            ).fetchone()
+            existing_max = row[0] if row else None
+
+            if existing_max:
+                new_rows = [d for d in data if d["time"] > existing_max]
+            else:
+                new_rows = data
+
+            if not new_rows:
+                continue
+
+            df = pd.DataFrame(new_rows)
+            df["coin"] = coin
+            df["interval"] = interval
+            con.register("tmp_import", df)
+            con.execute("""
+                INSERT INTO klines (coin, interval, time, open, high, low, close, volume)
+                SELECT coin, interval, time, open, high, low, close, volume
+                FROM tmp_import
+            """)
+            con.unregister("tmp_import")
+            con.commit()
+            total_inserted += len(new_rows)
+            print(f"  [导入] {coin}/{interval} +{len(new_rows):,} 行")
+
+    if total_inserted == 0:
+        print("  无新数据需要导入")
+    else:
+        print(f"  总计导入 {total_inserted:,} 行")
+    print("阶段 0.5 完成\n")
+
+
+# ─────────────────────────────────────────
+# 辅助
+# ─────────────────────────────────────────
+
+def mirror_candles(candles: list[dict]) -> list[dict]:
+    """价格取负：正常世界的完美镜像。
+
+    收益率自然反转：正常涨 5% → mirror 跌 5%。
+    不需要轴、不需要预热、不需要负值保护。
+    负数价格完全合法——策略看涨跌幅不看绝对值。
+
+    正常: BUY 100 → SELL 105 → 赚 5
+    Mirror: SHORT -100 → COVER -105 → 赚 5
+    """
+    mirrored = []
+    for k in candles:
+        m = dict(k)
+        m["open"]  = -k["open"]
+        m["close"] = -k["close"]
+        m["high"]  = -k["low"]     # 原 low 取负 = 最大负数 = 新 high
+        m["low"]   = -k["high"]    # 原 high 取负 = 最小负数 = 新 low
+        mirrored.append(m)
+    return mirrored
+
+
+# ─────────────────────────────────────────
+# 辅助
+# ─────────────────────────────────────────
+
+def _open_db() -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(str(_DB_PATH))
+    con.execute("SET memory_limit = '4GB'")
+    return con
+
+
+def _sanitize_value(val: Any) -> Any:
+    """把 Python float nan/inf 转成 None，DuckDB 不接受这些值。"""
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return None
+    return val
+
+
+def _sanitize_series(values: list) -> list:
+    """对整个列做 nan/inf → None 清洗。"""
+    return [_sanitize_value(v) for v in values]
+
+
+# ─────────────────────────────────────────
+# 阶段 1：生成镜像 K线
+# ─────────────────────────────────────────
+
+def build_mirror_klines(con: duckdb.DuckDBPyConnection) -> None:
+    print("\n=== 阶段 1：生成镜像 K线 ===")
+
+    # 检测 mirror 缺失或行数不足的组（增量追加场景）
+    groups: list[tuple[str, str]] = sorted(
+        con.execute("""
+            SELECT n.coin, n.interval
+            FROM (SELECT coin, interval, COUNT(*) AS cnt FROM klines
+                  WHERE coin NOT LIKE '%_mirror' GROUP BY coin, interval) n
+            LEFT JOIN (SELECT REPLACE(coin, '_mirror', '') AS coin, interval, COUNT(*) AS cnt
+                       FROM klines WHERE coin LIKE '%_mirror' GROUP BY coin, interval) m
+            ON n.coin = m.coin AND n.interval = m.interval
+            WHERE m.cnt IS NULL OR m.cnt < n.cnt
+        """).fetchall(),
+        key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]),
+    )
+
+    print(f"待处理: {len(groups)} 组（mirror 缺失或行数不足）")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for coin, interval in groups:
+        mirror_coin = f"{coin}_mirror"
+
+        t0 = time.perf_counter()
+
+        # 先删旧 mirror（简单可靠，重建很快）
+        con.execute(
+            "DELETE FROM klines WHERE coin = ? AND interval = ?",
+            [mirror_coin, interval],
+        )
+
+        # 读原始 K线 → list[dict]
+        rows = con.execute(
+            "SELECT time, open, high, low, close, volume FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+
+        if not rows:
+            print(f"  [跳过] {coin}/{interval} 无数据")
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        mirrored_candles = mirror_candles(candles)
+
+        mirrored_df = pd.DataFrame(mirrored_candles, columns=base_cols)
+
+        con.register("tmp_mirror", mirrored_df)
+        con.execute("""
+            INSERT INTO klines (coin, interval, time, open, high, low, close, volume)
+            SELECT ?, ?, time, open, high, low, close, volume
+            FROM tmp_mirror
+        """, [mirror_coin, interval])
+        con.unregister("tmp_mirror")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f"  [完成] {mirror_coin}/{interval}  {len(mirrored_df)} 行  {elapsed:.2f}s")
+
+    print("阶段 1 完成\n")
+
+
+# ─────────────────────────────────────────
+# 阶段 2a：新列补算（col_map 有但表里没有的列）
+# ─────────────────────────────────────────
+
+_IV_ORDER = {"1d": 0, "12h": 1, "8h": 2, "4h": 3, "2h": 4,
+             "1h": 5, "30m": 6, "15m": 7, "5m": 8, "1m": 9}
+
+
+def _backfill_new_cols(
+    con: duckdb.DuckDBPyConnection,
+    new_col_map: dict[str, list],
+) -> None:
+    """只对新增的指标列做全量补算。
+
+    col_map 中有但 klines 表中没有的列，ALTER TABLE 后逐组计算写入。
+    """
+    new_cols = list(new_col_map.keys())
+    first_new = new_cols[0]
+
+    # 找所有 coin/interval 组（新列全 NULL 的）
+    check = con.execute(f'''
+        SELECT coin, interval
+        FROM klines
+        GROUP BY coin, interval
+        HAVING COUNT(CASE WHEN "{first_new}" IS NOT NULL THEN 1 END) = 0
+    ''').fetchall()
+    groups = sorted(check, key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]))
+    print(f"  新列补算: {len(groups)} 组 × {len(new_cols)} 列")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for idx, (coin, interval) in enumerate(groups, 1):
+        t0 = time.perf_counter()
+        tag = f"  [新列 {idx}/{len(groups)}] {coin}/{interval}"
+
+        rows = con.execute(
+            f"SELECT {', '.join(base_cols)} FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+        if not rows:
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        times = [r[0] for r in rows]
+        n = len(candles)
+        print(f"{tag} {n:,} 行", end="", flush=True)
+
+        computed = _compute_all_indicators(candles, new_col_map)
+        computed["time"] = times
+        indicator_df = pd.DataFrame(computed)
+
+        con.register("tmp_new", indicator_df)
+        set_clauses = ", ".join(
+            f'"{col}" = tmp_new."{col}"' for col in new_cols
+        )
+        con.execute(f"""
+            UPDATE klines
+            SET {set_clauses}
+            FROM tmp_new
+            WHERE klines.coin = ?
+              AND klines.interval = ?
+              AND klines.time = tmp_new.time
+        """, [coin, interval])
+        con.unregister("tmp_new")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f" ✅ {elapsed:.1f}s")
+
+    print("  新列补算完成\n")
+
+
+# ─────────────────────────────────────────
+# 阶段 2b：全量指标计算（断点续传）
+# ─────────────────────────────────────────
+
+def _compute_all_indicators(
+    candles: list[dict],
+    col_map: dict[str, list],
+) -> dict[str, list]:
+    """对一组 K线批量计算所有指标列。
+
+    返回 {col_name: list_of_values}，len == len(candles)。
+    计算失败的列填 None 序列，不中断整体流程。
+    nan/inf 已清洗为 None。
+    """
+    n = len(candles)
+    total_cols = len(col_map)
+    # 缓存已算过的 (indicator_name, params_json) → 原始结果
+    cache: dict[tuple[str, str], Any] = {}
+    result: dict[str, list] = {}
+
+    for col_idx, (col_name, (ind_name, params_json, sub_key)) in enumerate(col_map.items(), 1):
+        print(f"\r    指标 [{col_idx}/{total_cols}]", end="", flush=True)
+        cache_key = (ind_name, params_json)
+
+        if cache_key not in cache:
+            params = json.loads(params_json)
+            try:
+                raw = REGISTRY[ind_name](candles, **params)
+            except Exception as e:
+                print(f"    [警告] 指标 {ind_name}({params_json}) 计算失败: {e}")
+                cache[cache_key] = None
+            else:
+                cache[cache_key] = raw
+
+        raw = cache[cache_key]
+
+        if raw is None:
+            result[col_name] = [None] * n
+        elif isinstance(raw, dict):
+            # 多值指标，取 sub_key
+            sub_list = raw.get(sub_key)
+            if sub_list is None:
+                print(
+                    f"    [警告] 指标 {ind_name} 无 sub_key={sub_key}，"
+                    f"可用: {list(raw.keys())}"
+                )
+                result[col_name] = [None] * n
+            else:
+                result[col_name] = _sanitize_series(list(sub_list))
+        else:
+            # 单值指标，sub_key 忽略
+            result[col_name] = _sanitize_series(list(raw))
+
+    print("\r" + " " * 30 + "\r", end="", flush=True)  # 清掉进度行
+    return result
+
+
+def build_indicators(con: duckdb.DuckDBPyConnection) -> None:
+    print("\n=== 阶段 2：计算指标 ===")
+
+    # 读列名映射
+    col_map: dict[str, list] = json.loads(_COL_MAP_PATH.read_text())
+    indicator_cols = list(col_map.keys())
+    print(f"指标列数: {len(indicator_cols)}")
+
+    # ---- 新列检测 + 断点补算 ----
+    existing_cols = set(
+        row[0] for row in con.execute("DESCRIBE klines").fetchall()
+    )
+
+    # 1. ALTER TABLE for truly new cols
+    truly_new = [c for c in indicator_cols if c not in existing_cols]
+    if truly_new:
+        print(f"发现 {len(truly_new)} 个新指标列，创建中...")
+        for col in truly_new:
+            con.execute(f'ALTER TABLE klines ADD COLUMN "{col}" DOUBLE')
+        con.commit()
+
+    # 2. 检查是否有列需要补算（新建的 + 上次中断未完成的）
+    last_col = indicator_cols[-1]
+    need_backfill = con.execute(f'''
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM klines GROUP BY coin, interval
+            HAVING COUNT(CASE WHEN "{last_col}" IS NOT NULL THEN 1 END) = 0
+        )
+    ''').fetchone()[0]
+
+    if need_backfill > 0:
+        # 二分查找第一个不完整的列（假设不完整列是连续后缀）
+        lo, hi = 0, len(indicator_cols) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            c = indicator_cols[mid]
+            test = con.execute(f'''
+                SELECT COUNT(*) FROM (
+                    SELECT 1 FROM klines GROUP BY coin, interval
+                    HAVING COUNT(CASE WHEN "{c}" IS NOT NULL THEN 1 END) = 0
+                )
+            ''').fetchone()[0]
+            if test > 0:
+                hi = mid
+            else:
+                lo = mid + 1
+        backfill_cols = indicator_cols[lo:]
+        print(f"发现 {len(backfill_cols)} 个指标列需要补算...")
+        _backfill_new_cols(con, {c: col_map[c] for c in backfill_cols})
+
+    # ---- 全量断点续传（处理尚未有任何指标值的新增组） ----
+
+    # 断点检查用第一个指标列
+    first_col = indicator_cols[0]
+    check = con.execute(f'''
+        SELECT coin, interval,
+               MIN(time) as kline_first, MAX(time) as kline_last,
+               MIN(CASE WHEN "{first_col}" IS NOT NULL THEN time END) as ind_first,
+               MAX(CASE WHEN "{first_col}" IS NOT NULL THEN time END) as ind_last
+        FROM klines GROUP BY coin, interval
+    ''').fetchall()
+    groups: list[tuple[str, str]] = sorted(
+        [(c, iv) for c, iv, kf, kl, if_, il in check
+         if if_ is None or kf != if_ or kl != il],
+        key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]),
+    )
+    print(f"待处理: {len(groups)} 组（首尾时间戳不一致，大周期优先）")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for idx, (coin, interval) in enumerate(groups, 1):
+
+        t0 = time.perf_counter()
+        tag = f"[{idx}/{len(groups)}] {coin}/{interval}"
+        print(f"  {tag} 加载K线...", flush=True)
+
+        # 读 K线 → list[dict]（跳过中间 DataFrame）
+        rows = con.execute(
+            f"SELECT {', '.join(base_cols)} FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+
+        if not rows:
+            print(f"  {tag} 无数据，跳过")
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        times = [r[0] for r in rows]
+        n = len(candles)
+        print(f"  {tag} {n:,} 行 → 计算指标...", flush=True)
+
+        # 计算所有指标
+        computed = _compute_all_indicators(candles, col_map)
+
+        print(f"  {tag} 写入DB...", flush=True)
+
+        # 一次性构建 DataFrame（零碎片，消除 PerformanceWarning）
+        computed["time"] = times
+        indicator_df = pd.DataFrame(computed)
+
+        # 注册为临时表，一次 UPDATE FROM 写入所有指标列（参数化防注入）
+        con.register("tmp_ind", indicator_df)
+
+        set_clauses = ", ".join(
+            f'"{col}" = tmp_ind."{col}"' for col in indicator_cols
+        )
+        con.execute(f"""
+            UPDATE klines
+            SET {set_clauses}
+            FROM tmp_ind
+            WHERE klines.coin = ?
+              AND klines.interval = ?
+              AND klines.time = tmp_ind.time
+              AND klines."{first_col}" IS NULL
+        """, [coin, interval])
+
+        con.unregister("tmp_ind")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f"  {tag} ✅ {elapsed:.1f}s")
+
+    print("阶段 2 完成\n")
+
+
+# ─────────────────────────────────────────
+# 入口
+# ─────────────────────────────────────────
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="K线种子完整供应链")
+    parser.add_argument("--skip-download", action="store_true",
+                        help="跳过阶段 0（Binance 下载），只做导入+mirror+指标")
+    args = parser.parse_args()
+
+    total_t0 = time.perf_counter()
+
+    # 阶段 0：下载
+    if not args.skip_download:
+        download_all_coins()
+    else:
+        print("=== 阶段 0：跳过下载（--skip-download）===\n")
+
+    # 阶段 0.5 ~ 2
+    con = _open_db()
+    try:
+        import_json_to_duckdb(con)    # 阶段 0.5：JSON → DuckDB
+        build_mirror_klines(con)       # 阶段 1：mirror
+        build_indicators(con)          # 阶段 2：指标
+    finally:
+        con.close()
+
+    total_elapsed = time.perf_counter() - total_t0
+    print(f"全部完成，总耗时 {total_elapsed:.1f}s")

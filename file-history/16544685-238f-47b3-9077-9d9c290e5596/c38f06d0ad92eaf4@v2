@@ -1,0 +1,54 @@
+# 策略命名规范
+
+## 唯一规则：文件名 = 策略名
+
+```
+文件：strategy_bb_squeeze.py
+策略名：bb_squeeze
+```
+
+去掉 `strategy_` 前缀和 `.py` 后缀，剩下的就是策略名。系统里只有这一套名字。
+
+## 注册机制
+
+`__init__.py` 自动扫描所有 `strategy_*.py` 文件，从文件名提取策略名，注册到 `_STRATEGY_REGISTRY`。
+
+- 不需要手动注册
+- 不依赖类名
+- 不依赖 `name` 属性
+- 放进来就能用
+
+## 新增策略
+
+1. 创建文件 `strategy_xxx.py`（xxx 就是策略名）
+2. 写一个继承 `Strategy` 的类，实现 `generate_signal()`
+3. 完成。系统自动注册，种子生成自动识别
+
+## 调用方式
+
+```python
+from core.strategy import get_strategy, list_strategies
+
+# 获取所有策略名
+names = list_strategies()  # ['advanced_kline_echo', 'bb_squeeze', 'mean_reversion', ...]
+
+# 获取策略实例
+strategy = get_strategy('bb_squeeze')
+```
+
+## 数据存储
+
+种子库 `seed_signal.db` 的 `combo_summary.strategy` 列存的就是策略名（跟文件名一致）。
+
+## 当前活跃策略列表（8个）
+
+| # | 策略名 | 文件 |
+|---|--------|------|
+| 1 | advanced_kline_echo | strategy_advanced_kline_echo.py |
+| 2 | bb_squeeze | strategy_bb_squeeze.py |
+| 3 | mean_reversion | strategy_mean_reversion.py |
+| 4 | order_block | strategy_order_block.py |
+| 5 | proc | strategy_proc.py |
+| 6 | rsi_reversal | strategy_rsi_reversal.py |
+| 7 | smc_real | strategy_smc_real.py |
+| 8 | williams_fast | strategy_williams_fast.py |

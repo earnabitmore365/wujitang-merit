@@ -1,0 +1,399 @@
+"""
+哨兵营数据加载器 — 13币种1m + 镜像 + regime标签
+@see ARCHITECTURE.md — 架构约束（指标统一调用 indicator_cache）
+
+数据流:
+  13币种 1m K线 → 子采样 → indicator_cache 指标计算 → z-score归一化 → 拼接
+  + 镜像数据（价格翻转 + regime标签翻转）
+  + per-candle regime标签（5类: 牛/初牛/盘整/初熊/熊）
+
+v3: 指标计算统一走 indicator_cache（v0.9 架构决策），删除本地 _compute_indicators()
+"""
+import os
+import sys
+import json
+import hashlib
+import pickle
+import numpy as np
+from datetime import datetime, timezone
+
+# 导入 gp_engine 模块（normalize/mirror/warmup 仍在用）
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_GP_DIR = os.path.join(_THIS_DIR, '..', 'gp_engine')
+sys.path.insert(0, _GP_DIR)
+import indicators as gp_ind
+
+# 导入统一指标库（v0.9 架构决策：所有指标通过 indicator_cache 获取）
+_IC_DIR = os.path.join(_THIS_DIR, '..', 'src', 'core')
+sys.path.insert(0, _IC_DIR)
+from indicator_cache import init_cache, get_indicator, close_cache
+
+# indicator_cache DB 路径（用 path_config 定位项目根）
+_p = _THIS_DIR
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+sys.path.insert(0, _p)
+from path_config import REPORT_DIR as _REPORT_DIR  # noqa: E402
+_DB_PATH = os.path.join(_REPORT_DIR, 'indicator_cache.db')
+
+
+# ============================================================
+# 通过统一指标库获取指标（替代已删除的 _compute_indicators）
+# ============================================================
+
+def _ohlcv_to_candles(ohlcv, timestamps):
+    """numpy arrays → indicator_cache 需要的 list of dict"""
+    return [{'open': float(o), 'high': float(h), 'low': float(l),
+             'close': float(c), 'volume': float(v), 'time': int(t)}
+            for o, h, l, c, v, t in zip(
+                ohlcv['open'], ohlcv['high'], ohlcv['low'],
+                ohlcv['close'], ohlcv['volume'], timestamps)]
+
+
+def _get_indicators_from_cache(ohlcv, timestamps, coin, sample, is_mirror=False):
+    """通过统一指标库获取哨兵需要的 27 个指标
+    @see ARCHITECTURE.md — 指标统一调用 indicator_cache
+    """
+    candles = _ohlcv_to_candles(ohlcv, timestamps)
+    suffix = '_mirror' if is_mirror else ''
+    init_cache(coin=coin, interval=f'sentinel_{sample}m{suffix}',
+               candles=candles, db_path=_DB_PATH)
+
+    result = {'close': ohlcv['close'].copy(), 'volume': ohlcv['volume'].copy()}
+
+    # SMA（4个）
+    for p in [5, 10, 20, 50]:
+        result[f'sma_{p}'] = np.array(get_indicator('sma', period=p))
+    # EMA（2个）
+    for p in [9, 21]:
+        result[f'ema_{p}'] = np.array(get_indicator('ema', period=p))
+    # RSI（3个）
+    for p in [7, 14, 21]:
+        result[f'rsi_{p}'] = np.array(get_indicator('rsi', period=p))
+    # ATR（2个）
+    for p in [7, 14]:
+        result[f'atr_{p}'] = np.array(get_indicator('atr', period=p))
+    # ADX
+    result['adx'] = np.array(get_indicator('adx')['adx'])
+    # MACD histogram
+    result['macd_hist'] = np.array(get_indicator('macd')['histogram'])
+    # Bollinger Bands
+    bb = get_indicator('bb')
+    result['bb_upper'] = np.array(bb['upper'])
+    result['bb_lower'] = np.array(bb['lower'])
+    # Stochastic
+    stoch = get_indicator('stochastic')
+    result['stoch_k'] = np.array(stoch['k'])
+    result['stoch_d'] = np.array(stoch['d'])
+    # OBV
+    result['obv'] = np.array(get_indicator('obv'))
+    # AD (Accumulation/Distribution)
+    result['ad'] = np.array(get_indicator('ad'))
+    # CMF（2个窗口）
+    result['cmf_20'] = np.array(get_indicator('cmf', period=20))
+    result['cmf_50'] = np.array(get_indicator('cmf', period=50))
+    # BOP
+    result['bop'] = np.array(get_indicator('bop'))
+
+    # === 衍生指标（3个，从 indicator_cache 结果手动计算） ===
+
+    # volume_ratio = volume / sma(volume, 20)
+    vol_sma20 = np.array(get_indicator('sma', period=20, source='volume'))
+    result['volume_ratio'] = np.where(vol_sma20 > 1e-10, ohlcv['volume'] / vol_sma20, 1.0)
+
+    # obv_slope = obv[i] - obv[i-10]
+    obv_arr = result['obv']
+    obv_shifted = np.roll(obv_arr, 10)
+    obv_shifted[:10] = obv_arr[:10]
+    result['obv_slope'] = obv_arr - obv_shifted
+
+    # ad_roc_20 = (ad[i] - ad[i-20]) / (|ad[i-20]| + 1e-10)
+    ad_arr = result['ad']
+    ad_shifted = np.roll(ad_arr, 20)
+    ad_shifted[:20] = ad_arr[:20]
+    result['ad_roc_20'] = (ad_arr - ad_shifted) / (np.abs(ad_shifted) + 1e-10)
+
+    # 统一 NaN/Inf 处理
+    for k in result:
+        result[k] = np.nan_to_num(result[k], nan=0.0, posinf=0.0, neginf=0.0)
+
+    return result
+
+
+# 数据路径
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(_BASE, 'src', 'backtest', 'data', 'historical')
+
+# BTC 已知事实时间表（21段，混沌确认 2026-03-03）
+TIMELINE = [
+    ('2017-12', '2018-01', '初熊'),
+    ('2018-02', '2018-12', '熊'),
+    ('2019-01', '2019-03', '初牛'),
+    ('2019-04', '2019-06', '牛'),
+    ('2019-07', '2019-08', '初熊'),
+    ('2019-09', '2020-03', '熊'),
+    ('2020-04', '2020-09', '初牛'),
+    ('2020-10', '2021-04', '牛'),
+    ('2021-05', '2021-07', '初熊'),
+    ('2021-08', '2021-11', '牛'),
+    ('2021-12', '2022-01', '初熊'),
+    ('2022-02', '2022-11', '熊'),
+    ('2022-12', '2023-03', '初牛'),
+    ('2023-04', '2023-09', '盘整'),
+    ('2023-10', '2024-03', '牛'),
+    ('2024-04', '2024-09', '盘整'),
+    ('2024-10', '2025-01', '牛'),
+    ('2025-02', '2025-03', '初熊'),
+    ('2025-04', '2025-10', '牛'),
+    ('2025-11', '2025-12', '初熊'),
+    ('2026-01', '2026-03', '熊'),
+]
+
+# 镜像时 regime 翻转映射
+REGIME_FLIP = {
+    '牛': '熊', '熊': '牛',
+    '初牛': '初熊', '初熊': '初牛',
+    '盘整': '盘整',
+    '??': '??',
+}
+
+
+def _build_month_regime_map():
+    """构建 年月→regime 查找表"""
+    m = {}
+    for start, end, regime in TIMELINE:
+        ym = start
+        while ym <= end:
+            m[ym] = regime
+            y, mo = int(ym[:4]), int(ym[5:7])
+            mo += 1
+            if mo > 12:
+                mo = 1
+                y += 1
+            ym = f"{y}-{mo:02d}"
+    return m
+
+
+_MONTH_REGIME = _build_month_regime_map()
+
+
+# 排除的币种（老板决定：跑不出冠军 + BitMEX 无 TRXUSDT）
+EXCLUDE_COINS = {'TRX'}
+
+
+def discover_coins():
+    """扫描数据目录，找出所有有 1m.json 的币种（排除 EXCLUDE_COINS）"""
+    coins = []
+    for name in sorted(os.listdir(DATA_DIR)):
+        if name in EXCLUDE_COINS:
+            continue
+        path = os.path.join(DATA_DIR, name, '1m.json')
+        if os.path.isfile(path):
+            coins.append(name)
+    return coins
+
+
+def load_ohlcv(coin, interval='1m'):
+    """加载单币种 OHLCV + timestamps"""
+    path = os.path.join(DATA_DIR, coin, f'{interval}.json')
+    with open(path) as f:
+        raw = json.load(f)
+    ohlcv = {
+        'open':   np.array([c['open'] for c in raw], dtype=float),
+        'high':   np.array([c['high'] for c in raw], dtype=float),
+        'low':    np.array([c['low'] for c in raw], dtype=float),
+        'close':  np.array([c['close'] for c in raw], dtype=float),
+        'volume': np.array([c['volume'] for c in raw], dtype=float),
+    }
+    timestamps = np.array([c['time'] for c in raw], dtype=np.int64)
+    return ohlcv, timestamps
+
+
+def get_regime_labels(timestamps_ms, coin=None):
+    """
+    将 timestamp 数组映射到 5 类 regime 标签。
+
+    优先读分钟级缓存 (cache/regime_labels_{coin}.pkl)，fallback 月级标签。
+    """
+    # 尝试读分钟级缓存（numpy 向量化，秒级完成）
+    if coin is not None:
+        cache_file = os.path.join(_CACHE_DIR, f'regime_labels_{coin}.pkl')
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'rb') as f:
+                    cached = pickle.load(f)
+                cached_labels = cached['labels']
+                cached_ts = cached['timestamps_ms'].astype(np.int64)
+                query_ts = np.asarray(timestamps_ms, dtype=np.int64)
+                # searchsorted 对齐（缓存已按时间排序）
+                idx = np.searchsorted(cached_ts, query_ts)
+                idx = np.clip(idx, 0, len(cached_ts) - 1)
+                # 精确匹配的用缓存标签，不匹配的 fallback 月级
+                matched = cached_ts[idx] == query_ts
+                labels = np.empty(len(query_ts), dtype='U2')
+                labels[matched] = cached_labels[idx[matched]]
+                # fallback
+                if not np.all(matched):
+                    miss = np.where(~matched)[0]
+                    for i in miss:
+                        dt = datetime.fromtimestamp(
+                            int(query_ts[i]) / 1000, tz=timezone.utc)
+                        ym = f"{dt.year}-{dt.month:02d}"
+                        labels[i] = _MONTH_REGIME.get(ym, '??')
+                return labels
+            except Exception:
+                pass  # 缓存损坏，fallback 月级
+
+    # fallback: 月级标签
+    n = len(timestamps_ms)
+    labels = np.empty(n, dtype='U2')
+    for i in range(n):
+        dt = datetime.fromtimestamp(timestamps_ms[i] / 1000, tz=timezone.utc)
+        ym = f"{dt.year}-{dt.month:02d}"
+        labels[i] = _MONTH_REGIME.get(ym, '??')
+    return labels
+
+
+def flip_regime_labels(labels):
+    """镜像翻转 regime 标签"""
+    flipped = np.empty_like(labels)
+    for i, lab in enumerate(labels):
+        flipped[i] = REGIME_FLIP.get(lab, lab)
+    return flipped
+
+
+_CACHE_DIR = os.path.join(_THIS_DIR, 'cache')
+
+
+def load_all_coins(sample=5, mirror=True, train_ratio=0.6, coins=None,
+                   use_cache=True):
+    """
+    加载全部币种数据，返回训练集和测试集（支持 pickle 缓存）。
+
+    返回:
+        train_data: dict[str, np.array]  训练集指标（拼接所有币种）
+        train_labels: np.array           训练集 regime 标签
+        test_data: dict[str, np.array]   测试集指标
+        test_labels: np.array            测试集 regime 标签
+    """
+    if coins is None:
+        coins = discover_coins()
+
+    # 缓存检查
+    cache_key = f"sentinel_s{sample}_m{mirror}_r{train_ratio}_{'_'.join(coins)}"
+    cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
+    cache_file = os.path.join(_CACHE_DIR, f'sentinel_data_{cache_hash}.pkl')
+
+    if use_cache and os.path.exists(cache_file):
+        # 检查缓存是否比所有源文件新
+        cache_mtime = os.path.getmtime(cache_file)
+        src_newer = False
+        for coin in coins:
+            src_path = os.path.join(DATA_DIR, coin, '1m.json')
+            if os.path.exists(src_path) and os.path.getmtime(src_path) > cache_mtime:
+                src_newer = True
+                break
+        if not src_newer:
+            print(f"  从缓存加载: {os.path.basename(cache_file)}")
+            with open(cache_file, 'rb') as f:
+                return pickle.load(f)
+
+    warmup = gp_ind.warmup_bars()
+    indicator_keys = None
+
+    # 按币种分别处理
+    train_chunks = []  # list of (data_dict, labels_array)
+    test_chunks = []
+
+    for coin in coins:
+        print(f"  加载 {coin}...", end=' ', flush=True)
+
+        ohlcv, timestamps = load_ohlcv(coin)
+
+        # 子采样（先子采样再算指标）
+        if sample > 1:
+            ohlcv = {k: v[::sample] for k, v in ohlcv.items()}
+            timestamps = timestamps[::sample]
+
+        # 通过统一指标库计算指标
+        raw_ind = _get_indicators_from_cache(ohlcv, timestamps, coin, sample)
+
+        # 去掉预热期
+        for k in raw_ind:
+            raw_ind[k] = raw_ind[k][warmup:]
+        ts_trimmed = timestamps[warmup:]
+
+        # Regime 标签（优先分钟级缓存，fallback 月级）
+        regime = get_regime_labels(ts_trimmed, coin=coin)
+
+        # 分割 train/test（按时间）
+        split_idx = int(len(ts_trimmed) * train_ratio)
+
+        # 归一化（基于训练集 mean/std）
+        norm_data, _ = gp_ind.normalize(raw_ind, train_end_idx=split_idx)
+
+        if indicator_keys is None:
+            indicator_keys = list(norm_data.keys())
+
+        # 分割
+        train_d = {k: v[:split_idx] for k, v in norm_data.items()}
+        train_r = regime[:split_idx]
+        test_d = {k: v[split_idx:] for k, v in norm_data.items()}
+        test_r = regime[split_idx:]
+
+        train_chunks.append((train_d, train_r))
+        test_chunks.append((test_d, test_r))
+
+        n_train, n_test = len(train_r), len(test_r)
+        print(f"train={n_train:,} test={n_test:,}")
+
+        # 镜像数据
+        if mirror:
+            mirror_ohlcv = gp_ind.mirror_ohlcv(ohlcv)
+            mirror_raw = _get_indicators_from_cache(
+                mirror_ohlcv, timestamps, coin, sample, is_mirror=True)
+            for k in mirror_raw:
+                mirror_raw[k] = mirror_raw[k][warmup:]
+            mirror_regime = flip_regime_labels(regime)
+
+            mirror_norm, _ = gp_ind.normalize(mirror_raw, train_end_idx=split_idx)
+
+            train_chunks.append((
+                {k: v[:split_idx] for k, v in mirror_norm.items()},
+                mirror_regime[:split_idx],
+            ))
+            test_chunks.append((
+                {k: v[split_idx:] for k, v in mirror_norm.items()},
+                mirror_regime[split_idx:],
+            ))
+
+    # 关闭 indicator_cache 连接
+    close_cache()
+
+    # 拼接所有
+    print(f"\n拼接数据...")
+    train_data = {k: np.concatenate([c[0][k] for c in train_chunks])
+                  for k in indicator_keys}
+    train_labels = np.concatenate([c[1] for c in train_chunks])
+    test_data = {k: np.concatenate([c[0][k] for c in test_chunks])
+                 for k in indicator_keys}
+    test_labels = np.concatenate([c[1] for c in test_chunks])
+
+    # 统计
+    print(f"  训练集: {len(train_labels):,} 根")
+    print(f"  测试集: {len(test_labels):,} 根")
+    for regime_name in ['牛', '初牛', '盘整', '初熊', '熊']:
+        n_train = np.sum(train_labels == regime_name)
+        n_test = np.sum(test_labels == regime_name)
+        print(f"    {regime_name}: train={n_train:,} ({n_train/len(train_labels):.1%}) "
+              f"test={n_test:,} ({n_test/len(test_labels):.1%})")
+
+    result = (train_data, train_labels, test_data, test_labels)
+
+    # 写入缓存
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    with open(cache_file, 'wb') as f:
+        pickle.dump(result, f)
+    print(f"  缓存已保存: {os.path.basename(cache_file)}")
+
+    return result

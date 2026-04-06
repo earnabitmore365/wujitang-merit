@@ -1,0 +1,411 @@
+"""trader_report.py — 交易解说员.
+
+不参与交易决策，只观察并通过 Telegram 汇报。
+每个策略的关键事件（开仓/SL/TTP/平仓）都会触发一条 Telegram 消息。
+每小时发一次 21 策略状态摘要。
+
+调用方式：
+    unified_trader.py 在关键节点调 report.xxx()
+    report 自己读 klines 算指标，反推信号原因
+
+@see trading/unified_trader.py — 在关键节点调用 report.xxx()
+"""
+
+import json
+import logging
+import os
+import time
+import urllib.request
+from datetime import datetime, timezone
+from typing import Any
+
+logger = logging.getLogger("TraderReport")
+
+# 从 .env 读取
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+THREAD_ID = int(os.getenv("TELEGRAM_TRADER_THREAD_ID", "12030"))
+
+
+def pnl_emoji(pnl: float) -> str:
+    return "💰" if pnl >= 0 else "💸"
+
+
+class TraderReport:
+    """交易解说员 — Telegram 通知."""
+
+    def __init__(self) -> None:
+        self._last_hourly: float = 0
+
+    def _send(self, text: str) -> None:
+        """发送 Telegram 消息到 Trader Report thread."""
+        if not BOT_TOKEN or not CHAT_ID:
+            logger.warning("Telegram 凭证未配置，跳过通知")
+            return
+        try:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = json.dumps({
+                "chat_id": CHAT_ID,
+                "message_thread_id": THREAD_ID,
+                "text": text,
+                "parse_mode": "HTML",
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                url, data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            logger.exception("Telegram 发送失败")
+
+    # ========== 开仓 ==========
+
+    def report_open(
+        self, strategy: Any, signal: str, entry_price: float,
+        position_size: float, margin: float, nominal: float, reason: str = "",
+    ) -> None:
+        """开仓成功通知.
+
+        Args:
+            strategy: StrategyRunner 实例
+            signal: 'BUY' / 'SELL'
+            entry_price: 入场价
+            position_size: 币数量
+            margin: 保证金（美元）
+            nominal: 名义（美元）
+            reason: 信号原因（由 analyze_signal 生成）
+
+        """
+        direction = "📈 开多" if signal == "BUY" else "📉 开空"
+        sl_pct = strategy._sl_pct * 100
+        if signal == "BUY":
+            sl_price = round(entry_price * (1 - strategy._sl_pct), 2)
+        else:
+            sl_price = round(entry_price * (1 + strategy._sl_pct), 2)
+
+        text = (
+            f"{direction} <b>[{strategy.id}]</b>\n"
+            f"价格: ${entry_price:,.2f} | 数量: {position_size:.4f} {strategy.coin}\n"
+            f"保证金: ${margin:,.0f} | 名义: ${nominal:,.0f}\n"
+            f"SL: ${sl_price:,.2f} ({sl_pct:.0f}%)\n"
+        )
+        if reason:
+            text += f"\n💡 原因: {reason}"
+
+        self._send(text)
+
+    # ========== SL 挂单 ==========
+
+    def report_sl_placed(
+        self, strategy: Any, sl_price: float,
+        sl_order_id: str,
+    ) -> None:
+        """SL 挂单成功."""
+        self._send(
+            f"🛡 <b>[{strategy.id}]</b> SL 已设\n"
+            f"触发价: ${sl_price:,.2f} | 单号: {sl_order_id[:8]}...",
+        )
+
+    # ========== TTP ==========
+
+    def report_ttp_activated(
+        self, strategy: Any, ttp_level: float,
+        current_price: float,
+    ) -> None:
+        """TTP 首次激活."""
+        self._send(
+            f"⏱ <b>[{strategy.id}]</b> TTP 激活\n"
+            f"入场: ${strategy.entry_price:,.2f} → "
+            f"当前: ${current_price:,.2f} → "
+            f"TTP: ${ttp_level:,.2f}",
+        )
+
+    def report_ttp_updated(
+        self, strategy: Any, old_level: float,
+        new_level: float,
+    ) -> None:
+        """TTP 上移/下移."""
+        direction = "↑" if new_level > old_level else "↓"
+        self._send(
+            f"📐 <b>[{strategy.id}]</b> TTP {direction}\n"
+            f"${old_level:,.2f} → ${new_level:,.2f}",
+        )
+
+    # ========== 平仓 ==========
+
+    def report_close(
+        self, strategy: Any, reason: str, exit_price: float,
+        pnl: float, duration_str: str, balance_after: float,
+    ) -> None:
+        """平仓通知.
+
+        Args:
+            strategy: StrategyRunner 实例
+            reason: 'SIGNAL' / 'TTP' / 'STOP_LOSS' / 'CIRCUIT_BREAKER' / 'DISCONNECT'
+            exit_price: 出场价
+            pnl: 盈亏（美元）
+            duration_str: 持仓时长（如 "2h 15m"）
+            balance_after: 平仓后余额
+
+        """
+        emoji = pnl_emoji(pnl)
+        reason_text = {
+            "SIGNAL": "信号反转",
+            "TTP": "TTP 止盈",
+            "STOP_LOSS": "止损触发",
+            "CIRCUIT_BREAKER": "熔断",
+            "DISCONNECT": "断线恢复",
+        }.get(reason, reason)
+
+        text = (
+            f"{emoji} <b>[{strategy.id}]</b> 平仓（{reason_text}）\n"
+            f"入场: ${strategy.entry_price:,.2f} → 出场: ${exit_price:,.2f}\n"
+            f"盈亏: {'+'if pnl>=0 else ''}{pnl:,.2f} USD\n"
+            f"持仓: {duration_str} | 余额: ${balance_after:,.2f}"
+        )
+        self._send(text)
+
+    # ========== 熔断 ==========
+
+    def report_circuit_breaker(self, balance: float, num_positions: int) -> None:
+        """熔断触发."""
+        self._send(
+            "🚨🚨🚨 <b>熔断触发</b> 🚨🚨🚨\n"
+            f"余额: ${balance:,.2f} | 平仓: {num_positions} 个\n"
+            "所有仓位已全平，系统停战",
+        )
+
+    # ========== 每小时摘要 ==========
+
+    def report_hourly(self, strategies: list[Any], adapter: Any) -> None:
+        """每小时策略状态摘要."""
+        now = time.time()
+        if now - self._last_hourly < 3500:  # 防重复
+            return
+        self._last_hourly = now
+
+        balance = adapter.get_balance()
+        available = balance.get("available", 0)
+
+        active = [s for s in strategies if s.position]
+        idle = len(strategies) - len(active)
+
+        lines = [
+            "📊 <b>每小时摘要</b> "
+            f"{datetime.now(timezone.utc).strftime('%H:%M')} UTC\n",
+            f"余额: ${available:,.2f} | 持仓: {len(active)} | 空闲: {idle}\n",
+        ]
+
+        if active:
+            lines.append("")
+            for s in active:
+                price = (adapter.get_price(s.coin)
+                         if hasattr(adapter, "get_price")
+                         else 0)
+                if price > 0 and s.entry_price > 0:
+                    if s.position == "BUY":
+                        pnl = (price - s.entry_price) * s.position_size
+                    else:
+                        pnl = (s.entry_price - price) * s.position_size
+                    pnl_str = f"{'+'if pnl>=0 else ''}{pnl:,.2f}"
+                else:
+                    pnl_str = "N/A"
+
+                direction = "🟢" if s.position == "BUY" else "🔴"
+                ttp_str = (f" TTP={s._last_ttp_level:,.2f}"
+                           if s._last_ttp_level > 0 else "")
+                lines.append(
+                    f"{direction} {s.id}: "
+                    f"${s.entry_price:,.2f} → ${price:,.2f} "
+                    f"({pnl_str}){ttp_str}",
+                )
+        else:
+            lines.append("\n全部空闲，等待信号...")
+
+        self._send("\n".join(lines))
+
+    # ========== 信号原因分析 ==========
+
+    def analyze_signal(self, strategy: Any, klines: list[dict[str, Any]]) -> str:
+        """分析信号原因 — 根据策略类型读指标.
+
+        不改策略代码，在外部读同样的 klines 算指标，反推原因。
+
+        Args:
+            strategy: StrategyRunner 实例
+            klines: K 线数据
+
+        Returns:
+            str: 人话原因（如 "RSI=28.5 超卖 + BB 下轨突破"）
+
+        """
+        if not klines or len(klines) < 20:
+            return ""
+
+        name = strategy.strategy_name
+        closes = [k["close"] for k in klines]
+        highs = [k["high"] for k in klines]
+        lows = [k["low"] for k in klines]
+        volumes = [k.get("volume", 0) for k in klines]
+
+        try:
+            if name == "mean_reversion":
+                return self._analyze_mean_reversion(closes, volumes)
+            if name == "bb_squeeze":
+                return self._analyze_bb_squeeze(closes, highs, lows, volumes)
+            if name == "rsi_reversal":
+                return self._analyze_rsi_reversal(closes)
+            if name == "order_block":
+                return self._analyze_order_block(closes, highs, lows, volumes)
+            if name == "proc":
+                return self._analyze_proc(closes)
+            if name == "advanced_kline_echo":
+                return self._analyze_kline_echo(closes, highs, lows)
+            if name == "williams_fast":
+                return self._analyze_williams(closes, highs, lows)
+            if name == "smc_real":
+                return self._analyze_smc(closes, highs, lows, volumes)
+        except Exception as e:
+            return f"分析异常: {e}"
+        else:
+            return f"策略: {name}"
+
+    # --- 通用指标计算 ---
+
+    def _calc_rsi(self, closes: list[float], period: int = 14) -> float:
+        """计算 RSI."""
+        if len(closes) < period + 1:
+            return 50
+        gains, losses = [], []
+        for i in range(-period, 0):
+            diff = closes[i] - closes[i-1]
+            gains.append(max(diff, 0))
+            losses.append(max(-diff, 0))
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        if avg_loss == 0:
+            return 100
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def _calc_bb(
+        self, closes: list[float],
+        period: int = 20, std_mult: float = 2,
+    ) -> tuple[float, float, float]:
+        """计算布林带."""
+        if len(closes) < period:
+            return 0, 0, 0
+        recent = closes[-period:]
+        sma = sum(recent) / period
+        std = (sum((x - sma) ** 2 for x in recent) / period) ** 0.5
+        return sma, sma + std_mult * std, sma - std_mult * std
+
+    # --- 各策略分析方法 ---
+
+    def _analyze_mean_reversion(self, closes: list[float], volumes: list[float]) -> str:
+        rsi = self._calc_rsi(closes)
+        _, upper, lower = self._calc_bb(closes)
+        price = closes[-1]
+        parts = [f"RSI={rsi:.1f}"]
+        if price < lower:
+            parts.append("BB下轨突破")
+        elif price > upper:
+            parts.append("BB上轨突破")
+        if len(volumes) >= 2 and volumes[-2] > 0:
+            vol_ratio = volumes[-1] / volumes[-2]
+            if vol_ratio > 1.5:
+                parts.append(f"量比{vol_ratio:.1f}x")
+        return " | ".join(parts)
+
+    def _analyze_bb_squeeze(
+        self, closes: list[float],
+        _highs: list[float], _lows: list[float],
+        _volumes: list[float],
+    ) -> str:
+        sma, upper, lower = self._calc_bb(closes)
+        price = closes[-1]
+        bandwidth = (upper - lower) / sma * 100 if sma > 0 else 0
+        rsi = self._calc_rsi(closes)
+        parts = [f"BB宽={bandwidth:.2f}%", f"RSI={rsi:.1f}"]
+        if price > upper:
+            parts.append("突破上轨")
+        elif price < lower:
+            parts.append("突破下轨")
+        return " | ".join(parts)
+
+    def _analyze_rsi_reversal(self, closes: list[float]) -> str:
+        rsi = self._calc_rsi(closes)
+        rsi_prev = self._calc_rsi(closes[:-1])
+        parts = [f"RSI={rsi:.1f}(前={rsi_prev:.1f})"]
+        if rsi < 30:
+            parts.append("超卖区")
+        elif rsi > 70:
+            parts.append("超买区")
+        return " | ".join(parts)
+
+    def _analyze_order_block(
+        self, closes: list[float],
+        _highs: list[float], _lows: list[float],
+        volumes: list[float],
+    ) -> str:
+        rsi = self._calc_rsi(closes)
+        parts = [f"RSI={rsi:.1f}"]
+        if len(volumes) >= 3:
+            avg_vol = sum(volumes[-3:]) / 3
+            if avg_vol > 0:
+                parts.append(f"3根均量={avg_vol:.0f}")
+        return " | ".join(parts)
+
+    def _analyze_proc(self, closes: list[float]) -> str:
+        if len(closes) >= 10:
+            roc = (closes[-1] - closes[-10]) / closes[-10] * 100
+            parts = [f"ROC(10)={roc:.2f}%"]
+        else:
+            parts = ["数据不足"]
+        rsi = self._calc_rsi(closes)
+        parts.append(f"RSI={rsi:.1f}")
+        return " | ".join(parts)
+
+    def _analyze_kline_echo(
+        self, closes: list[float],
+        highs: list[float], lows: list[float],
+    ) -> str:
+        rsi = self._calc_rsi(closes)
+        atr_sum = sum(highs[i] - lows[i] for i in range(-14, 0))
+        atr = atr_sum / 14
+        parts = [f"RSI={rsi:.1f}", f"ATR={atr:.2f}"]
+        return " | ".join(parts)
+
+    def _analyze_williams(
+        self, closes: list[float],
+        highs: list[float], lows: list[float],
+    ) -> str:
+        if len(closes) >= 14:
+            highest = max(highs[-14:])
+            lowest = min(lows[-14:])
+            if highest != lowest:
+                wr = (highest - closes[-1]) / (highest - lowest) * -100
+            else:
+                wr = -50
+            parts = [f"Williams%R={wr:.1f}"]
+            if wr < -80:
+                parts.append("超卖")
+            elif wr > -20:
+                parts.append("超买")
+        else:
+            parts = ["数据不足"]
+        return " | ".join(parts)
+
+    def _analyze_smc(
+        self, closes: list[float],
+        highs: list[float], lows: list[float],
+        _volumes: list[float],
+    ) -> str:
+        rsi = self._calc_rsi(closes)
+        parts = [f"RSI={rsi:.1f}"]
+        if len(highs) >= 5:
+            recent_high = max(highs[-5:])
+            recent_low = min(lows[-5:])
+            parts.append(f"5根区间={recent_low:.2f}~{recent_high:.2f}")
+        return " | ".join(parts)

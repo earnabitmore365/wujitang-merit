@@ -1,0 +1,366 @@
+"""strategy_runner.py — 单个策略的完整生命周期管理.
+
+职责：
+- 加载策略实例（通过 registry 自动注册）
+- Mirror 包装（FlipKlinesStrategy）
+- 产信号（on_bar）— 只返回信号，不执行交易
+- 交易所挂单保护（after_open / update_ttp_on_exchange / before_close）
+- 内部持仓跟踪（不靠 API 查 — BitMEX 会合并同币种仓位）
+- 状态序列化（崩溃恢复用）
+
+@see trading/team_config.py — StrategyConfig 定义
+@see src/core/strategy/base.py — get_strategy() 策略注册
+@see src/core/risk/ttp.py — TTPManager 移动止盈
+@see src/exchange/bitmex/adapter.py — place_stop_loss / place_take_profit
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from exchange.bitmex.adapter import BitMEXAdapter
+    from team_config import StrategyConfig
+
+# 确保 trading/ 和 src/ 在 sys.path（策略用 core.* 路径）
+_lab_dir = os.path.dirname(os.path.abspath(__file__))
+if _lab_dir not in sys.path:
+    sys.path.insert(0, _lab_dir)
+_src_dir = os.path.join(_lab_dir, "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+import contextlib  # noqa: E402
+
+from core.risk.ttp import TTPConfig, TTPManager  # noqa: E402
+from core.strategy.base import get_strategy  # noqa: E402
+from exchange.base import OrderSide  # noqa: E402
+
+logger = logging.getLogger(__name__)
+
+
+class StrategyRunner:
+    """单个策略的完整生命周期管理.
+
+    状态机：idle → pending_open → active → pending_close → idle
+
+    每个 runner 独立跟踪自己的持仓状态（position / entry_price / position_size），
+    因为 BitMEX 会把同币种同方向的仓位合并，API 查不出哪个策略持有多少。
+    """
+
+    def __init__(self, config: StrategyConfig, adapter: BitMEXAdapter) -> None:
+        """Initialize StrategyRunner.
+
+        Args:
+            config: team_config.py 里的 StrategyConfig
+            adapter: 共享的 BitMEXAdapter
+
+        """
+        self.coin = config.coin
+        self.strategy_name = config.strategy
+        self.interval = config.interval
+        self.mirror = config.mirror
+        self._sl_pct = config.sl_pct
+        self.id = config.strategy_id
+
+        # 加载策略实例
+        self._inner_strategy = get_strategy(config.strategy)
+
+        # Mirror 包装：翻转K线但不翻转信号
+        # 不直接用 FlipKlinesStrategy（它内部调用 indicator_cache），
+        # 我们在 on_bar 里手动做翻转，更可控
+        self._adapter = adapter
+
+        # TTP 管理器（每个 runner 一个独立实例）
+        self.ttp_manager = TTPManager(TTPConfig())
+
+        # ========== 内部持仓状态（不靠 API 查）==========
+        self.position: str | None = None   # 'BUY' / 'SELL' / None
+        self.entry_price = 0.0
+        self.position_size = 0.0           # 名义敞口（币数量）
+        self._target_size = 0.0            # 目标量（部分成交时用）
+        self.open_time: str | None = None
+
+        # 交易所挂单 ID
+        self.sl_order_id: str | None = None   # 止损单
+        self.tp_order_id: str | None = None   # 止盈单
+
+        # 状态（idle / pending_open / active / pending_close）
+        self.state = "idle"
+
+        # 上次 TTP level（避免重复更新交易所挂单）
+        self._last_ttp_level = 0.0
+
+    def on_bar(self, _bar: dict[str, Any], klines: Sequence[dict[str, Any]]) -> str | None:
+        """收到一根 K 线，返回信号.
+
+        由 KlineDispatcher 回调 → UnifiedTrader._on_bar 调用。
+        只算信号，不执行交易。交易执行由 UnifiedTrader._execute() 负责。
+
+        Args:
+            bar: 最新一根 K 线 dict（open/high/low/close/volume/timestamp）
+            klines: K 线窗口（deque 或 list）
+
+        Returns:
+            str: 'BUY' / 'SELL' / 'HOLD' / None
+
+        """
+        if not klines or len(klines) < 2:
+            return None
+
+        # 转成 list（deque 不能切片）
+        klines_list = list(klines)
+
+        # Mirror 策略先翻转 K 线
+        if self.mirror:
+            klines_list = self._flip_klines(klines_list)
+
+        # 更新 indicator_cache
+        try:
+            from core.indicator_cache import init_cache
+            namespace = "flipped" if self.mirror else "normal"
+            init_cache(self.coin, self.interval, klines_list, namespace=namespace)
+        except Exception as e:
+            logger.warning("[%s] indicator_cache 更新失败: %s", self.id, e)
+
+        # 设置 current_idx
+        self._inner_strategy.current_idx = len(klines_list) - 1
+
+        # 策略产信号
+        try:
+            result = self._inner_strategy.generate_signal(self.coin, klines_list)
+            if result is None:
+                return None
+
+            # TradingSignal 对象 → 提取信号字符串
+            if hasattr(result, "signal"):
+                sig = result.signal
+                if hasattr(sig, "value"):
+                    return str(sig.value)  # Signal.BUY → 'BUY'
+                return str(sig)
+
+            return str(result)
+        except Exception:
+            logger.exception("[%s] generate_signal 异常", self.id)
+            return None
+
+    # ========== K 线翻转 ==========
+
+    def _flip_klines(self, klines: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        """价格取负：正常世界的完美镜像。收益率自然反转。
+
+        与 build_klines_indicators.mirror_candles 一致。
+        不需要轴、不需要预热、负数价格合法。
+        """
+        if not klines:
+            return []
+        flipped = []
+        for k in klines:
+            m = dict(k)
+            m["open"]  = -k["open"]
+            m["close"] = -k["close"]
+            m["high"]  = -k["low"]
+            m["low"]   = -k["high"]
+            flipped.append(m)
+        return flipped
+
+    # ========== 交易所挂单保护 ==========
+
+    def after_open(self, adapter: BitMEXAdapter) -> None:
+        """开仓后交易所挂止损单，幅度由 config.sl_pct 控制."""
+        if not self.position or self.entry_price <= 0:
+            return
+
+        if self.position == "BUY":
+            sl_price = round(self.entry_price * (1 - self._sl_pct), 2)
+            sl_side = OrderSide.SELL
+        else:
+            sl_price = round(self.entry_price * (1 + self._sl_pct), 2)
+            sl_side = OrderSide.BUY
+
+        try:
+            result = adapter.place_stop_loss(
+                coin=self.coin,
+                stop_price=sl_price,
+                size=self.position_size,
+                side=sl_side,
+            )
+            if result.success:
+                self.sl_order_id = result.order_id
+                logger.info(
+                    "[%s] SL 已挂: %s (order=%s)",
+                    self.id, sl_price, result.order_id,
+                )
+            else:
+                # Hedge Mode 下可能失败，靠软件层止损兜底
+                logger.warning(
+                    "[%s] SL 挂单跳过（Hedge Mode），靠软件止损: %s",
+                    self.id, result.message,
+                )
+        except Exception as e:
+            logger.warning("[%s] SL 挂单跳过: %s", self.id, e)
+
+        self.tp_order_id = None
+        self._last_ttp_level = 0.0
+        self.ttp_manager.state.reset()
+
+    def update_ttp_on_exchange(
+        self, adapter: BitMEXAdapter, current_price: float,
+    ) -> str | None:
+        """软件算 TTP level → 撤旧止盈单，挂新止盈单.
+
+        每秒用 tick 价格调一次。TTP level 变了才更新交易所挂单。
+
+        Returns:
+            'TTP_TRIGGERED' 如果 TTP 触发需要平仓，否则 None
+
+        """
+        if not self.position or self.entry_price <= 0:
+            return None
+
+        pos_side = "LONG" if self.position == "BUY" else "SHORT"
+
+        result = self.ttp_manager.check(
+            position=None,
+            current_price=current_price,
+            position_side=pos_side,
+            entry_price=self.entry_price,
+        )
+
+        if result.should_close:
+            logger.info("[%s] TTP 触发平仓! price=%s", self.id, current_price)
+            return "TTP_TRIGGERED"
+
+        # TTP 激活且 level 变了 → 更新交易所止盈单
+        ttp_level = self.ttp_manager.state.ttp_level
+        if (self.ttp_manager.state.active and ttp_level > 0
+                and abs(ttp_level - self._last_ttp_level) > 0.001):
+                # 撤旧 TP 单
+                if self.tp_order_id:
+                    with contextlib.suppress(Exception):
+                        adapter.cancel_order(self.tp_order_id)
+
+                # 挂新 TP 单
+                tp_side = OrderSide.SELL if self.position == "BUY" else OrderSide.BUY
+                try:
+                    tp_result = adapter.place_take_profit(
+                        coin=self.coin,
+                        tp_price=round(ttp_level, 2),
+                        size=self.position_size,
+                        side=tp_side,
+                    )
+                    if tp_result.success:
+                        self.tp_order_id = tp_result.order_id
+                        self._last_ttp_level = ttp_level
+                        logger.info("[%s] TP 已更新: %s", self.id, ttp_level)
+                    else:
+                        logger.error("[%s] TP 挂单失败: %s", self.id, tp_result.message)
+                except Exception:
+                    logger.exception("[%s] update_ttp 异常", self.id)
+
+        return None
+
+    def before_close(self, adapter: BitMEXAdapter) -> None:
+        """平仓前撤掉止盈止损单.
+
+        先撤单再平仓，避免交易所挂单和软件平仓冲突。
+        """
+        if self.sl_order_id:
+            try:
+                adapter.cancel_order(self.sl_order_id)
+                logger.info("[%s] SL 已撤: %s", self.id, self.sl_order_id)
+            except Exception:
+                logger.debug("[%s] SL 撤单失败（可能已成交）: %s",
+                             self.id, self.sl_order_id)
+            self.sl_order_id = None
+
+        if self.tp_order_id:
+            try:
+                adapter.cancel_order(self.tp_order_id)
+                logger.info("[%s] TP 已撤: %s", self.id, self.tp_order_id)
+            except Exception:
+                logger.debug("[%s] TP 撤单失败（可能已成交）: %s",
+                             self.id, self.tp_order_id)
+            self.tp_order_id = None
+
+    # ========== 状态重置 ==========
+
+    def reset_idle(self) -> None:
+        """重置为 idle 状态（平仓/熔断/幽灵清理后调用）."""
+        self.position = None
+        self.entry_price = 0.0
+        self.position_size = 0.0
+        self._target_size = 0.0
+        self.open_time = None
+        self.sl_order_id = None
+        self.tp_order_id = None
+        self.state = "idle"
+        self._last_ttp_level = 0.0
+        self.ttp_manager.state.reset()
+
+    # ========== 序列化（崩溃恢复用）==========
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化为 dict → JSON 持久化."""
+        return {
+            "id": self.id,
+            "coin": self.coin,
+            "strategy_name": self.strategy_name,
+            "interval": self.interval,
+            "mirror": self.mirror,
+            "position": self.position,
+            "entry_price": self.entry_price,
+            "position_size": self.position_size,
+            "_target_size": self._target_size,
+            "open_time": self.open_time,
+            "sl_order_id": self.sl_order_id,
+            "tp_order_id": self.tp_order_id,
+            "state": self.state,
+            "_last_ttp_level": self._last_ttp_level,
+            "ttp_state": {
+                "position_side": self.ttp_manager.state.position_side,
+                "entry_price": self.ttp_manager.state.entry_price,
+                "highest": self.ttp_manager.state.highest,
+                "pullback_low": self.ttp_manager.state.pullback_low,
+                "lowest": self.ttp_manager.state.lowest,
+                "pullback_high": self.ttp_manager.state.pullback_high,
+                "in_pullback": self.ttp_manager.state.in_pullback,
+                "swing_count": self.ttp_manager.state.swing_count,
+                "ttp_level": self.ttp_manager.state.ttp_level,
+                "active": self.ttp_manager.state.active,
+            },
+        }
+
+    def from_dict(self, d: dict[str, Any]) -> None:
+        """从 dict 反序列化恢复状态."""
+        self.position = d.get("position")
+        self.entry_price = d.get("entry_price", 0.0)
+        self.position_size = d.get("position_size", 0.0)
+        self._target_size = d.get("_target_size", 0.0)
+        self.open_time = d.get("open_time")
+        self.sl_order_id = d.get("sl_order_id")
+        self.tp_order_id = d.get("tp_order_id")
+        self.state = d.get("state", "idle")
+        self._last_ttp_level = d.get("_last_ttp_level", 0.0)
+
+        ttp = d.get("ttp_state", {})
+        if ttp:
+            self.ttp_manager.state.position_side = ttp.get("position_side", "")
+            self.ttp_manager.state.entry_price = ttp.get("entry_price", 0.0)
+            self.ttp_manager.state.highest = ttp.get("highest", 0.0)
+            self.ttp_manager.state.pullback_low = ttp.get("pullback_low", 0.0)
+            self.ttp_manager.state.lowest = ttp.get("lowest", 0.0)
+            self.ttp_manager.state.pullback_high = ttp.get("pullback_high", 0.0)
+            self.ttp_manager.state.in_pullback = ttp.get("in_pullback", False)
+            self.ttp_manager.state.swing_count = ttp.get("swing_count", 0)
+            self.ttp_manager.state.ttp_level = ttp.get("ttp_level", 0.0)
+            self.ttp_manager.state.active = ttp.get("active", False)
+
+    def __repr__(self) -> str:
+        return (f"<StrategyRunner {self.id} state={self.state} "
+                f"pos={self.position} size={self.position_size}>")

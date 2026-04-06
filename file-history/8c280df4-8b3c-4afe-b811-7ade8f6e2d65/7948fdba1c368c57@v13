@@ -1,0 +1,42 @@
+{
+  "ui-ux-pro-max-skill": {
+    "source": {
+      "source": "github",
+      "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
+    },
+    "installLocation": "/Users/allenbot/.claude/plugins/marketplaces/ui-ux-pro-max-skill",
+    "lastUpdated": "2026-02-24T10:01:17.004Z"
+  },
+  "claude-plugins-official": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
+    "installLocation": "/Users/allenbot/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-04-06T02:46:09.161Z"
+  },
+  "claude-hud": {
+    "source": {
+      "source": "github",
+      "repo": "jarrodwatts/claude-hud"
+    },
+    "installLocation": "/Users/allenbot/.claude/plugins/marketplaces/claude-hud",
+    "lastUpdated": "2026-03-28T02:14:14.471Z"
+  },
+  "taiji-audit": {
+    "source": {
+      "source": "github",
+      "repo": "earnabitmore365/taiji-audit"
+    },
+    "installLocation": "/Users/allenbot/.claude/plugins/marketplaces/taiji-audit",
+    "lastUpdated": "2026-03-28T08:44:15.904Z"
+  },
+  "knowledge-work-plugins": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/knowledge-work-plugins"
+    },
+    "installLocation": "/Users/allenbot/.claude/plugins/marketplaces/knowledge-work-plugins",
+    "lastUpdated": "2026-03-30T15:16:20.687Z"
+  }
+}

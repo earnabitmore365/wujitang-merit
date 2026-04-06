@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""
+报告种子重算 — 从 paired_trades 重新计算 combo_summary
+
+@see ARCHITECTURE.md — 报告种子从 paired_trades 重算 combo_summary
+
+增量回测后，paired_trades 新增了交易，需要重算汇总指标。
+只重算有更新的 combo（通过 backtest_checkpoint.updated_at 判断）。
+
+用法：
+  python3 backtest/pipeline/refresh_summary.py                    # 重算所有有更新的 combo
+  python3 backtest/pipeline/refresh_summary.py --all               # 强制重算全部
+  python3 backtest/pipeline/refresh_summary.py --ttp               # TTP 版本
+  python3 backtest/pipeline/refresh_summary.py --coins ETH XRP     # 只重算指定币种
+"""
+
+import sys
+import os
+import sqlite3
+import logging
+import argparse
+import statistics
+import time
+from datetime import datetime
+from typing import List, Dict, Optional
+
+# ── 项目根定位 ──
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from backtest.generate_seed import (  # noqa: E402
+    INITIAL_CAPITAL, DAYS, init_db,
+)
+from src.backtest.incremental_backtest import (  # noqa: E402
+    DB_PATH, DB_PATH_TTP, _BARS_PER_DAY,
+)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+def get_combos_to_refresh(conn: sqlite3.Connection, force_all: bool = False,
+                          coins: List[str] = None) -> List[Dict]:
+    """获取需要重算的 combo 列表
+
+    如果 force_all，返回全部 combo。
+    否则只返回 checkpoint.updated_at > combo_summary.backtest_time 的 combo。
+    """
+    if force_all:
+        sql = """SELECT cs.id, cs.strategy, cs.coin, cs.interval
+                 FROM combo_summary cs"""
+        params = []
+        if coins:
+            placeholders = ','.join(['?'] * len(coins))
+            sql += f" WHERE cs.coin IN ({placeholders})"
+            params = coins
+        cur = conn.execute(sql, params)
+    else:
+        sql = """SELECT cs.id, cs.strategy, cs.coin, cs.interval
+                 FROM combo_summary cs
+                 JOIN backtest_checkpoint bc
+                   ON cs.strategy = bc.strategy
+                  AND cs.coin = bc.coin
+                  AND cs.interval = bc.interval_
+                 WHERE bc.updated_at > COALESCE(cs.backtest_time, '1970-01-01')"""
+        params = []
+        if coins:
+            placeholders = ','.join(['?'] * len(coins))
+            sql += f" AND cs.coin IN ({placeholders})"
+            params = coins
+        cur = conn.execute(sql, params)
+
+    return [{'id': r[0], 'strategy': r[1], 'coin': r[2], 'interval': r[3]}
+            for r in cur.fetchall()]
+
+
+def recalculate_summary(conn: sqlite3.Connection, combo_id: int,
+                        strategy: str, coin: str, interval: str) -> bool:
+    """从 paired_trades 重算一个 combo 的 combo_summary
+
+    Returns:
+        True if updated successfully
+    """
+    # 读取所有配对交易
+    cur = conn.execute(
+        """SELECT pnl, r_value, balance_after, close_type, close_time,
+                  fee, funding_cost, slippage_cost, direction,
+                  open_time, holding_bars, capital
+           FROM paired_trades
+           WHERE combo_id=?
+           ORDER BY id""",
+        (combo_id,))
+    trades = cur.fetchall()
+
+    if not trades:
+        return False
+
+    # 基本统计
+    total_trades = len(trades)
+    winning = [t for t in trades if t[0] > 0]  # pnl > 0
+    losing = [t for t in trades if t[0] <= 0]
+    winning_trades = len(winning)
+    losing_trades = len(losing)
+
+    # 胜率
+    win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+
+    # 平均盈亏（% of initial capital）
+    avg_win_pct = (statistics.mean([t[0] for t in winning]) / INITIAL_CAPITAL * 100) if winning else 0.0
+    avg_loss_pct = (abs(statistics.mean([t[0] for t in losing]) / INITIAL_CAPITAL * 100)) if losing else 0.0
+
+    # 重建余额曲线
+    balance_curve = [INITIAL_CAPITAL]
+    for t in trades:
+        balance_curve.append(balance_curve[-1] + t[0])  # pnl
+
+    final_balance = balance_curve[-1]
+    max_balance = max(balance_curve)
+    min_balance = min(balance_curve)
+
+    # 总收益
+    total_return = (final_balance - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100
+
+    # 最大回撤
+    max_eq = INITIAL_CAPITAL
+    max_dd = 0.0
+    for e in balance_curve:
+        if e > max_eq:
+            max_eq = e
+        if max_eq > 0:
+            dd = (max_eq - e) / max_eq * 100
+            if dd > max_dd:
+                max_dd = dd
+
+    # Sharpe / Sortino
+    returns = []
+    for i in range(1, len(balance_curve)):
+        if balance_curve[i-1] > 0:
+            ret = (balance_curve[i] - balance_curve[i-1]) / balance_curve[i-1]
+            returns.append(ret)
+
+    sharpe = 0.0
+    sortino = 0.0
+    if len(returns) > 1 and statistics.stdev(returns) > 0:
+        risk_free = 0.02 / 252
+        sharpe = (statistics.mean(returns) - risk_free) / statistics.stdev(returns) * (252**0.5)
+        neg_returns = [r for r in returns if r < 0]
+        if len(neg_returns) > 1:
+            sortino = (statistics.mean(returns) - risk_free) / statistics.stdev(neg_returns) * (252**0.5)
+
+    # Calmar
+    calmar = total_return / max_dd if max_dd > 0 else 0.0
+
+    # 盈利因子
+    gross_profit = sum(t[0] for t in winning)
+    gross_loss = sum(t[0] for t in losing)
+    profit_factor = gross_profit / abs(gross_loss) if gross_loss < 0 else 0.0
+
+    # TTP 统计
+    ttp_count = len([t for t in trades if t[3] == 'ttp'])  # close_type
+    signal_close_count = len([t for t in trades if t[3] in ('signal', 'stop_loss')])
+
+    # 翻倍统计
+    double_times = []
+    next_target = INITIAL_CAPITAL * 2
+    # 回测起始日期从第一笔交易推算
+    prev_date = None
+    if trades:
+        try:
+            prev_date = datetime.strptime(trades[0][9], '%Y-%m-%d %H:%M')  # open_time
+        except (ValueError, TypeError):
+            pass
+
+    for t in trades:
+        bal_after = t[2]  # balance_after
+        if bal_after >= next_target and prev_date is not None:
+            try:
+                hit_date = datetime.strptime(t[4], '%Y-%m-%d %H:%M')  # close_time
+            except (ValueError, TypeError):
+                continue
+            days_diff = (hit_date - prev_date).days
+            if days_diff < 0:
+                days_diff = 0
+            double_times.append(days_diff)
+            prev_date = hit_date
+            next_target *= 2
+
+    double_count = len(double_times)
+    fastest_double_days = min(double_times) if double_times else 0
+    avg_double_days = round(sum(double_times) / double_count, 1) if double_count > 0 else 0
+
+    # 日均开仓量
+    bars_per_day = _BARS_PER_DAY.get(interval, 24)
+    # 从最早到最晚交易推算天数
+    if trades:
+        try:
+            first_date = datetime.strptime(trades[0][9], '%Y-%m-%d %H:%M')
+            last_date = datetime.strptime(trades[-1][4], '%Y-%m-%d %H:%M')
+            trading_days = max(1, (last_date - first_date).days)
+        except (ValueError, TypeError):
+            trading_days = max(1, len(trades))
+    else:
+        trading_days = 1
+    daily_open = total_trades / trading_days
+
+    # CAGR
+    actual_days = trading_days
+    cagr = 0.0
+    if final_balance > 0 and INITIAL_CAPITAL > 0 and actual_days > 0:
+        cagr = (final_balance / INITIAL_CAPITAL) ** (365.0 / actual_days) - 1
+
+    # 总费用
+    total_fees = sum(t[5] + t[6] + t[7] for t in trades)  # fee + funding + slippage
+
+    # 盈亏比
+    reward_risk = avg_win_pct / avg_loss_pct if avg_loss_pct > 0 else 0.0
+
+    # 最大连续亏损金额
+    max_consec_loss_amt = 0.0
+    current_loss_amt = 0.0
+    for t in trades:
+        if t[0] < 0:
+            current_loss_amt += t[0]
+            if abs(current_loss_amt) > abs(max_consec_loss_amt):
+                max_consec_loss_amt = current_loss_amt
+        else:
+            current_loss_amt = 0.0
+
+    # 最大单日回撤
+    daily_pnl = {}
+    for t in trades:
+        day = t[4][:10] if t[4] else ''  # close_time[:10]
+        if day:
+            daily_pnl[day] = daily_pnl.get(day, 0.0) + t[0]
+    max_daily_dd = min(daily_pnl.values()) if daily_pnl else 0.0
+
+    # 最长连胜/连亏
+    longest_win = 0
+    longest_loss = 0
+    cur_win = 0
+    cur_loss = 0
+    for t in trades:
+        if t[0] > 0:
+            cur_win += 1
+            cur_loss = 0
+            longest_win = max(longest_win, cur_win)
+        else:
+            cur_loss += 1
+            cur_win = 0
+            longest_loss = max(longest_loss, cur_loss)
+
+    # 期望比率
+    wr = win_rate / 100.0
+    expectancy_ratio = (wr * avg_win_pct / 100.0) - ((1 - wr) * avg_loss_pct / 100.0)
+
+    # 最大单笔盈亏
+    max_win = max(t[0] for t in trades) if trades else 0.0
+    max_loss = min(t[0] for t in trades) if trades else 0.0
+
+    # 更新 DB
+    conn.execute(
+        """UPDATE combo_summary SET
+           total_return=?, final_balance=?, max_drawdown=?,
+           sharpe_ratio=?, sortino_ratio=?, calmar_ratio=?,
+           total_trades=?, winning_trades=?, losing_trades=?, win_rate=?,
+           avg_win_pct=?, avg_loss_pct=?, profit_factor=?, ttp_count=?,
+           double_count=?, fastest_double_days=?, avg_double_days=?,
+           daily_open_positions=?,
+           cagr=?, max_daily_dd=?, reward_risk=?, max_consec_loss_amt=?,
+           total_fees=?, max_balance=?, min_balance=?,
+           max_win=?, max_loss=?,
+           expectancy_ratio=?, longest_win_streak=?, longest_loss_streak=?,
+           signal_close_count=?, backtest_time=?
+           WHERE id=?""",
+        (total_return, final_balance, max_dd,
+         sharpe, sortino, calmar,
+         total_trades, winning_trades, losing_trades, win_rate,
+         avg_win_pct, avg_loss_pct, profit_factor, ttp_count,
+         double_count, fastest_double_days, avg_double_days,
+         daily_open,
+         cagr, max_daily_dd, reward_risk, max_consec_loss_amt,
+         total_fees, max_balance, min_balance,
+         max_win, max_loss,
+         expectancy_ratio, longest_win, longest_loss,
+         signal_close_count,
+         datetime.now().strftime('%Y-%m-%d %H:%M'),
+         combo_id))
+
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(description='报告种子重算')
+    parser.add_argument('--all', action='store_true', help='强制重算全部')
+    parser.add_argument('--ttp', action='store_true', help='TTP 版本')
+    parser.add_argument('--coins', nargs='+', help='指定币种')
+    parser.add_argument('--db', type=str, default=None, help='指定数据库路径')
+    args = parser.parse_args()
+
+    db_path = args.db or (DB_PATH_TTP if args.ttp else DB_PATH)
+    conn = init_db(db_path)
+
+    logger.info(f"数据库: {db_path}")
+
+    combos = get_combos_to_refresh(conn, force_all=args.all, coins=args.coins)
+    logger.info(f"需要重算: {len(combos)} 个 combo")
+
+    if not combos:
+        logger.info("无需重算")
+        conn.close()
+        return
+
+    t0 = time.time()
+    updated = 0
+    failed = 0
+
+    for c in combos:
+        try:
+            ok = recalculate_summary(conn, c['id'], c['strategy'], c['coin'], c['interval'])
+            if ok:
+                updated += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error(f"[{c['strategy']}/{c['coin']}/{c['interval']}] 错误: {e}")
+            failed += 1
+
+    conn.commit()
+    conn.close()
+
+    elapsed = time.time() - t0
+    logger.info(f"重算完成: {updated} 更新, {failed} 失败, {elapsed:.1f}s")
+
+
+if __name__ == '__main__':
+    main()
