@@ -1876,7 +1876,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_Vultr 服务器是 UTC，老板在 U",
-    "rule_text": "单向沟通时，时间信息应使用接收方时区；需双方协商时，应同时标注双方时区。",
+    "rule_text": "单向传递信息时，时间表述应使用接收方时区；需双方协商时，应同时标注双方时区。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -2245,14 +2245,15 @@
     "status": "approved",
     "created": "2026-04-06",
     "behavior_id": "lrn_提升_老板交代的事必须立刻做，不拖不忘。做完确",
-    "rule_text": "老板交代的事完成后必须立即回复确认。",
+    "rule_text": "老板交办的事项完成后，需在约定时间内或当日工作结束前向老板回复确认，简要说明完成情况；如无法及时联系老板，应通过其他有效方式告知。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "真实性",
-    "parent_updated": true
+    "parent_updated": true,
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-152",
