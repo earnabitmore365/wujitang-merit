@@ -290,3 +290,4 @@
 {"ts": "2026-04-05T20:57:39", "agent": "两仪", "delta": 2, "reason": "石卫评估[complete_no_correction]: 5个交易所文档完整完成，有verify验证和自审流程，无错误需修正", "score_after": 93}
 {"ts": "2026-04-05T20:58:29", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 94}
 {"ts": "2026-04-05T20:58:40", "agent": "两仪", "delta": 2, "reason": "石卫评估[complete_no_correction]: 5个交易所文档全部完成，CHANGELOG更新，诚实标注Bitget官方403限制，自审清单完整，但属于被分配任务的正常完成，无额外突出表现。", "score_after": 96}
+{"ts": "2026-04-05T20:59:55", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 97}
