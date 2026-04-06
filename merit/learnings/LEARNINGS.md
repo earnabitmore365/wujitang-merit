@@ -1994,3 +1994,4 @@
 2026-04-06 01:20 | [REWARD] 太极 (+1) | 习惯养成: proactive_find_issue 连续3次
 2026-04-06 01:23 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 你先待在1级，这是测试石卫以后拦截你是拦的对不对，合不合理，然后可以做出修改。明不明白？
 1级没问题
+2026-04-06 01:29 | [PENALTY] 两仪 (-5) | [bypass_without_report] 门卫拦截：Bash 命令包含破坏性操作 [kill 终止进程]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。
