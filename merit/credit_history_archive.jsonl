@@ -301,3 +301,4 @@
 {"ts": "2026-04-05T21:44:21", "agent": "两仪", "delta": 2, "reason": "老板认可: 嗯嗯，收到你的反馈了。\n还有一个问题，什么都不懂的AI，要怎样训练成一个专业Trader呢？仅仅在c", "score_after": 122}
 {"ts": "2026-04-05T21:45:30", "agent": "两仪", "delta": -3, "reason": "老板反馈: 又出现历史遗留问题啦", "score_after": 119}
 {"ts": "2026-04-05T21:46:02", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 1分: ARCHITECTURE.md build_seed_report 描述更新", "score_after": 119}
+{"ts": "2026-04-05T21:46:15", "agent": "两仪", "delta": 5, "reason": "任务完成，押金1归还 + 质量奖励+5（verify 3/4，改了几轮）: ARCHITECTURE.md build_seed_report 描述更新", "score_after": 124}

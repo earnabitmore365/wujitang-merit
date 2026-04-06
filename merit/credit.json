@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 542,
+      "score": 543,
       "held": 27,
       "level": 3,
       "title": "金丹",
@@ -22,13 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-05T21:46:15",
-      "agent": "两仪",
-      "delta": 5,
-      "reason": "任务完成，押金1归还 + 质量奖励+5（verify 3/4，改了几轮）: ARCHITECTURE.md build_seed_report 描述更新",
-      "score_after": 124
-    },
     {
       "ts": "2026-04-05T21:52:40",
       "agent": "两仪",
@@ -721,6 +714,13 @@
       "delta": -3,
       "reason": "递增惩罚[panic_no_analysis]第2次: ×2",
       "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T06:55:27",
+      "agent": "两仪",
+      "delta": 1,
+      "reason": "老板认可: 好了，你继续下一个任务",
+      "score_after": 543
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"

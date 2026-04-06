@@ -57,13 +57,13 @@ def main():
     lv, title = get_level(0)
     test("get_level 0→锁灵", title == "锁灵", f"实际: {title}")
 
-    # 4. get_level 金丹（500分制：250+）
-    lv, title = get_level(250)
-    test("get_level 250→金丹", title == "金丹", f"实际: {title}")
+    # 4. get_level 金丹（5000分制：2500+）
+    lv, title = get_level(2500)
+    test("get_level 2500→金丹", title == "金丹", f"实际: {title}")
 
-    # 5. get_level 化神（500分制：475+）
-    lv, title = get_level(475)
-    test("get_level 475→化神", title == "化神", f"实际: {title}")
+    # 5. get_level 化神（5000分制：4750+）
+    lv, title = get_level(4750)
+    test("get_level 4750→化神", title == "化神", f"实际: {title}")
 
     # 6. determine_agent 太极
     result = determine_agent({"cwd": "/Users/allenbot"})
