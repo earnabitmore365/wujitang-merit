@@ -1,0 +1,3 @@
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md）：
+- CREATE/EDIT `/tmp/clean_tokens.py`
+格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)

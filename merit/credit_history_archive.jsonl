@@ -253,3 +253,5 @@
 {"ts": "2026-04-05T16:05:32", "agent": "两仪", "delta": -15, "reason": "递增惩罚[bypass_without_report]第4次: ×4", "score_after": 79}
 {"ts": "2026-04-05T17:07:07", "agent": "两仪", "delta": -3, "reason": "老板反馈: 不清理历史遗留问题啊", "score_after": 76}
 {"ts": "2026-04-05T17:12:07", "agent": "两仪", "delta": -5, "reason": "石卫评估[ask_boss_tech]: 执事问及杀进程与Telegram通报机制的技术问题，AI需向执事确认理解/寻求指示", "score_after": 71}
+{"ts": "2026-04-05T17:22:16", "agent": "太极", "delta": -3, "reason": "老板反馈: 我刚刚才发现，你是sonnet的模型。你怎么就变成影太极了？", "score_after": 78}
+{"ts": "2026-04-05T18:17:05", "agent": "两仪", "delta": -3, "reason": "老板反馈: Identified critical implementation discrepancy req", "score_after": 68}
