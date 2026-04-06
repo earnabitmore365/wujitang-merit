@@ -666,10 +666,25 @@ def mission_submit(args):
     desc = ""
     items = []
     current_type = None
+    held_override = None
+    VALID_TYPES = {"modify", "delete", "create", "bash"}
 
     for a in args:
         if a.startswith("--"):
-            current_type = a.lstrip("-")
+            flag = a.lstrip("-")
+            if flag == "deposit":
+                current_type = "__deposit__"  # 特殊标记，不是计划项类型
+            elif flag in VALID_TYPES:
+                current_type = flag
+            else:
+                print(f"⚠️ 未知参数 --{flag}，忽略。合法类型: {', '.join(sorted(VALID_TYPES))}")
+                current_type = None
+        elif current_type == "__deposit__":
+            try:
+                held_override = int(a)
+            except ValueError:
+                print(f"⚠️ --deposit 后必须是数字，忽略: {a}")
+            current_type = None
         elif current_type is None:
             desc = a
         else:

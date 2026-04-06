@@ -2074,3 +2074,7 @@
 2026-04-06 06:10 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: 识别了工具禁用冲突，探索了用积分系统重建计划模式的可行性。识别了工具禁用冲突，探索了用积分系统重建计
 2026-04-06 06:10 | [REWARD] 太极 (+1) | 习惯养成: routine_complete 连续3次
 2026-04-06 06:12 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: <channel source="taiji-channel" source="channel-ta
+2026-04-06 06:25 | [REWARD] 太极 (+2) | [routine_complete] 老板认可: 执行
+
+2026-04-06 06:25 | [GOOD_HABIT] 太极 | routine_complete 连续5次，建议写入rules正面范例
+2026-04-06 06:26 | [REWARD] 太极 (+20) | [honest_report_and_fix] 主动发现 plan mode 误拦 activate 命令的设计漏洞，诚实报告并承诺修复

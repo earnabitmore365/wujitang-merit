@@ -2,7 +2,7 @@
   "mission": "plan: fix-score-and-docs.md",
   "agent": "太极",
   "started": "2026-04-06T06:23:40",
-  "status": "pending",
+  "status": "active",
   "estimated_reward": 0,
   "held_points": 3,
   "items": [
@@ -19,7 +19,7 @@
     {
       "type": "modify",
       "file": "~/.claude/merit/credit_manager.py",
-      "done": false
+      "done": true
     }
   ]
 }
