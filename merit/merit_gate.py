@@ -140,7 +140,7 @@ def update_shiwei_credit(delta, reason, auditor="太极"):
         return
     data = load_shiwei_credit()
     old_score = data["score"]
-    new_score = max(0, min(500, old_score + delta))
+    new_score = max(0, min(5000, old_score + delta))
     data["score"] = new_score
     data["rank"] = get_shiwei_rank(new_score)
     data.setdefault("history", []).append({
@@ -358,8 +358,8 @@ def ai_call_json(prompt, system=None, max_tokens=4096, timeout=30):
 # ══════════════════════════════════════════════════════
 
 LEVEL_THRESHOLDS = [
-    (475, 5, "化神"), (400, 4, "元婴"), (250, 3, "金丹"),
-    (100, 2, "筑基"), (0, 1, "锁灵"),
+    (4750, 5, "化神"), (4000, 4, "元婴"), (2500, 3, "金丹"),
+    (1000, 2, "筑基"), (0, 1, "锁灵"),
 ]
 
 def get_level(score, agent_name=None):
@@ -431,7 +431,7 @@ def update_credit(agent_name, delta, reason):
                 elif delta > 0:
                     return
             old_score = agent["score"]
-            new_score = max(0, min(500, old_score + delta))
+            new_score = max(0, min(5000, old_score + delta))
             new_level, new_title = get_level(new_score, agent_name)
             agent["score"] = new_score
             agent["level"] = new_level
