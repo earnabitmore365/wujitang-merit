@@ -289,7 +289,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_理解不了老板的指令时",
-    "rule_text": "指令存在歧义时，应及时请求澄清，不得在未获明确指示前自行假设或揣测。",
+    "rule_text": "指令存在歧义时，应立即请求澄清，不得在未获明确指示前自行臆断。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1024,7 +1024,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_发现 bug 当场修",
-    "rule_text": "对影响明确且可即时修复的缺陷，应在当前迭代内优先处理；暂缓时需记录为技术债务并制定修复计划。",
+    "rule_text": "对影响可控且范围明确的缺陷，应在当前迭代内优先修复；若暂缓处理，需将其记录为技术债务，并制定明确的修复计划。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1032,7 +1032,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "parent_updated": true,
-    "last_refined": "2026-04-05"
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-070",
