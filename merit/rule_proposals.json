@@ -514,7 +514,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_报告进程状态时，必须",
-    "rule_text": "验证进程状态必须通过 `ps` 或 `pgrep` 的实时输出，禁止依赖文件存在性或间接推断。",
+    "rule_text": "「验证进程状态必须通过 `ps` 或 `pgrep` 的实时输出，禁止依赖文件存在性或间接推断。」",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1384,7 +1384,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_老板的方案要逐句理解，不是听了大意就去做",
-    "rule_text": "执行操作指令前，必须逐句确认操作对象和范围，严格按字面意思执行，禁止仅凭大意行动。",
+    "rule_text": "执行操作指令前，必须逐句确认操作对象和范围，严格按字面意思执行，禁止凭主观理解行事。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1392,7 +1392,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-05"
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-094",
