@@ -1,14 +1,14 @@
 {
   "last_grad_count": 816,
   "restarts": 3,
-  "total_checks": 716,
+  "total_checks": 717,
   "last_jobs": [
-    "TRX/15m",
-    "TRX/15m",
-    "TRX/15m",
-    "TRX/15m"
+    "XRP/15m",
+    "XRP/15m",
+    "XRP/15m",
+    "ADA/5m"
   ],
-  "last_memory_gb": 12.7,
+  "last_memory_gb": 12.5,
   "consecutive_ssh_failures": 0,
   "consecutive_crashes": 0
 }

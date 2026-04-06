@@ -1,0 +1,159 @@
+#!/bin/bash
+# Gateway Monitor — 每5分钟 cron 执行
+# 没问题不发，有问题才报警。每小时整点发静默摘要。
+#
+# cron: */5 * * * * cd <project-root> && bash trading/monitor/gateway_monitor.sh
+# 依赖: curl, grep, date
+#
+# @see CHECKPOINT.md — Gateway 监控
+
+# ==================== 配置（从 .env 读取密钥，禁止硬编码） ====================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+fi
+
+BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
+CHAT_ID="${TELEGRAM_CHAT_ID}"
+THREAD_ID="${TELEGRAM_GATEWAY_THREAD_ID}"
+LOG_FILE="${SCRIPT_DIR}/logs/gateway.log"
+GATEWAY_CMD="feed_gateway.py"
+GATEWAY_DIR="$SCRIPT_DIR"
+GATEWAY_START="cd $GATEWAY_DIR && nohup python3 src/data/feed_gateway.py --coins SOL,ETH,XRP,BTC,BNB,ADA,AVAX,LINK,DOT --intervals 1m,1m,1m,1m,1m,1m,1m,1m,1m >> logs/gateway.log 2>&1 &"
+COINS="SOL ETH XRP BTC BNB ADA AVAX LINK DOT"
+KLINE_STALE_SEC=180       # K线超过3分钟算过期
+ERROR_WINDOW_MIN=5        # 检查过去5分钟的ERROR
+
+# ==================== Telegram 发送 ====================
+send_telegram() {
+    local msg="$1"
+    local text_json
+    text_json=$(printf '%s' "$msg" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "{\"chat_id\": ${CHAT_ID}, \"message_thread_id\": ${THREAD_ID}, \"text\": ${text_json}, \"parse_mode\": \"HTML\"}" \
+        > /dev/null 2>&1
+}
+
+# ==================== 检查项 ====================
+ALERTS=""
+NOW=$(date +%s)
+HOUR=$(date +%H)
+MINUTE=$(date +%M)
+
+# --- 1. Gateway 进程存活 ---
+GW_PID=$(pgrep -f "$GATEWAY_CMD" | head -1)
+if [ -z "$GW_PID" ]; then
+    # 自动重启
+    cd "$GATEWAY_DIR" && nohup python3 src/data/feed_gateway.py \
+        --coins SOL,ETH,XRP,BTC,BNB,ADA,AVAX,LINK,DOT \
+        --intervals 1m,1m,1m,1m,1m,1m,1m,1m,1m \
+        >> logs/gateway.log 2>&1 &
+    sleep 5
+    GW_PID_NEW=$(pgrep -f "$GATEWAY_CMD" | head -1)
+    if [ -z "$GW_PID_NEW" ]; then
+        ALERTS="${ALERTS}🔴 Gateway 挂了，自动重启失败！\n"
+    else
+        ALERTS="${ALERTS}⚠️ Gateway 挂了，已自动重启 PID=${GW_PID_NEW}\n"
+    fi
+fi
+
+# --- 2. 最后一条 KLINE 延迟 ---
+LAST_KLINE_LINE=$(grep '\[PUB\] KLINE\.' "$LOG_FILE" 2>/dev/null | tail -1)
+if [ -n "$LAST_KLINE_LINE" ]; then
+    LAST_KLINE_TIME=$(echo "$LAST_KLINE_LINE" | grep -oP '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+    if [ -n "$LAST_KLINE_TIME" ]; then
+        LAST_KLINE_TS=$(date -d "$LAST_KLINE_TIME" +%s 2>/dev/null)
+        if [ -n "$LAST_KLINE_TS" ]; then
+            KLINE_AGE=$((NOW - LAST_KLINE_TS))
+            if [ "$KLINE_AGE" -gt "$KLINE_STALE_SEC" ]; then
+                # KLINE 超时 → 进程可能僵死，kill + 重启
+                GW_PID_STALE=$(pgrep -f "$GATEWAY_CMD" | head -1)
+                if [ -n "$GW_PID_STALE" ]; then
+                    kill "$GW_PID_STALE" 2>/dev/null
+                    sleep 3
+                    cd "$GATEWAY_DIR" && nohup python3 src/data/feed_gateway.py \
+                        --coins SOL,ETH,XRP,BTC,BNB,ADA,AVAX,LINK,DOT \
+                        --intervals 1m,1m,1m,1m,1m,1m,1m,1m,1m \
+                        >> logs/gateway.log 2>&1 &
+                    sleep 5
+                    GW_PID_NEW=$(pgrep -f "$GATEWAY_CMD" | head -1)
+                    ALERTS="${ALERTS}🔴 KLINE 延迟 ${KLINE_AGE}秒 → 僵死进程已kill，自动重启 PID=${GW_PID_NEW:-FAIL}\n"
+                else
+                    ALERTS="${ALERTS}⚠️ KLINE 延迟 ${KLINE_AGE}秒（上限${KLINE_STALE_SEC}s）\n"
+                fi
+            fi
+        fi
+    fi
+else
+    ALERTS="${ALERTS}🔴 日志中无 KLINE 记录\n"
+fi
+
+# --- 3. 9个币种是否都有最近3分钟的数据 ---
+MISSING_COINS=""
+COIN_COUNT=0
+SINCE_TIME=$(date -d "${KLINE_STALE_SEC} seconds ago" +"%Y-%m-%d %H:%M" 2>/dev/null)
+for COIN in $COINS; do
+    LAST=$(grep "\[PUB\] KLINE\.${COIN}\." "$LOG_FILE" 2>/dev/null | tail -1)
+    if [ -z "$LAST" ]; then
+        MISSING_COINS="${MISSING_COINS} ${COIN}"
+    else
+        COIN_TS=$(echo "$LAST" | grep -oP '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+        if [ -n "$COIN_TS" ]; then
+            COIN_EPOCH=$(date -d "$COIN_TS" +%s 2>/dev/null)
+            if [ -n "$COIN_EPOCH" ]; then
+                AGE=$((NOW - COIN_EPOCH))
+                if [ "$AGE" -gt "$KLINE_STALE_SEC" ]; then
+                    MISSING_COINS="${MISSING_COINS} ${COIN}(${AGE}s)"
+                else
+                    COIN_COUNT=$((COIN_COUNT + 1))
+                fi
+            else
+                COIN_COUNT=$((COIN_COUNT + 1))
+            fi
+        else
+            COIN_COUNT=$((COIN_COUNT + 1))
+        fi
+    fi
+done
+if [ -n "$MISSING_COINS" ]; then
+    ALERTS="${ALERTS}⚠️ 缺失币种:${MISSING_COINS}\n"
+fi
+
+# --- 4. 过去5分钟新ERROR（列出每条具体内容，最多5条） ---
+SINCE_ERR=$(date -d "${ERROR_WINDOW_MIN} minutes ago" +"%Y-%m-%d %H:%M" 2>/dev/null)
+NEW_ERRORS=0
+ERROR_DETAIL=""
+if [ -n "$SINCE_ERR" ]; then
+    NEW_ERRORS=$(awk -v since="$SINCE_ERR" '$0 >= since && /ERROR/' "$LOG_FILE" 2>/dev/null | wc -l)
+    if [ "$NEW_ERRORS" -gt 0 ]; then
+        ERROR_DETAIL=$(awk -v since="$SINCE_ERR" '$0 >= since && /ERROR/' "$LOG_FILE" 2>/dev/null | tail -5 | while read -r line; do
+            # 提取时间+错误内容，截断到150字符
+            echo "• $(echo "$line" | cut -c1-150)"
+        done)
+        ALERTS="${ALERTS}⚠️ 过去5分钟 ${NEW_ERRORS} 个新ERROR:\n${ERROR_DETAIL}\n"
+    fi
+fi
+
+# ==================== 发送逻辑 ====================
+
+# 有问题 → 立即报警
+if [ -n "$ALERTS" ]; then
+    MSG="🚨 <b>Gateway 告警</b>\n${ALERTS}"
+    send_telegram "$MSG"
+fi
+
+# 每小时整点（分钟00-04）发静默摘要
+if [ "$MINUTE" -lt "05" ]; then
+    LAST_KLINE_SHORT=$(echo "$LAST_KLINE_LINE" | grep -oP '\d{2}:\d{2}:\d{2}' | head -1)
+    TOTAL_ERRORS=$(grep -c 'ERROR' "$LOG_FILE" 2>/dev/null)
+    MSG="✅ Gateway 正常 | ${COIN_COUNT}/9 币种 | 最后KLINE ${LAST_KLINE_SHORT:-N/A} | 累计${TOTAL_ERRORS:-0} ERROR"
+    # 如果有 ERROR，摘要里也附上最近3条具体内容
+    if [ "${TOTAL_ERRORS:-0}" -gt 0 ]; then
+        RECENT_ERRS=$(grep 'ERROR' "$LOG_FILE" 2>/dev/null | tail -3 | while read -r line; do
+            echo "• $(echo "$line" | cut -c1-150)"
+        done)
+        MSG="${MSG}\n最近ERROR:\n${RECENT_ERRS}"
+    fi
+    send_telegram "$MSG"
+fi

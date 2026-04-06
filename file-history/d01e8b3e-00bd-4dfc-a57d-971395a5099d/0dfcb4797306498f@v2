@@ -1,0 +1,249 @@
+# 无极自动交易系统
+
+> 基于 BTC 已知事实的加密货币量化交易系统
+> 三套系统：交易 · 回测 · 研究
+
+---
+
+## 系统架构
+
+```
+研究 ──→ 回测 ──→ 交易
+（发现）  （验证+选拔）（执行）
+```
+
+三套系统的数据流向是单向的：研究发现有效方法 → 回测验证并选出冠军 → 交易系统拿冠军配置去实盘执行。
+
+**共享基础设施**：Regime 标签（BTC 已知事实 21 段时间表）横跨回测与交易。
+
+---
+
+## 三套系统
+
+### 1. 交易系统 (`trading/`)
+
+实盘执行链路：接行情 → 产信号 → 挂单 → 风控 → 通知。
+
+```
+BitMEX WebSocket
+    ↓
+feed_gateway (ZMQ PUB)
+    ↓
+kline_dispatcher (1m → 5m/15m/30m/1h 聚合)
+    ↓
+strategy_runner × 21 (产信号)
+    ↓
+limit_executor (限价挂单 + 重试 + 转市价)
+    ↓
+BitMEX REST API (开仓/平仓/SL/TP)
+    ↓
+trade_logger → live_trades.db
+    ↓
+trader_report → Telegram 通知
+```
+
+**核心文件：**
+
+| 文件 | 职责 |
+|------|------|
+| `unified_trader.py` | 主脚本，单进程跑 21 个策略 |
+| `strategy_runner.py` | 单策略生命周期管理（信号→挂单→风控→状态） |
+| `kline_dispatcher.py` | K线分发器（预加载 + 聚合 + 分发） |
+| `limit_executor.py` | 限价挂单 + 10秒超时重试 + 5次失败转市价 |
+| `team_config.py` | 21 策略配置表（Gate 选拔结果） |
+| `trade_logger.py` | 实盘交易记录（SQLite，格式对齐种子库） |
+| `trader_report.py` | 交易解说员（开仓/平仓/TTP/熔断 → Telegram） |
+| `trader_bot.py` | Telegram 查询 bot（/status /pnl /trades /win） |
+| `run.py` | HyperLiquid 单币种入口 |
+| `start_trading.sh` | 一键启动 Gateway + Trader + Bot |
+| `stop_trading.sh` | 停止所有交易进程 |
+
+**监控子系统 (`trading/monitor/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `bitmex_dashboard.py` | BitMEX 实盘看板（10秒刷新） |
+| `monitor.py` | 服务器端监控（读日志 + 查 API） |
+| `gateway_monitor.sh` | Gateway 健康检测 + Telegram 告警 + 自动重启 |
+
+**数据层通报 (`src/data/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `gateway_notifier.py` | Gateway 内部 10 种 Telegram 通报（启动/断线/重连/断流等） |
+
+---
+
+### 2. 回测系统 (`backtest/`)
+
+历史验证 + 策略选拔：跑回测 → 生 4 个种子 → Gate 六关筛选 → 出冠军。
+
+```
+klines.duckdb (24币种含mirror, 6500万行)
+    ↓
+BacktestEngine.generate_signals() ← 策略信号只算1次
+    ↓
+信号序列 [BUY, SELL, HOLD, ...]
+    ↓ × 4 个 TradeSimulator
+    ├── signal_only  → seed_signal.db      (纯信号，无TTP)
+    ├── ttp_close    → seed_ttp_close.db   (close价TTP)
+    ├── ttp_highlow  → seed_ttp_hl.db      (双价格TTP，更精确)
+    └── dual_hold    → seed_dual.db        (双持仓)
+    ↓
+每个种子：paired_trades(11字段STRICT) + combo_summary
+    ↓
+regime_fact_timeline (BTC 21段已知事实标签)
+sub_phase_labels (子阶段动量标签)
+    ↓
+Gate 管线 (6关选拔)
+  ├── Gate 1: 初考（交易次数门槛）
+  ├── Gate 2: 专考（13维度成绩单）
+  ├── Gate 3: 组考（正R全选，去重）
+  ├── Gate 4: Walk-Forward（LOO 交叉验证）
+  ├── Gate 5: Monte Carlo（100次洗牌照妖镜）
+  └── Gate 6: OOS 80/20（样本外验证）
+    ↓
+gate_v41_report.db / gate_v41_ttp_report.db (冠军列表)
+```
+
+**回测引擎 (`src/backtest/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `backtest.py` | 回测引擎核心（策略信号 + TTP + MFE/MAE） |
+| `generate_seed.py` | 种子生成管线（含 TradeSimulator 4 种执行模式） |
+| `incremental_backtest.py` | 增量回测（断点续跑） |
+| `verify_seed.py` | 种子验证 |
+
+**管线 (`backtest/pipeline/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `daily_pipeline.py` | 每日管线（下载→回测→报告→看板） |
+| `daily_cron.sh` | cron 定时任务（凌晨4点） |
+| `refresh_summary.py` | combo_summary 重算 |
+| `bootstrap_checkpoints.py` | 断点引导（首次增量前必须执行） |
+
+**Gate 选拔 (`backtest/gate/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `gate_runner.py` | Gate 统一入口 |
+| `gate1_threshold.py` | 初考 |
+| `gate2v41_scorecard.py` | 专考 v4.1（13维度） |
+| `gate3v41_team.py` | 组考 v4.1 |
+| `gate_mcv41.py` | MC 照妖镜 v4.1 |
+| `run_gate_v41.py` | v4.1 管线独立入口 |
+
+**Regime 标签 (`backtest/regime/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `regime_fact_timeline.py` | BTC 已知事实 21 段时间表 → regime_fact_labels |
+| `sub_phase_labels.py` | 子阶段标签（冲刺/歇脚/回调/反弹） |
+| `live_regime/` | 实时 regime 检测模块（swing_tracker + validity_checker） |
+
+**看板 (`backtest/dashboard/`)：**
+
+| 文件 | 职责 |
+|------|------|
+| `seed_dashboard.py` | 种子 HTML 看板（筛选+排序+对比） |
+| `gp_dashboard.py` | GP 进化 HTML 看板 |
+| `gate2v41_report.py` | Gate 成绩单查看器 |
+
+---
+
+### 3. 研究系统 (`research/`)
+
+实验探索：降噪测试、策略模拟、自进化引擎。
+
+**降噪研究 (`research/filters/`)：**
+
+| 文件 | 研究方向 |
+|------|----------|
+| `direction_filter_test.py` | 大周期 SMA50 方向过滤小周期 |
+| `direction_filter_matrix.py` | 最佳大小周期配对矩阵 |
+| `direction_vp_medium_test.py` | 方向 + 量价 → 中周期 |
+| `volume_filter_test.py` | 成交量过滤（放量才开仓） |
+| `volume_price_relation_test.py` | 量价关系（放量突破 + 背离） |
+| `volume_price_v2_test.py` | 量价 v2（含价格幅度） |
+| `volume_price_medium_large_test.py` | 中大周期量价 |
+| `fvg_small_tf_test.py` | FVG 公允价值缺口过滤 |
+| `fvg_dir_small_tf_test.py` | FVG + 方向叠加 |
+| `oi_fvg_test.py` | OI + FVG + Funding Rate 三件套 |
+
+**策略模拟 (`research/simulation/`)：**
+
+| 文件 | 模拟场景 |
+|------|----------|
+| `sim_21_team.py` | 21 策略联合资金模拟（$398 共享池） |
+| `sim_concurrent_regime.py` | 并发策略 + 提款机制（8场景） |
+| `sim_position_sizing.py` | 注码模拟（90冠军，10%开仓10x杠杆） |
+| `team_validation.py` | 四维战队验证（动量+波动率） |
+| `team_validation_v2.py` | 顾问补充验证（TOP5容错 + 拆解） |
+
+**选拔研究 (`research/selection/`)：**
+
+| 文件 | 用途 |
+|------|------|
+| `equip_champions.py` | 装备配置测试（方向/OI/叠加） |
+| `equip_champions_coin.py` | 币本位冠军装备 |
+| `team_filter.py` | A型/B型策略区分 |
+| `team_selection.py` | 全员并行选人 |
+| `validate_seeds.py` | 第一层照妖镜 |
+| `validate_layer2.py` | 第二层加考 |
+
+**指标研究 (`research/indicators/`)：**
+
+| 文件 | 用途 |
+|------|------|
+| `indicator_mirror.py` | 宏观指标照妖镜（9指标 IC 排名） |
+| `duckdb_benchmark.py` | DuckDB vs SQLite 性能对比 |
+| `sqlite_to_parquet.py` | SQLite → Parquet 格式转换 |
+
+**GP 进化引擎 (`research/gp_engine/`)：** 遗传编程自进化策略引擎，表达式树 → 回测评估 → 选择/交叉/变异 → 毕业考。
+
+**哨兵营 (`research/sentinel_camp/`)：** Regime 转换探测器进化系统，4方向检测（红变黄/黄变绿/绿变黄/黄变红）。
+
+---
+
+## 共享源代码 (`src/`)
+
+| 目录 | 职责 |
+|------|------|
+| `src/core/strategy/` | 103 个策略定义（base + mirror + 各策略实现） |
+| `src/core/risk/` | 风控（TTP 移动止盈、止损、组合风控） |
+| `src/core/indicator_cache.py` | 指标缓存系统（双 namespace） |
+| `src/exchange/bitmex/` | BitMEX 适配器（REST + WebSocket + Auth） |
+| `src/exchange/paper/` | Paper Trade 适配器 |
+| `src/exchange/hyperliquid/` | HyperLiquid 适配器 |
+| `src/data/` | 数据层（feed_gateway + feed_client + gw_query） |
+| `src/indicators/` | 指标计算（本地/链上/情绪/复合） |
+| `src/trading/` | 交易系统框架（regime_router + runner + state） |
+
+---
+
+## 数据层 (`data/`)
+
+| 文件 | 大小 | 用途 |
+|------|------|------|
+| `klines.duckdb` | 43.9GB | K线主仓库（24币种 × 10周期 × 109列） |
+| `historical/` | — | 原始历史 JSON（按币种分目录） |
+| `build_klines_indicators.py` | — | K线+指标构建脚本 |
+| `indicator_col_map.json` | — | 指标名→函数映射（70+指标列） |
+
+种子库和报告数据在运行时生成，不随代码搬迁。
+
+---
+
+## 配置 (`config/`)
+
+| 文件 | 用途 |
+|------|------|
+| `coin_max_price.json` | 各币种历史最高价（13币种） |
+
+---
+
+## 详细技术架构
+
+完整的模块详解、数据流图、依赖关系、数据库 Schema、设计模式等，参见 [ARCHITECTURE.md](./ARCHITECTURE.md)。

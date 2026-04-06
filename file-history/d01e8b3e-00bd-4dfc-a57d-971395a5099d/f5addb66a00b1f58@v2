@@ -1,0 +1,208 @@
+# CCXT 统一数据下载 — 踩坑与最佳实践
+
+> 无极自动交易 — 数据管线基础设施
+> 最后更新：2026-04-06
+
+## 概述
+
+项目使用 [CCXT](https://github.com/ccxt/ccxt) 从 Binance 拉取历史 K 线数据。
+统一入口：`data/build_klines_indicators.py` 阶段 0。
+
+**不直接调交易所 REST API**，CCXT 封装了分页、限速、格式统一。
+
+---
+
+## 交易所配置
+
+```python
+import ccxt
+
+# 现货 / USDT 永续
+ex_spot = ccxt.binance({'enableRateLimit': True})
+
+# 币本位永续合约（BTCUSD_PERP 等）
+ex_delivery = ccxt.binance({
+    'enableRateLimit': True,
+    'options': {'defaultType': 'delivery'},
+})
+
+# 币本位必须先加载市场
+ex_delivery.load_markets()
+```
+
+### 关键参数
+
+| 参数 | 说明 |
+|------|------|
+| `enableRateLimit: True` | **必须**。CCXT 自动控制请求间隔，不设会被 ban IP |
+| `defaultType: 'delivery'` | 切换到币本位合约端点，否则默认走现货 |
+| `load_markets()` | 币本位合约必须调用，否则 symbol 解析失败 |
+
+---
+
+## Symbol 格式
+
+| 类型 | CCXT 格式 | 交易所原始 | 保存目录 |
+|------|-----------|-----------|---------|
+| 现货 | `BTC/USDT` | BTCUSDT | BTC/ |
+| 币本位永续 | `BTC/USD:BTC` | BTCUSD_PERP | BTC_COIN/ |
+
+```python
+# Symbol → 目录名
+def symbol_to_coin(symbol):
+    if ':' in symbol:
+        return f"{symbol.split('/')[0]}_COIN"  # BTC/USD:BTC → BTC_COIN
+    return symbol.split('/')[0]                  # BTC/USDT → BTC
+```
+
+---
+
+## fetch_ohlcv 用法
+
+```python
+# 基本调用
+ohlcv = ex.fetch_ohlcv('BTC/USDT', '1h', since=timestamp_ms, limit=1000)
+# 返回: [[timestamp, open, high, low, close, volume], ...]
+
+# limit 最大 1000（Binance 限制）
+# since 是毫秒时间戳
+# 返回按时间升序
+```
+
+### 分页拉取（往前补历史）
+
+```python
+oldest_ts = existing_data[0]['time']
+while total < target:
+    since = oldest_ts - (1000 * ms_per_bar)  # 往前推 1000 根
+    ohlcv = ex.fetch_ohlcv(symbol, tf, since=since, limit=1000)
+    new = [c for c in ohlcv if c[0] < oldest_ts]  # 去重
+    if not new:
+        break
+    oldest_ts = new[0][0]
+    time.sleep(0.5)  # 额外延迟，防止触发限速
+```
+
+### 分页拉取（往后补最新）
+
+```python
+newest_ts = existing_data[-1]['time']
+since_fwd = newest_ts + ms_per_bar
+while since_fwd < now_ms:
+    ohlcv = ex.fetch_ohlcv(symbol, tf, since=since_fwd, limit=1000)
+    new = [c for c in ohlcv if c[0] > newest_ts]
+    if not new:
+        break
+    since_fwd = new[-1][0] + ms_per_bar
+    newest_ts = new[-1][0]
+```
+
+---
+
+## 踩过的坑
+
+### 坑1: 不设 enableRateLimit 被 ban
+**现象**: 连续拉取后返回 429 或直接连接超时。
+**根因**: Binance REST API 限制 1200 req/min（普通用户）。不设 enableRateLimit 时 CCXT 不做间隔控制。
+**解决**: `enableRateLimit: True`。CCXT 会自动在请求间插入延迟（~50ms/req）。大量拉取时额外 `time.sleep(0.5~1.0)` 更安全。
+
+### 坑2: 币本位合约 symbol 解析失败
+**现象**: `fetch_ohlcv('BTCUSD_PERP', '1h')` 报 `BadSymbol`。
+**根因**: CCXT 的 Binance 币本位合约用 `BASE/USD:BASE` 格式（如 `BTC/USD:BTC`），不是交易所原始 ID。且必须先 `load_markets()` 加载合约列表。
+**解决**: 
+1. Symbol 用 `BTC/USD:BTC` 不用 `BTCUSD_PERP`
+2. 创建实例时 `options.defaultType = 'delivery'`
+3. 调用前 `exchange.load_markets()`
+
+### 坑3: fetch_ohlcv 返回比 since 更早的数据
+**现象**: `since=X` 但返回数据包含 `timestamp < X` 的行。
+**根因**: Binance 的 since 参数是"大于等于"，但 CCXT 某些版本有取整行为。
+**解决**: 拉回来后手动过滤 `[c for c in ohlcv if c[0] >= expected_start]`。断点续传场景用 `< oldest_ts` 或 `> newest_ts` 做去重。
+
+### 坑4: 1m 数据量巨大，下载耗时
+**现象**: 1m × 4 年 = 210 万条，每次 1000 条需要 2100 次请求，加限速 ≈ 30 分钟/币种。
+**根因**: Binance limit 最大 1000，无法一次拉完。
+**解决**: 
+1. 断点续传——已有数据不重拉
+2. 大周期优先（1d/12h/8h 很快），1m 放最后
+3. `time.sleep(0.5)` for 1m，`time.sleep(1.0)` for 其他周期
+
+### 坑5: delivery 实例和 spot 实例不能混用
+**现象**: 用 spot 实例拉 `BTC/USD:BTC` 报错。
+**根因**: CCXT 的 Binance driver 用 defaultType 决定走哪个 API endpoint。spot 走 /api/v3，delivery 走 /dapi/v1。
+**解决**: 创建两个实例，根据 symbol 是否含 `:` 选择实例。
+
+### 坑6: JSON 保存丢精度
+**现象**: volume 从 61743.09873 变成 61743.1。
+**根因**: `json.dump` 默认用 `repr()`，浮点数精度取决于 Python 版本。
+**解决**: `json.dump(data, f, separators=(',', ':'))` 用紧凑格式，Python 3.12+ 默认保留足够精度。如需更高精度可用 `decimal` 模块。
+
+### 坑7: 币本位合约 since 不能超过 200 天前 (2026-04-06)
+**现象**: `fetch_ohlcv('BTC/USD:BTC', '8h', since=很久以前)` 报 `{"code":-4088,"msg":"Maximum time interval is 200 days."}`。
+**根因**: Binance delivery API 限制查询起始时间不能距今超过 200 天。现货 API 没这个限制。8h 周期 × 1000 条 = 333 天 > 200 天。
+**解决**: 对币本位合约，限制 since 跳幅不超过 199 天：`delta = min(1000 * ms_per_bar, 199 * 86400000)`。循环多跳几次就行。
+
+---
+
+## 数据流
+
+```
+Binance REST API
+    ↓ ccxt.fetch_ohlcv（分页 + 限速）
+    ↓ 合并去重排序 → 截取 target_rows
+data/historical/{COIN}/{interval}.json
+    ↓ build_klines_indicators.py 阶段 0.5
+klines.duckdb（INSERT 新行）
+    ↓ 阶段 1：mirror 生成
+    ↓ 阶段 2：指标计算
+klines.duckdb（完整 118 列，种子防污染锁只读）
+```
+
+---
+
+## 配置参考
+
+### 币种列表（13 交易对 → 12 目录）
+
+```python
+USDT_PAIRS = [
+    'BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'BNB/USDT', 'SOL/USDT',
+    'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT',
+]
+COIN_MARGINED_PAIRS = [
+    'BTC/USD:BTC', 'ETH/USD:ETH', 'BNB/USD:BNB',
+]
+```
+
+### 目标行数
+
+| 周期 | 行数 | 约等于 |
+|------|------|--------|
+| 1m | 2,102,000 | 4 年 |
+| 5m | 420,000 | 4 年 |
+| 15m | 140,000 | 4 年 |
+| 30m | 70,000 | 4 年 |
+| 1h | 70,000 | 8 年 |
+| 2h | 35,000 | 8 年 |
+| 4h | 17,500 | 8 年 |
+| 8h | 8,750 | 8 年 |
+| 12h | 5,840 | 8 年 |
+| 1d | 2,920 | 8 年 |
+
+### 限速配置
+
+| 周期 | sleep | 说明 |
+|------|-------|------|
+| 1m | 0.5s | 数据量大，更频繁但更短延迟 |
+| 其他 | 1.0s | 正常速率 |
+
+---
+
+## 版本历史
+
+| 版本 | 日期 | 说明 |
+|------|------|------|
+| download_1m_data.py | - | 最初版，只拉 1m × 1 年 |
+| download_latest_coins.py | - | 扩展到 5m/15m/1h |
+| download_latest_coins_2.0.py | - | 统一 10 周期 + 币本位 + 断点续传 |
+| build_klines_indicators.py 阶段 0 | 2026-04-06 | 整合进供应链，一条命令 |

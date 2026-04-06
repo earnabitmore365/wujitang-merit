@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""
+断点引导 — 从已有 paired_trades 反演 backtest_checkpoint
+
+首次运行增量管线前必须执行，否则 incremental_backtest.py 会因为没有断点
+走 _run_full() 删掉已有 paired_trades 再重跑（368M 条数据会被销毁）。
+
+逻辑（逐 combo）：
+  1. 取该 coin/interval 的 K 线末尾时间
+  2. 查最后一笔交易 → 推断 balance / position / entry_price
+  3. 统计 buy/sell 信号数
+  4. 写入 backtest_checkpoint（INSERT OR REPLACE，幂等）
+
+用法：
+  python3 backtest/pipeline/bootstrap_checkpoints.py               # seed_signal.db
+  python3 backtest/pipeline/bootstrap_checkpoints.py --ttp          # seed_ttp_close.db
+  python3 backtest/pipeline/bootstrap_checkpoints.py --db xxx.db    # 指定DB
+  python3 backtest/pipeline/bootstrap_checkpoints.py --dry-run      # 只统计不写入
+
+@see ARCHITECTURE.md — 断点引导，首次运行增量管线前必须执行
+"""
+
+import sys
+import os
+import json
+import sqlite3
+import logging
+import argparse
+import time
+from datetime import datetime
+
+# ── 项目根定位 ──
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from src.backtest.incremental_backtest import (  # noqa: E402
+    CHECKPOINT_SCHEMA, ensure_checkpoint_table, save_checkpoint,
+    DB_PATH, DB_PATH_TTP,
+)
+from backtest.generate_seed import (  # noqa: E402
+    detect_coins_and_intervals, INITIAL_CAPITAL,
+)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+def get_last_candle_time_ms(coin: str, interval: str) -> int:
+    """从 K 线文件尾部读取最后一根 K 线的时间戳（毫秒）
+
+    只读尾部 2000 字节，不加载整个文件（1m 文件可能 800MB+）。
+    """
+    data_file = os.path.join(DATA_DIR, 'historical', coin, f'{interval}.json')
+    if not os.path.exists(data_file):
+        return -1
+
+    file_size = os.path.getsize(data_file)
+    read_bytes = min(file_size, 2000)
+
+    with open(data_file, 'rb') as f:
+        f.seek(max(0, file_size - read_bytes))
+        tail = f.read().decode('utf-8', errors='ignore')
+
+    # 找最后一个完整的 JSON 对象里的 timestamp/time 字段
+    # K 线格式: {..., "timestamp": 1234567890000, ...} 或 "time": ...
+    # 从尾部往前找最后一个 "timestamp" 或 "time"
+    for key in ('timestamp', 'time'):
+        idx = tail.rfind(f'"{key}"')
+        if idx < 0:
+            continue
+        # 提取值：跳过 "key": 部分
+        after_key = tail[idx + len(key) + 3:]  # skip "key":
+        # 去掉前导空格
+        after_key = after_key.lstrip()
+        # 读数字
+        num_str = ''
+        for ch in after_key:
+            if ch.isdigit():
+                num_str += ch
+            else:
+                if num_str:
+                    break
+        if num_str:
+            return int(num_str)
+
+    return -1
+
+
+def batch_last_trades(conn: sqlite3.Connection) -> dict:
+    """批量查每个 combo 的最后一笔交易
+
+    Returns:
+        {combo_id: {direction, entry_price, pnl, balance_after, close_type, open_time}}
+    """
+    cur = conn.execute("""
+        SELECT pt.combo_id, pt.direction, pt.entry_price, pt.pnl,
+               pt.balance_after, pt.close_type, pt.open_time
+        FROM paired_trades pt
+        INNER JOIN (
+            SELECT combo_id, MAX(id) as max_id
+            FROM paired_trades
+            GROUP BY combo_id
+        ) latest ON pt.id = latest.max_id
+    """)
+    result = {}
+    for row in cur.fetchall():
+        result[row[0]] = {
+            'direction': row[1],
+            'entry_price': row[2],
+            'pnl': row[3],
+            'balance_after': row[4],
+            'close_type': row[5],
+            'open_time': row[6],
+        }
+    return result
+
+
+def batch_signal_counts(conn: sqlite3.Connection) -> dict:
+    """批量统计每个 combo 的 buy/sell 信号数
+
+    Returns:
+        {combo_id: {'buy': N, 'sell': N}}
+    """
+    cur = conn.execute("""
+        SELECT combo_id,
+               SUM(CASE WHEN direction = 'long' THEN 1 ELSE 0 END) as buy_count,
+               SUM(CASE WHEN direction = 'short' THEN 1 ELSE 0 END) as sell_count
+        FROM paired_trades
+        GROUP BY combo_id
+    """)
+    result = {}
+    for row in cur.fetchall():
+        result[row[0]] = {'buy': row[1], 'sell': row[2]}
+    return result
+
+
+def open_time_to_ms(open_time_str: str) -> int:
+    """将 open_time 字符串转为毫秒时间戳
+
+    格式: "YYYY-MM-DD HH:MM"
+    """
+    if not open_time_str:
+        return 0
+    try:
+        dt = datetime.strptime(open_time_str, '%Y-%m-%d %H:%M')
+        return int(dt.timestamp() * 1000)
+    except (ValueError, TypeError):
+        return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description='断点引导 — 从已有数据创建增量断点')
+    parser.add_argument('--ttp', action='store_true', help='TTP 版本')
+    parser.add_argument('--db', type=str, default=None, help='指定数据库路径')
+    parser.add_argument('--dry-run', action='store_true', help='只统计不写入')
+    args = parser.parse_args()
+
+    db_path = args.db or (DB_PATH_TTP if args.ttp else DB_PATH)
+    logger.info(f"数据库: {db_path}")
+
+    if not os.path.exists(db_path):
+        logger.error(f"数据库不存在: {db_path}")
+        sys.exit(1)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+
+    # 确保断点表存在
+    if not args.dry_run:
+        ensure_checkpoint_table(conn)
+
+    # ===== 批量预加载 =====
+    t0 = time.time()
+    logger.info("批量加载最后交易...")
+    last_trades = batch_last_trades(conn)
+    logger.info(f"  {len(last_trades)} 个 combo 有交易数据 ({time.time()-t0:.1f}s)")
+
+    t1 = time.time()
+    logger.info("批量统计信号数...")
+    signal_counts = batch_signal_counts(conn)
+    logger.info(f"  {len(signal_counts)} 个 combo 有信号统计 ({time.time()-t1:.1f}s)")
+
+    # ===== 加载全部 combo =====
+    cur = conn.execute("SELECT id, strategy, coin, interval FROM combo_summary")
+    combos = [{'id': r[0], 'strategy': r[1], 'coin': r[2], 'interval': r[3]}
+              for r in cur.fetchall()]
+    logger.info(f"总 combo: {len(combos)}")
+
+    # ===== K 线时间缓存（按 coin+interval 分组，只加载一次） =====
+    candle_time_cache = {}  # (coin, interval) -> last_candle_time_ms
+
+    # ===== 统计 =====
+    stats = {
+        'zero_trade': 0,      # 零交易 combo
+        'end_of_data': 0,     # 未平仓（end_of_data）
+        'normal_close': 0,    # 正常平仓
+        'liquidation': 0,     # 爆仓（balance <= 0）
+        'skipped': 0,         # K 线文件缺失
+        'written': 0,
+    }
+
+    t2 = time.time()
+    for i, combo in enumerate(combos):
+        combo_id = combo['id']
+        strategy = combo['strategy']
+        coin = combo['coin']
+        interval = combo['interval']
+
+        # K 线时间（缓存）
+        cache_key = (coin, interval)
+        if cache_key not in candle_time_cache:
+            candle_time_cache[cache_key] = get_last_candle_time_ms(coin, interval)
+
+        last_candle_time_ms = candle_time_cache[cache_key]
+        if last_candle_time_ms < 0:
+            stats['skipped'] += 1
+            continue
+
+        # 查最后一笔交易
+        last_trade = last_trades.get(combo_id)
+        signals = signal_counts.get(combo_id, {'buy': 0, 'sell': 0})
+
+        if last_trade is None:
+            # 零交易 combo
+            balance = INITIAL_CAPITAL
+            position = 'NO_POSITION'
+            entry_price = 0.0
+            position_open_time_ms = 0
+            stats['zero_trade'] += 1
+
+        elif last_trade['close_type'] == 'end_of_data':
+            # 未平仓 — 恢复持仓状态
+            balance = last_trade['balance_after'] - last_trade['pnl']
+            position = 'BUY' if last_trade['direction'] == 'long' else 'SELL'
+            entry_price = last_trade['entry_price']
+            position_open_time_ms = open_time_to_ms(last_trade['open_time'])
+            stats['end_of_data'] += 1
+
+        else:
+            # 正常平仓（含爆仓）
+            balance = last_trade['balance_after']
+            position = 'NO_POSITION'
+            entry_price = 0.0
+            position_open_time_ms = 0
+            if balance <= 0:
+                stats['liquidation'] += 1
+            else:
+                stats['normal_close'] += 1
+
+        state = {
+            'last_candle_time_ms': last_candle_time_ms,
+            'total_candle_count': 0,  # 不参与增量逻辑，只是信息字段
+            'balance': balance,
+            'position': position,
+            'entry_price': entry_price,
+            'position_open_time_ms': position_open_time_ms,
+            'buy_signals': signals['buy'],
+            'sell_signals': signals['sell'],
+            'withdraw_count': 0,
+            'first_withdraw_day': None,
+            'ttp_state': {},
+            'regime_state': {},
+        }
+
+        if not args.dry_run:
+            save_checkpoint(conn, strategy, coin, interval, state)
+            stats['written'] += 1
+
+        if (i + 1) % 5000 == 0:
+            logger.info(f"  进度: {i+1}/{len(combos)}")
+
+    elapsed = time.time() - t2
+
+    # ===== 验证 =====
+    if not args.dry_run:
+        checkpoint_count = conn.execute(
+            "SELECT COUNT(*) FROM backtest_checkpoint"
+        ).fetchone()[0]
+    else:
+        checkpoint_count = 0
+
+    conn.close()
+
+    # ===== 日志 =====
+    total_elapsed = time.time() - t0
+    logger.info(f"\nBootstrap 完成:")
+    logger.info(f"  总 combo: {len(combos)}")
+    logger.info(f"  零交易:    {stats['zero_trade']} (balance={INITIAL_CAPITAL}, NO_POSITION)")
+    logger.info(f"  爆仓:    {stats['liquidation']} (balance<=0, NO_POSITION)")
+    logger.info(f"  未平仓: {stats['end_of_data']} (end_of_data, 恢复持仓)")
+    logger.info(f"  正常:    {stats['normal_close']} (已平仓)")
+    logger.info(f"  跳过:      {stats['skipped']} (K线文件缺失)")
+    if args.dry_run:
+        logger.info(f"  [DRY RUN] 未写入任何断点")
+    else:
+        logger.info(f"  写入断点: {stats['written']}")
+        logger.info(f"  断点表总行数: {checkpoint_count}")
+    logger.info(f"  耗时: {total_elapsed:.1f}s")
+
+
+if __name__ == '__main__':
+    main()

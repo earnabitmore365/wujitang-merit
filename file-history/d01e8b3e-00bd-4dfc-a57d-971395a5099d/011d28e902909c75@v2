@@ -1,0 +1,235 @@
+# 回测系统
+
+> 历史验证 + 策略选拔：信号产一次，4 种执行模式并行模拟，出 4 个种子库。
+
+---
+
+## 快速开始
+
+```bash
+cd wuji-auto-trading
+
+# 4种子模式（推荐）：一次产信号，出4个种子库
+python3 src/backtest/generate_seed.py --seed4
+
+# 指定币种/周期
+python3 src/backtest/generate_seed.py --seed4 --coins ADA ETH --intervals 1h 4h
+
+# 指定策略（重跑用，会先清除旧数据）
+python3 src/backtest/generate_seed.py --seed4 --strategy mean_reversion
+
+# 旧模式（向后兼容）
+python3 src/backtest/generate_seed.py                        # 无TTP，单库
+python3 src/backtest/generate_seed.py --ttp                  # TTP HL，单库
+python3 src/backtest/generate_seed.py --ttp --ttp-close      # TTP Close，单库
+python3 src/backtest/generate_seed.py --workers 4            # 4并行（旧模式）
+```
+
+---
+
+## 架构
+
+```
+klines.duckdb (24币种, 10周期, 109列=OHLCV+101指标, 6500万行)
+    ↓ load_candles()
+    ↓ preload_from_duckdb() → 101指标注入内存缓存（零重算）
+    ↓
+BacktestEngine.generate_signals(strategy) → 信号序列（只算1次）
+    ↓
+信号序列 [BUY, SELL, HOLD, ...]
+    ↓ × 4 个 TradeSimulator
+    ├── signal_only  → seed_signal.db      (纯信号，无TTP)
+    ├── ttp_close    → seed_ttp_close.db   (close价TTP)
+    ├── ttp_highlow  → seed_ttp_hl.db      (双价格TTP，更精确)
+    └── dual_hold    → seed_dual.db        (TTP激活时双持仓)
+    ↓
+每个种子：paired_trades(11字段STRICT) + combo_summary + regime_timeline
+    ↓
+Gate 管线 (6关选拔) → 冠军列表
+```
+
+---
+
+## 核心概念
+
+### 信号-执行分离
+
+策略只看 K 线产信号（`generate_signals`），不看持仓状态。105 个策略全部通过验证：零持仓依赖。信号序列算一次，4 个执行器各自模拟，互不影响。
+
+### 4 种执行模式
+
+| 模式 | 说明 | 输出 |
+|------|------|------|
+| `signal_only` | 纯信号反转开平仓，无 TTP | seed_signal.db |
+| `ttp_close` | 信号 + close 价触发 TTP（单价格） | seed_ttp_close.db |
+| `ttp_highlow` | 信号 + high/low 双价格 TTP（更精确） | seed_ttp_hl.db |
+| `dual_hold` | TTP 激活时保留原仓 + 另开新仓 | seed_dual.db |
+
+### TTP 双价格检查
+
+```
+做多持仓：
+  best = high（有利方向） → 激活TTP / 更新峰值
+  worst = low（不利方向） → 检查回撤是否触发平仓
+
+同一根K线内 high 可能更新峰值 + low 触发平仓 — 更接近实盘
+```
+
+TTPTracker（generate_seed.py 内联）用于回测模拟器的简化版 TTP。
+TTPManager（src/core/risk/ttp.py）用于实盘的完整摆动追踪 TTP，也支持双价格。
+
+### 指标预加载
+
+```
+DuckDB (101 指标列) → indicator_col_map.json 映射 → preload_from_duckdb()
+    → 注入 indicator_cache 内存缓存
+    → 策略调 get_indicator() 直接命中，零计算
+
+DuckDB 里没有的新指标 → fallback 到 indicator_cache 现场计算
+```
+
+### paired_trades 11 字段
+
+引擎产出（存入 SQLite）：
+```
+combo_id, open_candle_idx, close_candle_idx, open_time, close_time,
+direction, entry_price, exit_price, close_type, mfe, mae
+```
+
+后算字段（从 11 字段 + 固定参数推导）：
+```
+holding_bars = close_candle_idx - open_candle_idx
+pnl = (exit - entry) / entry × leverage
+fee = bet × fee_rate × 2
+r_value = (pnl - costs) / bet
+regime_at_open = JOIN regime_timeline
+止损/爆仓 = MAE >= 1.0 时逐仓强平
+```
+
+### SQLite 优化
+
+- WAL 日志 + NORMAL 同步（写入快 5-10x）
+- 64MB page cache + 256MB mmap
+- STRICT 模式（类型安全）
+- 索引延后建立（数据写完再建，快 2-4x）
+
+---
+
+## 文件清单
+
+### 引擎 (`src/backtest/`)
+
+| 文件 | 职责 |
+|------|------|
+| `generate_seed.py` | 种子生成管线（含 TradeSimulator 4种模式 + TTPTracker） |
+| `backtest.py` | 回测引擎核心（generate_signals + TTP + MFE/MAE） |
+| `incremental_backtest.py` | 增量回测（断点续跑） |
+| `verify_seed.py` | 种子验证 |
+
+### Gate 选拔 (`backtest/gate/`)
+
+| 文件 | 职责 |
+|------|------|
+| `gate_runner.py` | Gate 统一入口 |
+| `gate1_threshold.py` | 初考（交易次数门槛） |
+| `gate2v41_scorecard.py` | 专考 v4.1（13维度） |
+| `gate3v41_team.py` | 组考 v4.1 |
+| `gate_mcv41.py` | Monte Carlo 照妖镜 |
+| `regime_wf_v41.py` | Regime-aware Walk-Forward |
+| `run_gate_v41.py` | v4.1 管线入口 |
+| `run_gate_v41_ttp.py` | TTP 版管线 |
+
+### Regime 标签 (`backtest/regime/`)
+
+| 文件 | 职责 |
+|------|------|
+| `regime_fact_timeline.py` | BTC 已知事实 21 段时间表 |
+| `sub_phase_labels.py` | 子阶段标签（冲刺/歇脚/回调/反弹） |
+| `live_regime/` | 实时 regime 检测模块 |
+
+### 管线 (`backtest/pipeline/`)
+
+| 文件 | 职责 |
+|------|------|
+| `daily_pipeline.py` | 每日管线（下载→回测→报告→看板） |
+| `daily_cron.sh` | cron 定时任务 |
+| `refresh_summary.py` | combo_summary 重算 |
+
+### 看板 (`backtest/dashboard/`)
+
+| 文件 | 职责 |
+|------|------|
+| `seed_dashboard.py` | 种子 HTML 看板 |
+| `gp_dashboard.py` | GP 进化 HTML 看板 |
+
+### 指标系统 (`src/core/indicator_cache.py`)
+
+2118 行，46 个注册指标。双 namespace 支持。
+- `init_cache()` — 初始化缓存上下文
+- `get_indicator()` — 获取指标（内存→DB→计算）
+- `preload_from_duckdb()` — 从 DuckDB 预加载 101 指标到内存缓存
+
+### 风控 (`src/core/risk/`)
+
+| 文件 | 职责 |
+|------|------|
+| `ttp.py` | TTPManager 摆动追踪止盈（双价格：best追踪 + worst触发） |
+| `stop_loss.py` | 止损管理器 |
+| `combined.py` | 组合风控 |
+
+---
+
+## 数据
+
+| 数据 | 位置 | 说明 |
+|------|------|------|
+| K 线 + 指标 | `data/klines.duckdb` | 24币种 × 10周期 × 109列，6500万行，44GB |
+| 指标映射 | `data/indicator_col_map.json` | 101 条 DuckDB列名 ↔ indicator_cache key |
+| 种子库 | `reports/seed_*.db` | --seed4 产出的 4 个 SQLite 种子 |
+| Gate 报告 | `results/` | Gate 选拔结果 |
+
+---
+
+## 参数默认值
+
+```python
+DAYS = 0                    # 全量数据（不截取）
+LEVERAGE = 10.0             # 杠杆倍数
+STOP_LOSS_PCT = 0.1         # 止损 10%（杠杆后 = 逐仓爆仓 100%）
+FIXED_BET_AMOUNT = 1        # 固定注码 $1（USD）
+FEE_RATE = 0.00035          # 手续费 0.035%/侧
+SLIPPAGE_PCT = 0.0002       # 滑点 0.02%/侧
+FUNDING_RATE_8H = 0.0001    # 资金费 0.01%/8h
+TTP_ACTIVATION = 0.05       # TTP 激活阈值 5%（杠杆后）
+TTP_TRAILING = 0.02         # TTP 回撤触发 2%
+```
+
+---
+
+## 1m 分段加速
+
+1m 周期（210万根/币）自动分 4 段，各段独立跑信号+模拟，合并交易。
+
+```
+210万根 → 切4段（各52.5万 + 2000预热）→ 独立回测 → 合并交易
+```
+
+验证数据（ADA 1m, 2,102,000 根）：
+
+| 策略 | 交易数 | 信号一致 | 加速比 |
+|------|--------|---------|--------|
+| mean_reversion | 13,515 ✅ | 100% | 4.5x |
+| ichimoku | 91,541 ✅ | 100% | 3.9x |
+| bb_squeeze | 46,683 ✅ | 100% | 4.1x |
+
+触发条件：`interval == "1m" and len(candles) >= 100,000`，自动启用，无需额外参数。
+注意：分段模式不使用 preload_from_duckdb（全量指标索引与分段不对齐），每段独立计算指标。
+
+---
+
+## 待做
+
+- [ ] 1m 分段真并行（当前串行分段，改 ProcessPoolExecutor 4进程并行）
+- [ ] B阶段：backtest.py 彻底移除 balance 管理
+- [ ] C阶段：Gate 管线适配新 4 种子
+- [ ] combo_summary 复杂指标后算（sharpe/sortino/calmar/max_drawdown）

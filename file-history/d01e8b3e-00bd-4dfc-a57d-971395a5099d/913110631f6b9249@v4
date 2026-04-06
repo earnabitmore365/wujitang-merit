@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""
+TradingRunner — 单币种运行器
+
+包装 TradingSystem，加入 K 线整点对齐、事件钩子、状态恢复。
+"""
+
+import sys
+import os
+import time
+import math
+import logging
+import traceback
+
+# 通过 .wuji-root 定位项目根
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from trading.system import TradingSystem
+from trading.state import StateStore
+from trading.notifier import Notifier, OPEN, CLOSE, REGIME_SWITCH, ERROR
+from trading.regime.strategy import RegimeStrategy
+from exchange.hyperliquid.adapter import HyperLiquidAdapter
+
+logger = logging.getLogger(__name__)
+
+# K 线周期 → 秒数
+INTERVAL_SECONDS = {
+    "1h": 3600,
+    "15m": 900,
+    "5m": 300,
+    "1m": 60,
+}
+
+
+class TradingRunner:
+    """单币种运行器"""
+
+    def __init__(
+        self,
+        coin: str,
+        interval: str,
+        strategy,
+        adapter_config: dict,
+        trading_config: dict,
+        notifier: Notifier,
+        state_store: StateStore,
+    ):
+        self.coin = coin
+        self.interval = interval
+        self.strategy = strategy
+        self.notifier = notifier
+        self.state_store = state_store
+        self._stop = False
+
+        # 1. 创建 adapter 并连接
+        self.adapter = HyperLiquidAdapter(adapter_config)
+        if not self.adapter.connect():
+            raise RuntimeError(f"连接 HyperLiquid 失败，无法启动 {coin}/{interval} 运行器")
+
+        # 2. 创建 TradingSystem
+        config = dict(trading_config)
+        config['coin'] = coin
+        config['interval'] = interval
+        self.system = TradingSystem(
+            exchange=self.adapter,
+            strategy=strategy,
+            config=config,
+        )
+
+        # 3. 设置独立日志（先于 _restore_state，方便记录恢复信息）
+        self._setup_logger()
+
+        # 4. 恢复持仓状态
+        self._restore_state()
+
+    def _setup_logger(self):
+        """创建独立文件日志"""
+        log_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', '..', 'logs'
+        )
+        os.makedirs(log_dir, exist_ok=True)
+
+        self._logger = logging.getLogger(f"runner.{self.coin}_{self.interval}")
+        self._logger.setLevel(logging.INFO)
+
+        if not self._logger.handlers:
+            fh = logging.FileHandler(
+                os.path.join(log_dir, f"{self.coin}_{self.interval}.log")
+            )
+            fh.setFormatter(
+                logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+            )
+            self._logger.addHandler(fh)
+
+    def _restore_state(self):
+        """从 StateStore 恢复持仓状态"""
+        state = self.state_store.load()
+        if state and state.get('position') and state['position'] != 'NO_POSITION':
+            self.system.position = state['position']
+            self.system.entry_price = state.get('entry_price', 0.0)
+            self._logger.info(
+                f"恢复持仓状态: {state['position']} @ {state.get('entry_price', 0)}"
+            )
+        else:
+            self._logger.info("无持仓状态需要恢复")
+
+    # ── 主循环 ──
+
+    def start(self):
+        """主循环"""
+        self._logger.info(
+            f"启动 {self.coin}/{self.interval} 运行器 "
+            f"(策略: {self.strategy.name})"
+        )
+        while not self._stop:
+            self._wait_for_next_kline()
+            if self._stop:
+                break
+            try:
+                self._run_once()
+            except Exception as e:
+                self._logger.error(f"run_once 异常: {e}", exc_info=True)
+                self.notifier.notify(ERROR, {
+                    "coin": self.coin,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                })
+        self._logger.info("运行器已停止")
+
+    def stop(self):
+        """停止运行器"""
+        self._stop = True
+
+    # ── K 线对齐 ──
+
+    def _wait_for_next_kline(self):
+        """K 线整点对齐：sleep 到下一根 K 线收盘 + 8 秒"""
+        interval_sec = INTERVAL_SECONDS.get(self.interval, 3600)
+        now = time.time()
+        next_close = math.ceil(now / interval_sec) * interval_sec
+        wait = next_close - now + 8  # 多等 8 秒让交易所数据稳定
+
+        if wait > 0:
+            self._logger.info(f"等待下一根 K 线: {wait:.0f}s")
+            # 分段 sleep，以便响应 stop 信号
+            end_time = time.time() + wait
+            while time.time() < end_time and not self._stop:
+                time.sleep(min(1.0, end_time - time.time()))
+
+    # ── 单次执行 ──
+
+    def _run_once(self):
+        """执行一次交易检查"""
+        # 1. 记录执行前状态
+        prev_position = self.system.position
+        is_regime = isinstance(self.strategy, RegimeStrategy)
+        prev_regime = self.strategy._current_regime if is_regime else None
+
+        # 2. 执行
+        result = self.system.run_once()
+
+        # 3. 检测状态变化
+        curr_position = self.system.position
+        curr_regime = self.strategy._current_regime if is_regime else None
+
+        # 持仓变化
+        if prev_position == "NO_POSITION" and curr_position != "NO_POSITION":
+            # 无仓 → 有仓
+            self._on_open(curr_position, self.system.entry_price)
+        elif prev_position != "NO_POSITION" and curr_position == "NO_POSITION":
+            # 有仓 → 无仓
+            self._on_close(prev_position, result)
+        elif (prev_position != "NO_POSITION"
+              and curr_position != "NO_POSITION"
+              and prev_position != curr_position):
+            # 有仓 → 反向仓（反手）
+            self._on_close(prev_position, result)
+            self._on_open(curr_position, self.system.entry_price)
+
+        # Regime 变化
+        if is_regime and prev_regime != curr_regime:
+            self._on_regime_switch(prev_regime, curr_regime)
+
+        # 4. 保存状态
+        self.state_store.save(
+            position=curr_position,
+            entry_price=self.system.entry_price,
+            regime=curr_regime or "unknown",
+            last_kline_time=int(time.time() * 1000),
+        )
+
+    # ── 事件钩子 ──
+
+    def _on_open(self, direction, price):
+        """开仓事件"""
+        is_regime = isinstance(self.strategy, RegimeStrategy)
+        regime = self.strategy._current_regime if is_regime else "N/A"
+
+        self._logger.info(f"开仓: {direction} @ {price} (regime={regime})")
+        self.notifier.notify(OPEN, {
+            "coin": self.coin,
+            "direction": direction,
+            "price": price,
+            "capital": self.system.config.get('min_trade', 100),
+            "regime": regime,
+        })
+
+    def _on_close(self, prev_direction, result):
+        """平仓事件"""
+        is_regime = isinstance(self.strategy, RegimeStrategy)
+        regime = self.strategy._current_regime if is_regime else "N/A"
+        action = result.get('action', '')
+
+        # 从 TradingSystem 交易记录取最后一条 pnl（限定 CLOSE/REVERSE，防止读到历史记录）
+        records = self.system.get_trade_records()
+        pnl = 0
+        if records and records[-1].get('type') in ('CLOSE', 'REVERSE'):
+            pnl = records[-1].get('pnl', 0)
+
+        self._logger.info(f"平仓: {prev_direction} action={action} pnl={pnl:.2f} (regime={regime})")
+        self.notifier.notify(CLOSE, {
+            "coin": self.coin,
+            "direction": prev_direction,
+            "price": self.system.entry_price,
+            "pnl": pnl,
+            "close_type": action,
+            "regime": regime,
+        })
+
+    def _on_regime_switch(self, from_r, to_r):
+        """Regime 切换事件"""
+        self._logger.info(f"Regime 切换: {from_r} -> {to_r}")
+        self.notifier.notify(REGIME_SWITCH, {
+            "coin": self.coin,
+            "from_regime": from_r,
+            "to_regime": to_r,
+            "adx": 0,  # 详细 ADX 值在策略内部
+        })

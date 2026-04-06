@@ -1,0 +1,715 @@
+#!/usr/bin/env python3
+"""
+Paper Trade 启动脚本
+
+用真实 WebSocket 行情做模拟交易，验证 ADA + XRP 的 Gate 冠军策略实战表现。
+不下真单，不花真钱，但行为跟实盘完全一致。
+
+架构：
+
+  WebSocket (主网)
+       │
+       ├── ADA 实时价格 ──→ 止损/TTP tick 级检查
+       └── XRP 实时价格 ──→ 止损/TTP tick 级检查
+
+  REST API (主网)
+       │
+       ├── ADA K线 ──→ 策略信号（K线收盘时）
+       └── XRP K线 ──→ 策略信号（K线收盘时）
+
+  Regime Detector
+       │
+       └── 实时 regime ──→ 决定用 Long/Mid/Short 哪队冠军
+
+  每个冠军独立运行：
+       TradingSystem(PaperAdapter) → 信号+风控 → 虚拟账本
+
+用法：
+    cd <project-root>
+    python3 paper_trade/run.py
+    python3 paper_trade/run.py --balance 500
+    # 停止: Ctrl+C（自动保存状态）
+"""
+
+import sys
+import os
+import time
+import math
+import signal
+import logging
+import threading
+import argparse
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from exchange.hyperliquid.adapter import HyperLiquidAdapter
+from exchange.paper.adapter import PaperAdapter
+from trading.system import TradingSystem
+from core.strategy import get_strategy
+from core.risk.combined import CombinedRiskManager, CombinedRiskConfig
+
+
+# ═══════════════════════════════════════════════════
+# 冠军列表（来自 Gate v4.1 报告，ADA + XRP 达标币种）
+# ═══════════════════════════════════════════════════
+
+CHAMPIONS = {
+    'ADA': {
+        'long': [
+            ('momentum_slope', '1d'),
+            ('break_of_structure', '1d'),
+            ('fvg', '1d'),
+            ('vpt', '8h'),
+        ],
+        'mid': [
+            ('ad_long_mirror', '2h'),
+            ('ad_mirror', '2h'),
+            ('ichimoku', '4h'),
+            ('ad', '2h'),
+            ('proc', '4h'),
+        ],
+        'short': [
+            ('adx_mirror', '15m'),
+            ('macross_slow', '30m'),
+            ('advanced_kline_echo', '30m'),
+        ],
+    },
+    'XRP': {
+        'long': [
+            ('heikin_ashi', '12h'),
+            ('vroc', '1d'),
+            ('ad', '1d'),
+            ('linreg_slope', '12h'),
+            ('hma', '1d'),
+            ('cmo', '12h'),
+        ],
+        'mid': [
+            ('trix', '1h'),
+            ('smc_real', '4h'),
+            ('stddev_v2', '2h'),
+        ],
+        'short': [
+            ('proc_mirror', '30m'),
+            ('ma_mirror', '30m'),
+            ('advanced_kline_echo_mirror', '30m'),
+            ('matriple', '30m'),
+            ('momentum_slope', '30m'),
+        ],
+    },
+}
+
+# Regime → 激活哪支队伍
+REGIME_TO_TEAM = {
+    '牛': 'long',
+    '初牛': 'long',
+    '盘整': 'mid',
+    '初熊': 'short',
+    '熊': 'short',
+}
+
+# K 线周期 → 秒数
+INTERVAL_SECONDS = {
+    '1m': 60, '5m': 300, '15m': 900, '30m': 1800,
+    '1h': 3600, '2h': 7200, '4h': 14400, '8h': 28800,
+    '12h': 43200, '1d': 86400,
+}
+
+
+# ═══════════════════════════════════════════════════
+# 冠军实例
+# ═══════════════════════════════════════════════════
+
+@dataclass
+class ChampionInstance:
+    """一个冠军 = 策略 + 虚拟账本 + 交易系统"""
+    coin: str
+    strategy_name: str
+    interval: str
+    team: str               # 'long', 'mid', 'short'
+    champion_id: str
+    paper_adapter: PaperAdapter
+    trading_system: TradingSystem
+    risk_manager: CombinedRiskManager
+
+
+# ═══════════════════════════════════════════════════
+# Paper Trade 管理器
+# ═══════════════════════════════════════════════════
+
+class PaperTradeManager:
+    """Paper Trade 管理器
+
+    管理所有冠军的生命周期：
+    1. 共享行情（一个 WebSocket + REST）
+    2. 独立虚拟账本（每个冠军 $500）
+    3. Tick 级风控（WebSocket 每个价格更新）
+    4. K 线级策略信号（整点对齐）
+    5. 定期状态报告
+    """
+
+    def __init__(self, balance: float = 500.0):
+        self._balance = balance
+        self._stop = False
+        self._champions: List[ChampionInstance] = []
+        self._champions_by_interval: Dict[str, List[ChampionInstance]] = {}
+        self._champions_by_coin: Dict[str, List[ChampionInstance]] = {}
+        self._regime: Dict[str, str] = {}  # coin -> current regime
+        self._last_report_time = 0
+        self._market: Optional[HyperLiquidAdapter] = None
+
+        # 日志
+        self._setup_logging()
+        self.logger = logging.getLogger("PaperTrade")
+
+    def _setup_logging(self):
+        """配置日志"""
+        log_dir = os.path.join(ROOT, 'trading', 'paper_trade', 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+
+        # 控制台 + 文件日志
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+
+        # 控制台
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(logging.Formatter(
+            '%(asctime)s [%(name)s] %(message)s',
+            datefmt='%H:%M:%S'
+        ))
+        root.addHandler(ch)
+
+        # 文件
+        fh = logging.FileHandler(
+            os.path.join(log_dir, 'paper_trade.log')
+        )
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(name)s - %(message)s'
+        ))
+        root.addHandler(fh)
+
+    # ─── 初始化 ───
+
+    def init(self):
+        """初始化所有组件"""
+        self.logger.info("=" * 60)
+        self.logger.info("Paper Trade 系统启动")
+        self.logger.info("=" * 60)
+
+        # 1. 创建共享行情适配器（主网）
+        self._init_market()
+
+        # 2. 初始化 regime
+        self._init_regime()
+
+        # 3. 创建冠军实例
+        self._init_champions()
+
+        # 4. 注册 WebSocket 回调（tick 级风控）
+        self._init_tick_checker()
+
+        self.logger.info(
+            f"初始化完成: {len(self._champions)} 个冠军, "
+            f"每人 ${self._balance}"
+        )
+
+    def _init_market(self):
+        """创建共享行情适配器"""
+        # 主网配置（只读行情，不下单）
+        config = {
+            'testnet': False,
+            'endpoint': 'https://api.hyperliquid.xyz',
+            'wallet_address': '',  # 不需要钱包，只读行情
+            'private_key': '',
+        }
+        self._market = HyperLiquidAdapter(config)
+        self._market.connect()
+
+        # 订阅 WebSocket 实时价格
+        coins = list(CHAMPIONS.keys())
+        for coin in coins:
+            self._market._ws.subscribe(coin)
+            self.logger.info(f"已订阅 {coin} 实时价格")
+
+        # 等待首批价格到达
+        self.logger.info("等待 WebSocket 价格...")
+        for _ in range(20):
+            time.sleep(0.5)
+            prices = {}
+            for coin in coins:
+                p = self._market._ws.get_price(coin)
+                if p and p > 0:
+                    prices[coin] = p
+            if len(prices) == len(coins):
+                for c, p in prices.items():
+                    self.logger.info(f"  {c}: ${p:.6f}")
+                break
+        else:
+            # WebSocket 价格未到，用 REST 回退
+            self.logger.warning("WebSocket 价格超时，使用 REST 回退")
+            for coin in coins:
+                p = self._market._get_price_rest(coin)
+                self.logger.info(f"  {coin}: ${p:.6f} (REST)")
+
+    def _init_regime(self):
+        """初始化 regime 检测器
+
+        用最近 100 根 1h K 线预热 regime 检测器。
+        """
+        try:
+            from live_regime.regime_detector import RegimeDetector
+
+            state_dir = os.path.join(ROOT, 'trading', 'paper_trade', 'state')
+            os.makedirs(state_dir, exist_ok=True)
+
+            for coin in CHAMPIONS.keys():
+                state_file = os.path.join(
+                    state_dir, f'regime_{coin}.json'
+                )
+                detector = RegimeDetector(
+                    initial_regime='盘整',
+                    state_file=state_file,
+                )
+
+                # 预热：拉 100 根 1h K 线
+                klines = self._market.get_klines(coin, '1h', 100)
+                if klines:
+                    for i, k in enumerate(klines):
+                        detector.update_with_aggregation(
+                            idx=i,
+                            high=k['high'],
+                            low=k['low'],
+                            close=k['close'],
+                            volume=k['volume'],
+                            time_ms=k.get('timestamp', 0),
+                        )
+                    self._regime[coin] = detector.regime
+                    self.logger.info(
+                        f"Regime {coin}: {detector.regime} "
+                        f"(预热 {len(klines)} 根 1h K线)"
+                    )
+                else:
+                    self._regime[coin] = '盘整'
+                    self.logger.warning(
+                        f"Regime {coin}: 默认盘整（无 K 线数据）"
+                    )
+
+                # 保存 detector 引用
+                if not hasattr(self, '_regime_detectors'):
+                    self._regime_detectors = {}
+                self._regime_detectors[coin] = detector
+
+        except Exception as e:
+            self.logger.error(f"Regime 初始化失败: {e}")
+            for coin in CHAMPIONS.keys():
+                self._regime[coin] = '盘整'
+
+    def _init_champions(self):
+        """创建所有冠军实例"""
+        state_dir = os.path.join(ROOT, 'trading', 'paper_trade', 'state')
+        log_dir = os.path.join(ROOT, 'trading', 'paper_trade', 'logs')
+        loaded = 0
+        failed = []
+
+        for coin, teams in CHAMPIONS.items():
+            for team, strategies in teams.items():
+                for strategy_name, interval in strategies:
+                    champion_id = f"{coin}_{strategy_name}_{interval}"
+
+                    try:
+                        # 加载策略
+                        strategy = get_strategy(strategy_name)
+                        if strategy is None:
+                            raise ValueError(
+                                f"策略 {strategy_name} 未找到"
+                            )
+
+                        # 创建 PaperAdapter
+                        adapter_config = {
+                            'champion_id': champion_id,
+                            'coin': coin,
+                            'strategy_name': strategy_name,
+                            'interval': interval,
+                            'initial_balance': self._balance,
+                            'leverage': 10.0,
+                            'state_dir': state_dir,
+                            'log_dir': log_dir,
+                        }
+                        paper = PaperAdapter(
+                            adapter_config, self._market
+                        )
+                        paper.connect()
+
+                        # 创建风控
+                        risk_config = CombinedRiskConfig(
+                            stop_loss_pct=0.10,
+                            ttp_enabled=True,
+                        )
+                        risk_mgr = CombinedRiskManager(risk_config)
+
+                        # 创建 TradingSystem
+                        # min_trade=1, position_pct 极小 → 固定 $1 注码
+                        trading_config = {
+                            'coin': coin,
+                            'interval': interval,
+                            'leverage': 10.0,
+                            'position_pct': 0.0001,
+                            'min_trade': 1,
+                        }
+                        system = TradingSystem(
+                            exchange=paper,
+                            strategy=strategy,
+                            risk_manager=risk_mgr,
+                            config=trading_config,
+                        )
+
+                        champ = ChampionInstance(
+                            coin=coin,
+                            strategy_name=strategy_name,
+                            interval=interval,
+                            team=team,
+                            champion_id=champion_id,
+                            paper_adapter=paper,
+                            trading_system=system,
+                            risk_manager=risk_mgr,
+                        )
+
+                        self._champions.append(champ)
+
+                        # 按周期分组
+                        self._champions_by_interval.setdefault(
+                            interval, []
+                        ).append(champ)
+
+                        # 按币种分组
+                        self._champions_by_coin.setdefault(
+                            coin, []
+                        ).append(champ)
+
+                        loaded += 1
+
+                    except Exception as e:
+                        failed.append((champion_id, str(e)))
+                        self.logger.warning(
+                            f"冠军加载失败 {champion_id}: {e}"
+                        )
+
+        self.logger.info(f"冠军加载完成: {loaded} 成功")
+        if failed:
+            self.logger.warning(
+                f"冠军加载失败: {len(failed)} 个"
+            )
+            for cid, err in failed:
+                self.logger.warning(f"  {cid}: {err}")
+
+    # ─── Tick 级风控 ───
+
+    def _init_tick_checker(self):
+        """注册 WebSocket 回调，实现 tick 级止损/TTP 检查"""
+
+        def on_ws_message(data):
+            """WebSocket 消息回调"""
+            if self._stop:
+                return
+
+            # 提取价格更新
+            channel = data.get('channel', '')
+            if channel == 'trades' or 'data' in data:
+                trades = data.get('data', [])
+                if not isinstance(trades, list):
+                    return
+
+                for trade in trades:
+                    coin = trade.get('coin')
+                    if coin and coin in self._champions_by_coin:
+                        self._check_risk_for_coin(coin)
+
+        # 注册回调
+        if self._market._ws:
+            self._market._ws.on_message = on_ws_message
+
+    def _check_risk_for_coin(self, coin: str):
+        """检查某币种所有冠军的风控"""
+        champions = self._champions_by_coin.get(coin, [])
+        price = self._market.get_price(coin)
+        if price <= 0:
+            return
+
+        for champ in champions:
+            pos = champ.paper_adapter.get_position(coin)
+            if not pos:
+                continue
+
+            try:
+                result = champ.risk_manager.check(
+                    pos, price,
+                    position_side=pos.side,
+                    entry_price=pos.entry_price,
+                )
+                if result.should_close:
+                    # 风控触发平仓
+                    close_result = champ.paper_adapter.close_position(
+                        coin
+                    )
+                    if close_result.success:
+                        champ.trading_system.position = "NO_POSITION"
+                        champ.trading_system.entry_price = 0.0
+                        champ.risk_manager.reset()
+                        self.logger.info(
+                            f"[TICK] {champ.champion_id} "
+                            f"{result.reason} @ ${price:.6f}"
+                        )
+            except Exception as e:
+                self.logger.debug(
+                    f"风控检查异常 {champ.champion_id}: {e}"
+                )
+
+    # ─── K 线级策略信号 ───
+
+    def _next_close_time(self, interval: str) -> float:
+        """计算下一根 K 线的收盘时间（UTC 对齐）"""
+        secs = INTERVAL_SECONDS.get(interval, 3600)
+        now = time.time()
+        return math.ceil(now / secs) * secs
+
+    def _get_next_event(self) -> tuple:
+        """获取下一个需要处理的 (close_time, interval)"""
+        events = []
+        for interval in self._champions_by_interval:
+            close_time = self._next_close_time(interval)
+            events.append((close_time, interval))
+        events.sort()
+        return events[0] if events else (time.time() + 60, '1h')
+
+    def _process_interval(self, interval: str):
+        """处理某个周期的所有冠军"""
+        champions = self._champions_by_interval.get(interval, [])
+        if not champions:
+            return
+
+        for champ in champions:
+            if self._stop:
+                break
+
+            try:
+                # 判断是否激活：
+                # 1. 有持仓 → 始终处理（允许平仓）
+                # 2. 无持仓 → 只有当前 regime 匹配队伍时才处理
+                has_position = (
+                    champ.trading_system.position != "NO_POSITION"
+                )
+                regime = self._regime.get(champ.coin, '盘整')
+                active_team = REGIME_TO_TEAM.get(regime, 'mid')
+                is_active = (champ.team == active_team)
+
+                if not has_position and not is_active:
+                    continue
+
+                # 执行一次交易检查
+                result = champ.trading_system.run_once()
+
+                action = result.get('action', 'NONE')
+                if action != 'NONE':
+                    self.logger.info(
+                        f"[K线] {champ.champion_id} "
+                        f"{action} @ signal={result.get('signal')} "
+                        f"(regime={regime})"
+                    )
+
+            except Exception as e:
+                self.logger.error(
+                    f"策略执行异常 {champ.champion_id}: {e}"
+                )
+
+    def _update_regime(self):
+        """更新 regime（每小时调用一次）"""
+        if not hasattr(self, '_regime_detectors'):
+            return
+
+        for coin, detector in self._regime_detectors.items():
+            try:
+                klines = self._market.get_klines(coin, '1h', 5)
+                if klines:
+                    k = klines[-1]
+                    status = detector.update_with_aggregation(
+                        idx=int(time.time()),
+                        high=k['high'],
+                        low=k['low'],
+                        close=k['close'],
+                        volume=k['volume'],
+                        time_ms=k.get('timestamp', 0),
+                    )
+                    old_regime = self._regime.get(coin, '盘整')
+                    new_regime = status['regime']
+
+                    if old_regime != new_regime:
+                        self.logger.info(
+                            f"Regime 切换 {coin}: "
+                            f"{old_regime} → {new_regime}"
+                        )
+
+                    self._regime[coin] = new_regime
+
+            except Exception as e:
+                self.logger.warning(
+                    f"Regime 更新失败 {coin}: {e}"
+                )
+
+    # ─── 状态报告 ───
+
+    def _print_status(self):
+        """输出状态报告"""
+        now = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
+        self.logger.info("")
+        self.logger.info(f"{'═' * 55}")
+        self.logger.info(f"  状态报告  {now}")
+        self.logger.info(f"{'═' * 55}")
+
+        for coin in CHAMPIONS.keys():
+            regime = self._regime.get(coin, '?')
+            active_team = REGIME_TO_TEAM.get(regime, '?')
+            champs = self._champions_by_coin.get(coin, [])
+
+            total_bal = sum(
+                c.paper_adapter.get_balance()['usdc']
+                for c in champs
+            )
+            initial = len(champs) * self._balance
+            ret_pct = (total_bal - initial) / initial * 100
+
+            holding = sum(
+                1 for c in champs
+                if c.paper_adapter.get_position(c.coin)
+            )
+
+            trades = sum(
+                c.paper_adapter._trade_count for c in champs
+            )
+
+            self.logger.info(
+                f"  {coin}: regime={regime}({active_team}) "
+                f"| {len(champs)}冠军 {holding}持仓 {trades}笔 "
+                f"| ${total_bal:.2f} ({ret_pct:+.2f}%)"
+            )
+
+        self.logger.info(f"{'═' * 55}")
+        self.logger.info("")
+
+    # ─── 主循环 ───
+
+    def start(self):
+        """启动 Paper Trade 主循环"""
+        self.logger.info("进入主循环（Ctrl+C 停止）")
+        self._print_status()
+        self._last_report_time = time.time()
+        last_regime_update = time.time()
+        last_funding_check = time.time()
+
+        while not self._stop:
+            try:
+                # 1. 找下一个 K 线收盘事件
+                close_time, interval = self._get_next_event()
+                wait = close_time - time.time() + 8  # +8s 等数据稳定
+
+                # 2. 等待（分段 sleep，响应 stop）
+                if wait > 0:
+                    end = time.time() + wait
+                    while time.time() < end and not self._stop:
+                        time.sleep(min(1.0, end - time.time()))
+
+                if self._stop:
+                    break
+
+                # 3. 处理该周期的冠军
+                self.logger.info(
+                    f"─── K线收盘: {interval} ───"
+                )
+                self._process_interval(interval)
+
+                # 4. 每小时更新 regime
+                now = time.time()
+                if now - last_regime_update >= 3600:
+                    self._update_regime()
+                    last_regime_update = now
+
+                # 5. 每 8 小时扣资金费率
+                if now - last_funding_check >= 8 * 3600:
+                    for champ in self._champions:
+                        champ.paper_adapter.apply_periodic_funding()
+                    last_funding_check = now
+
+                # 6. 每 30 分钟状态报告
+                if now - self._last_report_time >= 1800:
+                    self._print_status()
+                    self._last_report_time = now
+
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                self.logger.error(f"主循环异常: {e}")
+                time.sleep(5)
+
+    def stop(self):
+        """停止并保存状态"""
+        self._stop = True
+        self.logger.info("正在停止...")
+
+        # 保存所有冠军状态
+        for champ in self._champions:
+            try:
+                champ.paper_adapter._save_state()
+            except Exception:
+                pass
+
+        # 最终报告
+        self._print_status()
+
+        # 断开行情
+        if self._market:
+            self._market.disconnect()
+
+        self.logger.info("Paper Trade 系统已停止")
+
+
+# ═══════════════════════════════════════════════════
+# 入口
+# ═══════════════════════════════════════════════════
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Paper Trade — 真实行情模拟交易'
+    )
+    parser.add_argument(
+        '--balance', type=float, default=500.0,
+        help='每个冠军的初始资金（默认 $500）'
+    )
+    args = parser.parse_args()
+
+    manager = PaperTradeManager(balance=args.balance)
+
+    # 优雅退出
+    def handle_signal(sig, frame):
+        manager.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    # 初始化 + 启动
+    manager.init()
+    manager.start()
+
+
+if __name__ == '__main__':
+    main()

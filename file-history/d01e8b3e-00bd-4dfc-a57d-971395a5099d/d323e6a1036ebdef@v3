@@ -1,0 +1,139 @@
+"""trade_logger.py — 实盘交易记录（SQLite）.
+
+格式跟种子 paired_trades 对齐，方便后续分析。
+
+@see trading/strategy_runner.py — StrategyRunner（交易数据来源）
+@see trading/unified_trader.py — 调用 log_trade()
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from strategy_runner import StrategyRunner
+
+from team_config import LEVERAGE
+
+logger = logging.getLogger(__name__)
+
+# 默认数据库路径
+DEFAULT_DB = os.path.join(os.path.dirname(__file__), "reports", "live_trades.db")
+
+
+class TradeLogger:
+    """交易记录写 SQLite."""
+
+    def __init__(self, db_path: str | None = None) -> None:
+        self.db_path = db_path or DEFAULT_DB
+        # 确保目录存在
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self._create_tables()
+
+    def _create_tables(self) -> None:
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS live_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy_id TEXT,
+                coin TEXT,
+                strategy TEXT,
+                interval TEXT,
+                side TEXT,
+                entry_price REAL,
+                exit_price REAL,
+                position_size REAL,
+                pnl REAL,
+                fee REAL,
+                open_time TEXT,
+                close_time TEXT,
+                close_reason TEXT,
+                bet_amount REAL,
+                balance_after REAL
+            )
+        """)
+        self.conn.commit()
+
+    def log_trade(
+        self, strategy: StrategyRunner,
+        close_reason: str, exit_price: float,
+        pnl: float, fee: float, balance: float,
+    ) -> None:
+        """记录一笔已平仓的交易.
+
+        Args:
+            strategy: StrategyRunner 实例
+            close_reason: 'SIGNAL' / 'TTP' / 'STOP_LOSS' / 'CIRCUIT_BREAKER'
+            exit_price: 平仓价
+            pnl: 盈亏（美元）
+            fee: 手续费（美元）
+            balance: 平仓后余额
+
+        """
+        try:
+            leverage = LEVERAGE
+            # position_size 是币数量，× entry_price 转美元名义，÷ 杠杆 = 保证金
+            bet_amount = (strategy.position_size * strategy.entry_price / leverage
+                          if strategy.position_size else 0)
+
+            self.conn.execute("""
+                INSERT INTO live_trades
+                (strategy_id, coin, strategy, interval, side, entry_price, exit_price,
+                 position_size, pnl, fee, open_time, close_time, close_reason,
+                 bet_amount, balance_after)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                strategy.id,
+                strategy.coin,
+                strategy.strategy_name,
+                strategy.interval,
+                strategy.position,
+                strategy.entry_price,
+                exit_price,
+                strategy.position_size,
+                pnl,
+                fee,
+                strategy.open_time,
+                datetime.now(timezone.utc).isoformat(),
+                close_reason,
+                bet_amount,
+                balance,
+            ))
+            self.conn.commit()
+            logger.info("[%s] 交易记录: %s pnl=%.2f balance=%.2f",
+                        strategy.id, close_reason, pnl, balance)
+        except Exception:
+            logger.exception("[%s] 记录交易失败", strategy.id)
+
+    def get_daily_report(self, date: str | None = None) -> list[Any]:
+        """每日绩效报告.
+
+        Args:
+            date: 日期字符串 'YYYY-MM-DD'，默认今天
+
+        Returns:
+            list of tuples: (strategy_id, trades, total_pnl, total_fee)
+
+        """
+        if date is None:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return self.conn.execute("""
+            SELECT strategy_id,
+                   COUNT(*) as trades,
+                   SUM(pnl) as total_pnl,
+                   SUM(fee) as total_fee
+            FROM live_trades
+            WHERE close_time LIKE ?
+            GROUP BY strategy_id
+            ORDER BY total_pnl DESC
+        """, (f"{date}%",)).fetchall()
+
+    def close(self) -> None:
+        """关闭数据库连接."""
+        if self.conn:
+            self.conn.close()

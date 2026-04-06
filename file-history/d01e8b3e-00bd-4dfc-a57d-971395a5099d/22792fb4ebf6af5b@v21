@@ -1,0 +1,140 @@
+# Plan: build_klines_indicators 新列自动补算
+
+## Context
+
+indicator_col_map.json 已有 110 列（101 旧 + 9 新），但 klines.duckdb 的 klines 表只有 101 个指标列。
+
+**根因**：`build_indicators()` 用 `first_col`（adx_p14__adx，旧列）的 IS NULL 判断跳过。旧列已有值 → 所有 240 组被跳过 → 新 9 列永远不会被算。且函数不做 ALTER TABLE ADD COLUMN。
+
+**新 9 列**：ad, fvg_detect__bull, fvg_detect__bear, fvg_detect__bull_relaxed, fvg_detect__bear_relaxed, cmf_p50, volume_ratio_p20, obv_slope_p10, ad_roc_p20
+
+**目标**：修改 `build_indicators()`，自动检测新列 → ALTER TABLE → 只算+只写新列。旧逻辑不动。
+
+---
+
+## 改动
+
+### 文件：`data/build_klines_indicators.py`
+
+#### Step 1：build_indicators() 开头，检测新列（行 227 后插入）
+
+```python
+# ---- 新列检测 ----
+existing_cols = set(
+    row[0] for row in con.execute("DESCRIBE klines").fetchall()
+)
+new_cols = [c for c in indicator_cols if c not in existing_cols]
+
+if new_cols:
+    print(f"发现 {len(new_cols)} 个新指标列，创建并补算...")
+    for col in new_cols:
+        con.execute(f'ALTER TABLE klines ADD COLUMN "{col}" DOUBLE')
+    con.commit()
+    _backfill_new_cols(con, {c: col_map[c] for c in new_cols})
+```
+
+#### Step 2：新增 `_backfill_new_cols()` 函数（build_indicators 前面插入）
+
+```python
+def _backfill_new_cols(
+    con: duckdb.DuckDBPyConnection,
+    new_col_map: dict[str, list],
+) -> None:
+    """只对新增的指标列做全量补算。"""
+    _IV_ORDER = {"1d": 0, "12h": 1, "8h": 2, "4h": 3, "2h": 4,
+                 "1h": 5, "30m": 6, "15m": 7, "5m": 8, "1m": 9}
+    new_cols = list(new_col_map.keys())
+    first_new = new_cols[0]
+
+    # 找所有 coin/interval 组（新列为 NULL 的）
+    check = con.execute(f'''
+        SELECT coin, interval
+        FROM klines
+        GROUP BY coin, interval
+        HAVING COUNT(CASE WHEN "{first_new}" IS NOT NULL THEN 1 END) = 0
+    ''').fetchall()
+    groups = sorted(check, key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]))
+    print(f"  新列补算: {len(groups)} 组 × {len(new_cols)} 列")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for idx, (coin, interval) in enumerate(groups, 1):
+        t0 = time.perf_counter()
+        tag = f"  [新列 {idx}/{len(groups)}] {coin}/{interval}"
+
+        rows = con.execute(
+            f"SELECT {', '.join(base_cols)} FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+        if not rows:
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        times = [r[0] for r in rows]
+
+        # 只算新列指标
+        computed = _compute_all_indicators(candles, new_col_map)
+        computed["time"] = times
+        indicator_df = pd.DataFrame(computed)
+
+        con.register("tmp_new", indicator_df)
+        set_clauses = ", ".join(
+            f'"{col}" = tmp_new."{col}"' for col in new_cols
+        )
+        con.execute(f"""
+            UPDATE klines
+            SET {set_clauses}
+            FROM tmp_new
+            WHERE klines.coin = ?
+              AND klines.interval = ?
+              AND klines.time = tmp_new.time
+        """, [coin, interval])
+        con.unregister("tmp_new")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f"{tag} ✅ {elapsed:.1f}s")
+
+    print("  新列补算完成")
+```
+
+#### Step 3：更新文件头 docstring（行 7）
+
+`101 个指标列` → `indicator_col_map.json 中所有指标列`
+
+#### Step 4：跑脚本
+
+```bash
+cd /Volumes/SSD-2TB/project/wuji-auto-trading/data
+python3 build_klines_indicators.py
+```
+
+阶段 1 会跳过（mirror 已存在）。
+阶段 2：先检测新列 → ALTER + 补算 9 列 × 240 组 → 旧逻辑跳过所有组（first_col 已满）。
+
+---
+
+## 关键文件
+
+| 文件 | 操作 |
+|------|------|
+| `data/build_klines_indicators.py` | 新增 `_backfill_new_cols()` + build_indicators() 加新列检测 |
+| `data/indicator_col_map.json` | 不动（已有 110 列） |
+| `CHANGELOG.md` | 记录 |
+
+---
+
+## 验证
+
+1. 跑脚本后 `DESCRIBE klines` 应有 109 列（8 基础 + 101 旧指标 + 9 新指标 - 重复的 1 = 实际看 DESCRIBE 输出）
+2. `SELECT ad, cmf_p50, volume_ratio_p20 FROM klines WHERE coin='BTC' AND interval='1h' LIMIT 5` — 应有非 NULL 值
+3. `SELECT COUNT(*) FROM klines WHERE ad IS NULL AND coin='BTC' AND interval='1h'` — 应为 0（或仅前几行预热期 NULL）
+4. mirror 组也应有值：`SELECT ad FROM klines WHERE coin='BTC_mirror' AND interval='1h' LIMIT 5`
+
+---
+
+## 风险
+
+- 240 组 × 9 列，1m 有 210 万行但只算 9 个指标（不是 110 个），估计 10-20 分钟
+- DuckDB 4GB 内存限制：每组独立 UPDATE + commit，不会累积

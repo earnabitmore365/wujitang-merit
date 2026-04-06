@@ -1,0 +1,410 @@
+"""BitMEX WebSocket 模块.
+
+订阅实时数据：K 线（tradeBin）、逐笔成交（trade）
+Gateway 无认证模式下只用这两个频道。
+"""
+
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import hmac
+import json
+import logging
+import threading
+import time
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+try:
+    import websocket as ws_lib
+    HAS_WEBSOCKET = True
+except ImportError:
+    HAS_WEBSOCKET = False
+
+
+logger = logging.getLogger("BitMEX.WS")
+
+
+class BitMEXWebSocket:
+    """BitMEX WebSocket 客户端.
+
+    Usage:
+        ws = BitMEXWebSocket(testnet=False)
+        ws.connect()  # 无认证
+        ws.subscribe(['tradeBin1m:SOLUSDT', 'trade:SOLUSDT'])
+    """
+
+    MAINNET_URL = "wss://ws.bitmex.com/realtime"
+    TESTNET_URL = "wss://ws.testnet.bitmex.com/realtime"
+
+    def __init__(self, testnet: bool = True) -> None:
+        self.testnet = testnet
+        self.url = self.TESTNET_URL if testnet else self.MAINNET_URL
+
+        # 数据存储
+        self._last_price: dict[str, float] = {}  # symbol -> last trade price
+
+        # 连接状态
+        self._ws: Any = None
+        self._thread: threading.Thread | None = None
+        self._connected = False
+        self._authenticated = False
+        self._lock = threading.Lock()
+
+        # 自动重连
+        self._reconnect_enabled = True
+        self._reconnect_delay = 5       # 首次重连等待秒数
+        self._reconnect_max_delay = 60  # 最大等待秒数
+        self._reconnect_lock = threading.Lock()  # 防止多线程同时重连
+        self._reconnecting = False
+        self._subscribed_topics: list[str] = []  # 记住订阅，重连后自动恢复
+        self._last_message_time: float = 0  # 上次收到消息的时间
+        self._last_kline_time: float = 0    # 上次收到 tradeBin（K线）的时间
+
+        # 回调
+        # 泛用回调：(table, action, rows)
+        self._on_table_callback: Callable[..., Any] | None = None
+        self._on_reconnect_callback: Callable[..., Any] | None = None  # 重连成功回调
+        self._on_disconnect_callback: Callable[..., Any] | None = None  # 断线回调
+        self._on_reconnect_failed_callback: Callable[..., Any] | None = None  # 重连失败
+        self._on_watchdog_callback: Callable[..., Any] | None = None  # Watchdog 触发
+
+    def connect(self, api_key: str = "", api_secret: str = "") -> bool:
+        """连接 WebSocket.
+
+        Args:
+            api_key: API Key（私有频道需要，Gateway 不传）
+            api_secret: API Secret
+
+        """
+        if not HAS_WEBSOCKET:
+            logger.error("websocket-client 未安装: pip install websocket-client")
+            return False
+
+        self._api_key = api_key
+        self._api_secret = api_secret
+
+        try:
+            self._ws = ws_lib.WebSocketApp(
+                self.url,
+                on_open=self._on_open,
+                on_message=self._on_message,
+                on_error=self._on_error,
+                on_close=self._on_close,
+            )
+            self._thread = threading.Thread(
+                target=self._ws.run_forever,
+                kwargs={"ping_interval": 15, "ping_timeout": 10},
+                daemon=True,
+            )
+            self._thread.start()
+
+        except Exception:
+            logger.exception("WebSocket 连接失败")
+            return False
+        else:
+            # 等待连接
+            for _ in range(50):
+                if self._connected:
+                    # 启动 watchdog（每 10 秒巡检）
+                    self._watchdog_thread = threading.Thread(
+                        target=self._watchdog, daemon=True)
+                    self._watchdog_thread.start()
+                    return True
+                time.sleep(0.1)
+
+            logger.error("WebSocket 连接超时")
+            return False
+
+    def disconnect(self) -> None:
+        """断开 WebSocket（彻底关闭，Watchdog + 重连线程全部停止）."""
+        self._reconnect_enabled = False  # 先关 Watchdog + 重连循环
+        self._connected = False
+        self._authenticated = False
+        ws = self._ws
+        self._ws = None
+        if ws:
+            with contextlib.suppress(Exception):
+                ws.close()
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    # ═══════════════════════════════════════════════
+    # 订阅
+    # ═══════════════════════════════════════════════
+
+    def subscribe(self, topics: list[str]) -> None:
+        """订阅频道.
+
+        Args:
+            topics: 频道列表，如 ['orderBookL2_25:XBTUSD', 'trade:XBTUSD',
+                                   'position', 'order', 'margin']
+
+        """
+        if self._ws and self._connected:
+            msg = json.dumps({"op": "subscribe", "args": topics})
+            self._ws.send(msg)
+            logger.info("订阅: %s", topics)
+        # 记住订阅，重连后自动恢复
+        for t in topics:
+            if t not in self._subscribed_topics:
+                self._subscribed_topics.append(t)
+
+    # ═══════════════════════════════════════════════
+    # 数据获取
+    # ═══════════════════════════════════════════════
+
+    def get_last_price(self, symbol: str) -> float | None:
+        """获取最新成交价."""
+        with self._lock:
+            return self._last_price.get(symbol)
+
+    # ═══════════════════════════════════════════════
+    # 内部回调
+    # ═══════════════════════════════════════════════
+
+    def _on_open(self, _ws: Any) -> None:
+        logger.info("WebSocket 已连接")
+        self._connected = True
+        self._last_message_time = time.time()
+
+        # 认证（如果有 API Key）
+        if self._api_key and self._api_secret:
+            self._authenticate()
+
+    def _on_close(
+        self, _ws: Any,
+        close_status_code: int | None,
+        close_msg: str | None,
+    ) -> None:
+        reason = f"{close_status_code} {close_msg or ''}"
+        logger.info("WebSocket 断开: %s", reason)
+        self._connected = False
+        self._authenticated = False
+        # 断线回调
+        if self._on_disconnect_callback:
+            with contextlib.suppress(Exception):
+                self._on_disconnect_callback(reason)
+        # 自动重连
+        if self._reconnect_enabled:
+            threading.Thread(target=self._reconnect, daemon=True).start()
+
+    def _on_error(self, _ws: Any, error: Exception) -> None:
+        logger.error("WebSocket 错误: %s", error)
+
+    def _watchdog(self) -> None:
+        """三层保护 Watchdog（每5秒巡检）.
+
+        第1层：每5秒主动发 ping 文本帧，BitMEX 回 pong → 更新 _last_message_time
+        第2层：30秒没收到任何消息（含 pong）→ 判死重连
+        第3层：60秒没收到 tradeBin（K线）→ 数据流中断重连
+        最后防线：gateway_monitor.sh cron 每5分钟 kill+重启
+        """
+        ping_interval = 5     # 主动 ping 间隔（秒）
+        stale_timeout = 30    # 30秒无消息 → 判死
+        kline_timeout = 60    # 60秒无K线 → 数据流中断
+        last_ping: float = 0
+
+        while self._reconnect_enabled:
+            time.sleep(ping_interval)
+            now = time.time()
+
+            # 检查0：connected 标志（on_close 已触发）
+            if not self._connected:
+                logger.warning("Watchdog: 连接已断开，触发重连")
+                self._trigger_reconnect()
+                continue
+
+            # 第1层：主动 ping（文本帧，不是协议层 ping）
+            if now - last_ping >= ping_interval:
+                try:
+                    if self._ws:
+                        self._ws.send("ping")
+                        last_ping = now
+                except Exception:
+                    logger.debug("ping 发送失败，等超时检测处理")
+
+            # 第2层：30秒无消息 → 判死（含 pong 也算消息）
+            msg_elapsed = now - self._last_message_time
+            if self._last_message_time > 0 and msg_elapsed > stale_timeout:
+                logger.warning(
+                    "Watchdog: %.0f秒未收到消息"
+                    "（含ping/pong），判定连接死亡",
+                    msg_elapsed,
+                )
+                if self._on_watchdog_callback:
+                    with contextlib.suppress(Exception):
+                        self._on_watchdog_callback("无消息判死", msg_elapsed)
+                try:
+                    if self._ws:
+                        self._ws.close()
+                except Exception:
+                    logger.debug("关闭死连接异常（即将重连）")
+                self._connected = False
+                self._trigger_reconnect()
+                continue
+
+            # 第3层：60秒无 K线 → 数据流中断（连接活但没业务数据）
+            if self._last_kline_time > 0:
+                kline_elapsed = now - self._last_kline_time
+                if kline_elapsed > kline_timeout:
+                    logger.warning(
+                        "Watchdog: %.0f秒未收到K线数据，"
+                        "数据流中断，强制重连",
+                        kline_elapsed,
+                    )
+                    if self._on_watchdog_callback:
+                        with contextlib.suppress(Exception):
+                            self._on_watchdog_callback("K线数据流中断", kline_elapsed)
+                    try:
+                        if self._ws:
+                            self._ws.close()
+                    except Exception:
+                        logger.debug("关闭中断连接异常（即将重连）")
+                    self._connected = False
+                    self._trigger_reconnect()
+
+    def _trigger_reconnect(self) -> None:
+        """触发重连（加锁，防止多线程同时重连）."""
+        with self._reconnect_lock:
+            if self._reconnecting:
+                return  # 已有重连在进行
+            self._reconnecting = True
+
+        try:
+            self._reconnect()
+        finally:
+            with self._reconnect_lock:
+                self._reconnecting = False
+
+    def _reconnect(self) -> None:
+        """自动重连（指数退避，最大60秒）."""
+        delay = self._reconnect_delay
+        while self._reconnect_enabled and not self._connected:
+            logger.info("WebSocket %s秒后自动重连...", delay)
+            time.sleep(delay)
+            try:
+                # 清理旧连接
+                old_ws = self._ws
+                if old_ws:
+                    with contextlib.suppress(Exception):
+                        old_ws.close()
+
+                self._ws = ws_lib.WebSocketApp(
+                    self.url,
+                    on_open=self._on_open,
+                    on_message=self._on_message,
+                    on_error=self._on_error,
+                    on_close=self._on_close,
+                )
+                self._thread = threading.Thread(
+                    target=self._ws.run_forever,
+                    kwargs={"ping_interval": 15, "ping_timeout": 10},
+                    daemon=True,
+                )
+                self._thread.start()
+
+                # 等待连接
+                for _ in range(50):
+                    time.sleep(0.1)
+
+                if cast(bool, self._connected):
+                    logger.info("WebSocket 重连成功")
+                    # 重置 K线 时间戳，防止 Watchdog 第3层误判（旧时间戳导致二次重连）
+                    self._last_kline_time = time.time()
+                    self._last_message_time = time.time()
+                    # 恢复之前的订阅
+                    if self._subscribed_topics:
+                        time.sleep(0.5)
+                        self.subscribe(self._subscribed_topics)
+                    # 重连成功回调（Gateway 用于全量覆盖历史 K 线）
+                    if self._on_reconnect_callback:
+                        try:
+                            threading.Thread(
+                                target=self._on_reconnect_callback,
+                                daemon=True).start()
+                        except Exception:
+                            logger.exception("重连回调异常")
+                    delay = self._reconnect_delay  # 重置退避
+                    break
+                logger.warning("WebSocket 重连失败，继续重试")
+                if self._on_reconnect_failed_callback:
+                    attempt = int(delay / self._reconnect_delay)
+                    with contextlib.suppress(Exception):
+                        self._on_reconnect_failed_callback(attempt, delay)
+                delay = min(delay * 2, self._reconnect_max_delay)
+            except Exception:
+                logger.exception("WebSocket 重连异常")
+                delay = min(delay * 2, self._reconnect_max_delay)
+
+    def _on_message(self, _ws: Any, message: str) -> None:
+        self._last_message_time = time.time()
+
+        # ping/pong 文本帧（非 JSON），直接返回
+        if message in ("pong", "ping"):
+            return
+
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            return
+
+        # 系统消息
+        if "info" in data or "success" in data:
+            if data.get("request", {}).get("op") == "authKeyExpires":
+                self._authenticated = data.get("success", False)
+                logger.info("认证%s", "成功" if self._authenticated else "失败")
+            return
+
+        if "error" in data:
+            logger.error("WS 错误: %s", data["error"])
+            return
+
+        table = data.get("table", "")
+        action = data.get("action", "")
+        rows = data.get("data", [])
+
+        if table == "trade":
+            self._handle_trade(rows)
+        elif table.startswith("tradeBin"):
+            self._last_kline_time = time.time()
+            # 数据处理由 _on_table_callback（Gateway）负责，WS 层只记时间
+        elif table == "margin":
+            pass  # 无认证模式不收 margin
+
+        # 泛用回调（所有 table 都触发，供 Feed Gateway 使用）
+        if self._on_table_callback and table:
+            try:
+                self._on_table_callback(table, action, rows)
+            except Exception:
+                logger.exception("Table callback 错误")
+
+    def _authenticate(self) -> None:
+        """发送认证消息."""
+        expires = int(time.time()) + 30
+        message = f"GET/realtime{expires}"
+        signature = hmac.new(
+            self._api_secret.encode("utf-8"),
+            message.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+        auth_msg = json.dumps({
+            "op": "authKeyExpires",
+            "args": [self._api_key, expires, signature],
+        })
+        self._ws.send(auth_msg)
+
+    def _handle_trade(self, rows: list[dict[str, Any]]) -> None:
+        """处理成交更新."""
+        with self._lock:
+            for row in rows:
+                symbol = row.get("symbol", "")
+                price = row.get("price", 0)
+                if price > 0:
+                    self._last_price[symbol] = price
+

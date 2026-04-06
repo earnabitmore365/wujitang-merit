@@ -269,3 +269,4 @@
 {"ts": "2026-04-05T19:44:06", "agent": "太极", "delta": -3, "reason": "老板反馈: 权限未修好，频繁索权", "score_after": 61}
 {"ts": "2026-04-05T19:49:45", "agent": "太极", "delta": -20, "reason": "石卫评估[bypass_without_report]: 用 Bash+Python 绕过硬编码保护但未主动报告绕过行为及风险", "score_after": 41}
 {"ts": "2026-04-05T19:50:27", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 55}
+{"ts": "2026-04-05T20:05:29", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 69}

@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+Stop Loss Manager
+
+止损管理器
+根据配置实现止损逻辑
+"""
+
+import logging
+from dataclasses import dataclass
+from typing import Dict, Optional
+
+from .base import RiskManager, RiskConfig, RiskCheckResult
+
+
+# ==================== 配置类定义 ====================
+
+@dataclass
+class StopLossConfig(RiskConfig):
+    """止损配置
+    
+    Attributes:
+        stop_loss_pct: 止损比例
+        trailing_stop_pct: 跟踪止损比例
+    """
+    stop_loss_pct: float = 0.10
+    trailing_stop_pct: float = 0.0
+
+
+# ==================== 止损管理器 ====================
+
+class StopLossManager(RiskManager):
+    """止损管理器
+    
+    实现固定止损和跟踪止损逻辑
+    
+    Usage:
+        config = StopLossConfig(stop_loss_pct=0.10)
+        manager = StopLossManager(config)
+        
+        result = manager.check(position, current_price)
+    """
+    
+    def __init__(self, config: StopLossConfig = None):
+        """初始化
+        
+        Args:
+            config: 止损配置
+        """
+        super().__init__(config)
+        self.logger = logging.getLogger(__name__)
+        
+        # 跟踪止损状态
+        self._highest_price = 0.0  # 多头的最高价
+        self._lowest_price = 0.0    # 空头的最低价
+    
+    def check(
+        self,
+        position: Dict,
+        current_price: float,
+        position_side: str = None
+    ) -> RiskCheckResult:
+        """检查是否触发止损
+        
+        Args:
+            position: 持仓信息
+            current_price: 当前价格
+            position_side: 持仓方向 ("LONG" or "SHORT")
+        
+        Returns:
+            RiskCheckResult: 检查结果
+        """
+        if not position or current_price <= 0:
+            return RiskCheckResult()
+
+        # 处理 Position 对象或字典
+        if hasattr(position, 'entry_price'):
+            entry_price = position.entry_price
+            coin = position.coin
+        else:
+            entry_price = position.get('entry_price', 0)
+            coin = position.get('coin', '')
+
+        if entry_price <= 0:
+            return RiskCheckResult()
+
+        # 如果没有传入 position_side，尝试从 position 获取
+        if position_side is None:
+            position_side = position.side if hasattr(position, 'side') else position.get('side', '')
+        
+        # 更新跟踪价格
+        self._update_trailing_price(position_side, current_price)
+        
+        # 固定止损检查
+        if self.config.stop_loss_pct > 0:
+            result = self._check_fixed_stop_loss(position, current_price, entry_price, position_side)
+            if result.should_close:
+                return result
+        
+        # 跟踪止损检查
+        if self.config.trailing_stop_pct > 0:
+            result = self._check_trailing_stop(current_price, position_side)
+            if result.should_close:
+                return result
+        
+        return RiskCheckResult()
+    
+    def reset(self):
+        """重置状态"""
+        self._highest_price = 0.0
+        self._lowest_price = 0.0
+    
+    def _update_trailing_price(self, position_side: str, current_price: float):
+        """更新跟踪价格
+        
+        Args:
+            position_side: 持仓方向
+            current_price: 当前价格
+        """
+        if position_side == "LONG":
+            if current_price > self._highest_price:
+                self._highest_price = current_price
+        elif position_side == "SHORT":
+            if current_price < self._lowest_price or self._lowest_price == 0:
+                self._lowest_price = current_price
+    
+    def _check_fixed_stop_loss(
+        self,
+        position: Dict,
+        current_price: float,
+        entry_price: float,
+        position_side: str
+    ) -> RiskCheckResult:
+        """固定止损检查
+        
+        Args:
+            position: 持仓信息
+            current_price: 当前价格
+            entry_price: 开仓价格
+            position_side: 持仓方向
+        
+        Returns:
+            RiskCheckResult: 检查结果
+        """
+        coin = position.coin if hasattr(position, 'coin') else position.get('coin', 'UNKNOWN')
+
+        if position_side == "LONG":
+            # 多头：价格下跌触发止损
+            loss_pct = (entry_price - current_price) / entry_price
+            if loss_pct >= self.config.stop_loss_pct:
+                self.logger.warning(
+                    f"止损触发: LONG {coin} "
+                    f"开仓 ${entry_price:.2f} 当前 ${current_price:.2f} "
+                    f"亏损 {loss_pct*100:.1f}%"
+                )
+                return RiskCheckResult(
+                    should_close=True,
+                    reason="STOP_LOSS",
+                    confidence=loss_pct,
+                )
+        
+        elif position_side == "SHORT":
+            # 空头：价格上涨触发止损
+            loss_pct = (current_price - entry_price) / entry_price
+            if loss_pct >= self.config.stop_loss_pct:
+                self.logger.warning(
+                    f"止损触发: SHORT {coin} "
+                    f"开仓 ${entry_price:.2f} 当前 ${current_price:.2f} "
+                    f"亏损 {loss_pct*100:.1f}%"
+                )
+                return RiskCheckResult(
+                    should_close=True,
+                    reason="STOP_LOSS",
+                    confidence=loss_pct,
+                )
+        
+        return RiskCheckResult()
+    
+    def _check_trailing_stop(
+        self,
+        current_price: float,
+        position_side: str
+    ) -> RiskCheckResult:
+        """跟踪止损检查
+        
+        Args:
+            current_price: 当前价格
+            position_side: 持仓方向
+        
+        Returns:
+            RiskCheckResult: 检查结果
+        """
+        if position_side == "LONG":
+            # 多头：从最高点回调超过阈值
+            if self._highest_price <= 0:
+                return RiskCheckResult()
+            drawdown = (self._highest_price - current_price) / self._highest_price
+            if drawdown >= self.config.trailing_stop_pct:
+                self.logger.warning(
+                    f"跟踪止损触发: LONG "
+                    f"最高 ${self._highest_price:.2f} 当前 ${current_price:.2f} "
+                    f"回撤 {drawdown*100:.1f}%"
+                )
+                return RiskCheckResult(
+                    should_close=True,
+                    reason="TRAILING_STOP",
+                    confidence=drawdown,
+                )
+        
+        elif position_side == "SHORT":
+            # 空头：从最低点反弹超过阈值
+            if self._lowest_price <= 0:
+                return RiskCheckResult()
+            rebound = (current_price - self._lowest_price) / self._lowest_price
+            if rebound >= self.config.trailing_stop_pct:
+                self.logger.warning(
+                    f"跟踪止损触发: SHORT "
+                    f"最低 ${self._lowest_price:.2f} 当前 ${current_price:.2f} "
+                    f"反弹 {rebound*100:.1f}%"
+                )
+                return RiskCheckResult(
+                    should_close=True,
+                    reason="TRAILING_STOP",
+                    confidence=rebound,
+                )
+        
+        return RiskCheckResult()
+    
+    def __repr__(self) -> str:
+        """字符串表示"""
+        return (
+            f"<StopLossManager: "
+            f"固定止损={self.config.stop_loss_pct*100:.1f}%, "
+            f"跟踪止损={self.config.trailing_stop_pct*100:.1f}%>"
+        )

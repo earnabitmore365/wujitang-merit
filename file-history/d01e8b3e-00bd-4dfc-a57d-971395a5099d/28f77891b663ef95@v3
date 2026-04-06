@@ -1,0 +1,220 @@
+"""Gateway 数据层 Telegram 通报.
+
+职责：Gateway 内部事件 → Telegram 通知。
+发到 TELEGRAM_GATEWAY_THREAD_ID（与 gateway_monitor.sh 同一 thread）。
+
+通报清单（10 种）：
+  1. 启动成功          notify_startup
+  2. WS 断线           notify_ws_disconnect
+  3. WS 重连成功       notify_ws_reconnect_success
+  4. WS 重连失败       notify_ws_reconnect_failed
+  5. 数据异常          notify_data_anomaly
+  6. 优雅停止          notify_shutdown
+  7. 每小时摘要        notify_hourly_summary
+  8. 历史K线加载失败   notify_history_failed
+  9. 币种数据断流      notify_coin_stale
+  10. Watchdog触发     notify_watchdog
+
+@see trading/monitor/gateway_monitor.sh — 外部 cron 兜底
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import threading
+import time
+import urllib.request
+from datetime import datetime, timezone
+
+logger = logging.getLogger("GatewayNotifier")
+
+
+class GatewayNotifier:
+    """Gateway 数据层 Telegram 通报."""
+
+    def __init__(self) -> None:
+        self._bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self._chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        self._thread_id = int(os.getenv("TELEGRAM_GATEWAY_THREAD_ID", "0"))
+
+        # 节流：同类消息最少间隔（秒）
+        self._last_sent: dict[str, float] = {}
+
+        # 统计（每小时摘要用）
+        self._stats = {
+            "klines": 0,
+            "ticks": 0,
+            "reconnects": 0,
+            "errors": 0,
+            "start_time": time.time(),
+        }
+
+    # ========== 发送基础 ==========
+
+    def _send(
+        self, text: str,
+        throttle_key: str = "",
+        min_interval: int = 60,
+    ) -> None:
+        """发送到 Gateway thread（fire-and-forget，不阻塞调用方）."""
+        if not self._bot_token or not self._chat_id:
+            return
+
+        # 节流
+        if throttle_key:
+            now = time.time()
+            if now - self._last_sent.get(throttle_key, 0) < min_interval:
+                return
+            self._last_sent[throttle_key] = now
+
+        # 异步发送，不阻塞 Gateway 主线程
+        threading.Thread(
+            target=self._do_send, args=(text,), daemon=True,
+        ).start()
+
+    def _do_send(self, text: str) -> None:
+        """实际 HTTP 发送."""
+        try:
+            url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+            payload = json.dumps({
+                "chat_id": self._chat_id,
+                "message_thread_id": self._thread_id,
+                "text": text,
+                "parse_mode": "HTML",
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                url, data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            logger.debug("Telegram 发送失败", exc_info=True)
+
+    # ========== 10 种通报 ==========
+
+    def notify_startup(
+        self, coins: list[str],
+        intervals: dict[str, str],
+        zmq_port: int,
+    ) -> None:
+        """1. 启动成功."""
+        coin_list = ", ".join(coins)
+        now = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        self._send(
+            f"✅ <b>数据网关已启动</b>\n"
+            f"时间: {now}\n"
+            f"监控 {len(coins)} 个币种: {coin_list}",
+        )
+
+    def notify_shutdown(self, reason: str = "正常停止") -> None:
+        """6. 优雅停止."""
+        uptime = time.time() - self._stats["start_time"]
+        hours = int(uptime // 3600)
+        mins = int((uptime % 3600) // 60)
+        self._send(
+            f"⏹ <b>数据网关已停止</b>\n"
+            f"原因: {reason}\n"
+            f"本次运行: {hours}小时{mins}分钟",
+        )
+
+    def notify_ws_disconnect(self, reason: str = "") -> None:
+        """2. 行情连接断开."""
+        self._stats["errors"] += 1
+        self._send(
+            f"🔌 <b>行情连接断开</b>\n"
+            f"正在自动重连...",
+            throttle_key="ws_disconnect",
+            min_interval=30,
+        )
+
+    def notify_ws_reconnect_success(self) -> None:
+        """3. 行情连接恢复."""
+        self._stats["reconnects"] += 1
+        self._send(
+            "✅ <b>行情连接已恢复</b>",
+            throttle_key="ws_reconnect_ok",
+            min_interval=30,
+        )
+
+    def notify_ws_reconnect_failed(
+        self, attempt: int, delay: int,
+    ) -> None:
+        """4. 行情重连失败."""
+        self._send(
+            f"🔴 <b>行情重连失败</b>\n"
+            f"已尝试 {attempt} 次，{delay}秒后再试",
+            throttle_key="ws_reconnect_fail",
+            min_interval=60,
+        )
+
+    def notify_data_anomaly(self, coin: str, issue: str) -> None:
+        """5. 数据异常."""
+        self._stats["errors"] += 1
+        self._send(
+            f"⚠️ <b>数据异常</b>: {coin}\n{issue}",
+            throttle_key=f"anomaly_{coin}",
+            min_interval=120,
+        )
+
+    def notify_hourly_summary(
+        self, coins_active: int, coins_total: int,
+    ) -> None:
+        """7. 每小时摘要."""
+        now = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        uptime = time.time() - self._stats["start_time"]
+        hours = int(uptime // 3600)
+        status = "✅" if coins_active == coins_total else "⚠️"
+
+        self._send(
+            f"📊 <b>数据层状态</b> ({now})\n"
+            f"{status} {coins_active}/{coins_total} 个币种正常\n"
+            f"收到 {self._stats['klines']} 根K线\n"
+            f"连续运行 {hours} 小时"
+            + (f" | 重连 {self._stats['reconnects']} 次"
+               if self._stats["reconnects"] else ""),
+        )
+        # 重置小时计数
+        self._stats["klines"] = 0
+        self._stats["ticks"] = 0
+
+    def notify_history_failed(self, coin: str, error: str) -> None:
+        """8. 历史数据加载失败."""
+        self._send(
+            f"🔴 <b>历史数据加载失败</b>: {coin}\n"
+            f"策略可能产出错误信号",
+        )
+
+    def notify_coin_stale(self, coin: str, seconds: float) -> None:
+        """9. 币种数据断流."""
+        mins = int(seconds // 60)
+        self._send(
+            f"⚠️ <b>{coin} 数据中断</b>\n"
+            f"已 {mins} 分钟没有新数据",
+            throttle_key=f"stale_{coin}",
+            min_interval=180,
+        )
+
+    def notify_watchdog(
+        self, trigger_type: str, elapsed: float,
+    ) -> None:
+        """10. 连接异常检测."""
+        self._stats["errors"] += 1
+        self._send(
+            f"🔴 <b>连接异常</b>\n"
+            f"{int(elapsed)}秒无响应，正在强制重连",
+            throttle_key="watchdog",
+            min_interval=60,
+        )
+
+    # ========== 统计更新（供外部调用）==========
+
+    def count_kline(self) -> None:
+        """计数 KLINE 消息."""
+        self._stats["klines"] += 1
+
+    def count_tick(self) -> None:
+        """计数 TICK 消息."""
+        self._stats["ticks"] += 1

@@ -1,0 +1,60 @@
+# 文档库
+
+> 技术研究文档的统一存放处。出方案/做决策时从这里查，不靠经验。
+
+---
+
+## 目录结构
+
+```
+文档/
+├── README.md              ← 你在这里
+├── claude_code.md         — Claude Code 使用文档
+├── minimax_api.md         — MiniMax API 文档
+├── 交易所/                ← 各交易所 API 参考
+│   ├── bitmex.md          — BitMEX REST + WebSocket + 签名
+│   ├── hyperliquid.md     — HyperLiquid 账号体系 + API
+│   ├── binance.md         — Binance USDT-M 合约 API
+│   ├── bybit.md           — Bybit V5 Linear Perpetual API
+│   └── bitget.md          — Bitget V2 Mix 合约 API
+└── 种子/                  ← 回测种子系统相关
+    ├── sqlite.md          — SQLite Python 参考
+    ├── duckdb.md          — DuckDB Python 参考
+    ├── segmented_backtest.md — 分段回测设计
+    └── seed_report_field_reference.md — 种子报告字段参考
+```
+
+## 使用规则
+
+1. **出方案前先查**：涉及技术选型/API 用法/性能对比时，先读对应文档再决策
+2. **不靠经验**：文档里有的不凭记忆说，文档里没有的先研究再补进来
+3. **持续更新**：发现文档缺失或过时，立即补充，不等"以后再说"
+4. **踩坑必记**：每个文档末尾有「踩过的坑」板块，踩了就写进去
+5. **按主题分目录**：新主题建新子目录，不往根目录堆文件
+
+## 文档索引
+
+### 交易所/（API 参考）
+
+| 文件 | 内容 | 何时读 |
+|------|------|--------|
+| [bitmex.md](交易所/bitmex.md) | REST API、WebSocket、HMAC 签名、合约代码映射、Hedge Mode | 改 BitMEX adapter / 下单逻辑 / Gateway 时 |
+| [hyperliquid.md](交易所/hyperliquid.md) | 账号体系（wallet + API 地址）、IOC 模拟市价单、统一账户 | 改 HyperLiquid adapter 时 |
+| [binance.md](交易所/binance.md) | USDT-M 合约、125x 杠杆、双向持仓、WebSocket Streams | 接入 Binance 时 |
+| [bybit.md](交易所/bybit.md) | V5 统一账户、Linear Perpetual、pybit SDK | 接入 Bybit 时 |
+| [bitget.md](交易所/bitget.md) | V2 Mix API、PASSPHRASE 认证、productType | 接入 Bitget 时 |
+
+### 种子/（回测种子系统）
+
+| 文件 | 内容 | 何时读 |
+|------|------|--------|
+| [sqlite.md](种子/sqlite.md) | SQLite Python API、WAL 模式、批量写入、并发锁、PRAGMA 调优 | 改种子写入逻辑时 |
+| [duckdb.md](种子/duckdb.md) | DuckDB Python API、数据导入、pandas 交互、并发模型 | 改 K 线加载/报告查询时 |
+| [segmented_backtest.md](种子/segmented_backtest.md) | 1m 数据 4 段并跑 + 校准匹配设计 | 改分段回测逻辑时 |
+| [seed_report_field_reference.md](种子/seed_report_field_reference.md) | paired_trades 26列 + combo_summary 38列字段定义 | 改 build_seed_report 时 |
+
+### 核心结论速查
+
+**SQLite vs DuckDB 分工**：写入用 SQLite（小批量 INSERT 强），聚合分析用 DuckDB（列式扫描快 10-100x）。
+
+**交易所选择**：当前实盘用 BitMEX（21策略系统）+ HyperLiquid（单币种系统）。Binance/Bybit/Bitget 待接入。

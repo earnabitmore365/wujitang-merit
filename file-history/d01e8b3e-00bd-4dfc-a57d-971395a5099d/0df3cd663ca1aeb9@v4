@@ -1,0 +1,889 @@
+#!/usr/bin/env python3
+"""unified_trader.py — 21 策略并行交易主脚本.
+
+单进程跑 21 个策略。
+
+架构：
+  Feed Gateway (ZMQ PUB) → FeedClient → KlineDispatcher → StrategyRunner × 21
+
+启动命令：
+  nohup python3 unified_trader.py >> logs/unified.log 2>&1 &
+
+@see trading/team_config.py — TEAM / get_bet_amount / get_needed_intervals
+@see trading/kline_dispatcher.py — KlineDispatcher
+@see trading/strategy_runner.py — StrategyRunner
+@see trading/limit_executor.py — LimitOrderExecutor
+@see trading/trade_logger.py — TradeLogger
+@see src/data/feed_client.py — FeedClient
+@see src/exchange/bitmex/adapter.py — BitMEXAdapter
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import signal
+import sys
+import time
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from types import FrameType
+
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+import contextlib  # noqa: E402
+
+from data.feed_client import FeedClient  # noqa: E402
+from exchange.base import OrderRequest, OrderSide, OrderType  # noqa: E402
+from exchange.bitmex.adapter import BitMEXAdapter  # noqa: E402
+from kline_dispatcher import KlineDispatcher  # noqa: E402
+from limit_executor import LimitOrderExecutor  # noqa: E402
+from strategy_runner import StrategyRunner  # noqa: E402
+from team_config import (  # noqa: E402
+    CIRCUIT_BREAKER_USD,
+    LEVERAGE,
+    TEAM,
+    WITHDRAW_AMOUNT,
+    WITHDRAW_THRESHOLD,
+    get_active_team,
+    get_bet_amount,
+    get_needed_intervals,
+)
+from trade_logger import TradeLogger  # noqa: E402
+
+# ==================== 日志配置 ====================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("unified_trader")
+
+# ==================== 常量 ====================
+
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "strategy_states.json")
+RECONCILE_INTERVAL = 3600    # 每小时对账
+DAILY_REPORT_INTERVAL = 86400  # 每日报告
+TTP_CHECK_INTERVAL = 1       # TTP tick 检查间隔（秒）
+
+
+class UnifiedTrader:
+    """21 策略并行交易主脚本."""
+
+    def __init__(self) -> None:
+        active_team = get_active_team()
+        logger.info("=" * 60)
+        logger.info("UnifiedTrader 启动中...")
+        verify = "ON" if len(active_team) < len(TEAM) else "OFF"
+        logger.info(
+            "策略数量: %d/%d (VERIFY_MODE=%s)",
+            len(active_team), len(TEAM), verify,
+        )
+        logger.info("=" * 60)
+
+        # 1. 共享组件
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(ROOT, ".env"))
+        use_testnet = os.environ.get("BITMEX_TESTNET", "false").lower() == "true"
+        if use_testnet:
+            api_key = os.environ.get("BITMEX_TESTNET_API_KEY", "")
+            api_secret = os.environ.get("BITMEX_TESTNET_API_SECRET", "")
+        else:
+            api_key = os.environ.get("BITMEX_API_KEY", "")
+            api_secret = os.environ.get("BITMEX_API_SECRET", "")
+        if not api_key or not api_secret:
+            env_hint = "BITMEX_TESTNET_API_KEY" if use_testnet else "BITMEX_API_KEY"
+            raise RuntimeError(f"API 密钥未配置，请检查 .env 中的 {env_hint}")
+        adapter_config = {
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "testnet": use_testnet,
+        }
+        self.adapter = BitMEXAdapter(adapter_config)
+        self.feed_client = FeedClient()
+        self.executor = LimitOrderExecutor()
+        self.logger = TradeLogger()
+
+        # 2. 创建 StrategyRunner（验证模式下只加载前 N 个）
+        self.strategies = []
+        for cfg in active_team:
+            runner = StrategyRunner(cfg, self.adapter)
+            self.strategies.append(runner)
+            logger.info("  策略加载: %s (mirror=%s)", runner.id, cfg.mirror)
+
+        # 3. K 线分发器
+        self.dispatcher = KlineDispatcher(on_bar_callback=self._on_bar)
+
+        # 4. 按 (coin, interval) 索引策略
+        self._strategy_map: dict[tuple[str, str], list[StrategyRunner]] = {}
+        for s in self.strategies:
+            key = (s.coin, s.interval)
+            self._strategy_map.setdefault(key, []).append(s)
+
+        # 5. 运行状态
+        self._running = True
+        self._reconcile_timer = 0.0
+        self._daily_report_timer = 0.0
+        self._last_ttp_check = 0.0
+
+        # 6. 交易解说员（Telegram 通知）
+        from trader_report import TraderReport
+        self.report = TraderReport()
+
+        # 信号处理（优雅退出）
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        signal.signal(signal.SIGINT, self._handle_signal)
+
+    def _handle_signal(self, signum: int, _frame: FrameType | None) -> None:
+        """收到 SIGTERM/SIGINT → 优雅退出."""
+        logger.info("收到信号 %s，准备退出...", signum)
+        self._running = False
+
+    # ========== 启动流程 ==========
+
+    def start(self) -> None:
+        """启动流程（严格按顺序）."""
+        # a. 从 JSON 恢复状态 + 清理残留
+        self._startup_recovery()
+
+        # b. REST 预下载各周期 250 根历史 K 线
+        logger.info("预下载历史 K 线...")
+        self.dispatcher.startup(self.adapter)
+
+        # c. 订阅 Gateway ZMQ（所有币种订阅 1m）
+        needed = get_needed_intervals()
+        for coin in needed:
+            self.feed_client.subscribe(coin, "1m")
+            logger.info("  ZMQ 订阅: %s/1m", coin)
+
+        # d. 跑一次对账
+        self._reconcile()
+
+        # e. 初始化计时器
+        now = time.time()
+        self._reconcile_timer = now
+        self._daily_report_timer = now
+        self._last_ttp_check = now
+
+        # f. 主循环
+        logger.info("进入主循环...")
+        self._run_forever()
+
+    # ========== 事件驱动主循环 ==========
+
+    def _run_forever(self) -> None:
+        """事件驱动主循环."""
+        while self._running:
+            # 等待 K 线（最多 60 秒，超时触发 gateway 健康检查）
+            got = self.feed_client.wait_for_kline(timeout=60)
+
+            if not got:
+                if not self.feed_client.is_gateway_alive():
+                    logger.warning("Gateway 心跳丢失，尝试恢复...")
+                    self._on_gateway_disconnect()
+                continue
+
+            # 取各币种最新 1m K 线，喂给分发器
+            needed = get_needed_intervals()
+            for coin in needed:
+                klines_1m = self.feed_client.get_klines(coin, "1m")
+                if klines_1m:
+                    latest = klines_1m[-1]
+                    self.dispatcher.on_1m_bar(coin, latest)
+
+            # TTP tick 检查（每秒级）
+            now = time.time()
+            if now - self._last_ttp_check >= TTP_CHECK_INTERVAL:
+                self._check_ttp()
+                self._last_ttp_check = now
+
+            # 熔断检查
+            self._check_circuit_breaker()
+
+            # 每小时对账 + 提款检查
+            if now - self._reconcile_timer >= RECONCILE_INTERVAL:
+                self._reconcile()
+                self._check_withdraw()
+                self._reconcile_timer = now
+
+            # 每日报告
+            if now - self._daily_report_timer >= DAILY_REPORT_INTERVAL:
+                self._send_daily_report()
+                self._daily_report_timer = now
+
+        # 退出清理
+        logger.info("主循环退出，保存状态...")
+        self._save_states()
+        self.logger.close()
+
+    # ========== K 线回调 ==========
+
+    def _on_bar(
+        self, coin: str, interval: str,
+        bar: dict[str, Any], klines: Sequence[dict[str, Any]],
+    ) -> None:
+        """KlineDispatcher 回调：K 线到了，路由给对应策略."""
+        key = (coin, interval)
+        runners = self._strategy_map.get(key, [])
+
+        for strategy in runners:
+            if strategy.state in ("pending_open", "pending_close"):
+                continue  # 限价重试中，忽略新信号
+
+            try:
+                sig = strategy.on_bar(bar, klines)
+                if sig and sig != "HOLD":
+                    self._execute(strategy, sig)
+            except Exception:
+                logger.exception("[%s] on_bar 异常", strategy.id)
+
+    # ========== 交易执行 ==========
+
+    def _execute(self, strategy: StrategyRunner, signal_str: str) -> None:
+        """执行交易信号."""
+        if signal_str in ("BUY", "SELL") and not strategy.position:
+            # === 开仓 ===
+            balance = self.adapter.get_balance()
+            available = balance.get("available", 0)
+            margin = get_bet_amount(available)   # 保证金（美元）
+            nominal = margin * LEVERAGE           # 名义（美元）= 保证金 × 杠杆
+
+            if available < margin:
+                logger.warning("[%s] 余额不足: available=%.2f < margin=%.2f",
+                               strategy.id, available, margin)
+                return
+
+            # 名义（美元）→ 币数量（adapter 期望币数量）
+            price = self.feed_client.get_price(strategy.coin)
+            if price <= 0:
+                # fallback: 用最后一根 K 线的 close
+                klines = self.dispatcher.get_window(strategy.coin, strategy.interval)
+                if klines:
+                    price = klines[-1].get("close", 0)
+            if price <= 0:
+                logger.warning("[%s] 无法获取价格，跳过", strategy.id)
+                return
+            coin_qty = nominal / price  # 如 $1000 / $87(SOL) = 11.49 SOL
+
+            strategy.state = "pending_open"
+            strategy._target_size = coin_qty
+
+            result = self.executor.execute_limit(
+                strategy, signal_str, coin_qty, self.adapter, self.dispatcher,
+            )
+
+            if result["success"]:
+                strategy.position = signal_str
+                strategy.entry_price = result["price"]
+                # actual_size 已是币数量（limit_executor 内部已 cumQty / u2p）
+                actual_size = result.get("actual_size", 0)
+                strategy.position_size = actual_size if actual_size > 0 else coin_qty
+                strategy.open_time = datetime.now(timezone.utc).isoformat()
+                strategy.state = "active"
+
+                # 交易所挂止损单
+                strategy.after_open(self.adapter)
+
+                # 开仓通知（Telegram）
+                try:
+                    window = self.dispatcher.get_window(
+                        strategy.coin, strategy.interval)
+                    reason = self.report.analyze_signal(
+                        strategy, window)
+                    self.report.report_open(
+                        strategy, signal_str, strategy.entry_price,
+                        strategy.position_size, margin, nominal, reason)
+                    # SL 挂单结果
+                    if strategy.sl_order_id:
+                        sl_price = round(strategy.entry_price * (
+                            1 - strategy._sl_pct if signal_str == "BUY"
+                            else 1 + strategy._sl_pct), 2)
+                        self.report.report_sl_placed(
+                            strategy, sl_price, strategy.sl_order_id)
+                except Exception as e:
+                    logger.warning("[%s] 开仓通知异常: %s", strategy.id, e)
+
+                self._save_states()
+                logger.info("[%s] 开仓成功: %s size=%s @ %s",
+                            strategy.id, signal_str, strategy.position_size,
+                            strategy.entry_price)
+            else:
+                strategy.state = "idle"
+                reason = result.get("reason", "unknown")
+                logger.info("[%s] 开仓放弃: %s", strategy.id, reason)
+
+        elif strategy.position:
+            # === 平仓（信号反转或 CLOSE）===
+            close_side = "SELL" if strategy.position == "BUY" else "BUY"
+
+            if signal_str in (close_side, "CLOSE"):
+                self._close_position(strategy, close_side, "SIGNAL")
+
+    def _close_position(
+        self, strategy: StrategyRunner,
+        close_side: str, reason: str,
+    ) -> None:
+        """统一平仓逻辑（信号平仓 / TTP 平仓 / 熔断平仓）."""
+        strategy.state = "pending_close"
+
+        # 先撤止盈止损单
+        strategy.before_close(self.adapter)
+
+        # 限价平仓（reduce_only=True → adapter 用 Close 自动取消冲突 SL/TP）
+        result = self.executor.execute_limit(
+            strategy, close_side, strategy.position_size,
+            self.adapter, self.dispatcher,
+            reduce_only=True,
+        )
+
+        if result["success"]:
+            exit_price = result["price"]
+            pnl = self._calc_pnl(strategy, exit_price)
+
+            # 记录交易（查实际手续费）
+            balance = self.adapter.get_balance()
+            try:
+                close_order_id = result.get("order_id", "") or ""
+                fee = (self.adapter.get_trade_fee(close_order_id)
+                       if close_order_id else 0)
+            except Exception:
+                fee = 0
+            self.logger.log_trade(
+                strategy, reason, exit_price, pnl, fee,
+                balance.get("available", 0),
+            )
+
+            logger.info("[%s] 平仓成功: %s pnl=%.2f @ %s",
+                        strategy.id, reason, pnl, exit_price)
+
+            # 平仓通知（Telegram）
+            try:
+                duration = self._calc_duration(strategy.open_time)
+                self.report.report_close(
+                    strategy, reason, exit_price, pnl, duration,
+                    balance.get("available", 0))
+            except Exception as e:
+                logger.warning("[%s] 平仓通知异常: %s", strategy.id, e)
+
+            # 重置状态
+            strategy.reset_idle()
+
+            self._save_states()
+        else:
+            # 平仓失败
+            if result.get("reason") == "no_position":
+                # ReduceOnly 被拒（交易所无此策略的仓位）→ 直接重置 idle
+                strategy.reset_idle()
+                logger.info("[%s] 交易所无仓位，重置 idle", strategy.id)
+            else:
+                # 其他原因失败，从交易所同步真实仓位
+                strategy.state = "active"
+                try:
+                    pos = self.adapter.get_position(strategy.coin)
+                    if pos and pos.size > 0:
+                        strategy.position_size = pos.size
+                        logger.warning("[%s] 平仓失败，同步仓位 size=%s",
+                                       strategy.id, pos.size)
+                    else:
+                        strategy.reset_idle()
+                        logger.info("[%s] 平仓失败但交易所无仓位，视为已平",
+                                    strategy.id)
+                except Exception:
+                    logger.debug("[%s] 平仓失败后同步仓位也失败",
+                                 strategy.id)
+            logger.error("[%s] 平仓失败: %s",
+                         strategy.id, result.get("reason", "unknown"))
+            self._save_states()
+
+    def _calc_pnl(self, strategy: StrategyRunner, exit_price: float) -> float:
+        """计算盈亏（美元）.
+
+        position_size 单位是币数量，价差 × 币数量 = 美元盈亏
+        """
+        if strategy.position == "BUY":
+            return (exit_price - strategy.entry_price) * strategy.position_size
+        if strategy.position == "SELL":
+            return (strategy.entry_price - exit_price) * strategy.position_size
+        return 0.0
+
+    @staticmethod
+    def _calc_duration(open_time_str: str | None) -> str:
+        """计算持仓时长字符串（从 open_time ISO 格式到当前 UTC）."""
+        if not open_time_str:
+            return "N/A"
+        try:
+            open_dt = datetime.fromisoformat(open_time_str)
+            total_secs = int((datetime.now(timezone.utc) - open_dt).total_seconds())
+            hours = total_secs // 3600
+            mins = (total_secs % 3600) // 60
+        except Exception:
+            return "N/A"
+        else:
+            return f"{hours}h {mins}m" if hours > 0 else f"{mins}m"
+
+    # ========== TTP 检查 ==========
+
+    def _check_ttp(self) -> None:
+        """用最新 tick 价格检查所有持仓策略的 TTP."""
+        for strategy in self.strategies:
+            if strategy.state != "active" or not strategy.position:
+                continue
+
+            price = self.feed_client.get_price(strategy.coin)
+            if price <= 0:
+                klines = self.dispatcher.get_window(strategy.coin, strategy.interval)
+                if klines:
+                    price = klines[-1].get("close", 0)
+            if price <= 0:
+                continue
+
+            try:
+                old_ttp = strategy._last_ttp_level
+                result = strategy.update_ttp_on_exchange(self.adapter, price)
+
+                # TTP 通知（Telegram）
+                try:
+                    if strategy._last_ttp_level > 0 and old_ttp == 0:
+                        self.report.report_ttp_activated(
+                            strategy, strategy._last_ttp_level, price)
+                    elif (strategy._last_ttp_level > 0
+                          and abs(strategy._last_ttp_level - old_ttp) > 0.001):
+                        self.report.report_ttp_updated(
+                            strategy, old_ttp, strategy._last_ttp_level)
+                except Exception as e:
+                    logger.warning("[%s] TTP 通知异常: %s", strategy.id, e)
+
+                if result == "TTP_TRIGGERED":
+                    close_side = "SELL" if strategy.position == "BUY" else "BUY"
+                    self._close_position(strategy, close_side, "TTP")
+            except Exception:
+                logger.exception("[%s] TTP 检查异常", strategy.id)
+
+    # ========== 熔断 ==========
+
+    def _check_circuit_breaker(self) -> None:
+        """余额 < CIRCUIT_BREAKER_USD → 全平."""
+        try:
+            balance = self.adapter.get_balance()  # REST，已是美元
+            available_usd = balance.get("available", 0)
+
+            if 0 < available_usd < CIRCUIT_BREAKER_USD:
+                logger.warning(
+                    "🚨 熔断触发! 余额=%.2f < %s",
+                    available_usd, CIRCUIT_BREAKER_USD,
+                )
+                self._circuit_break()
+        except Exception:
+            logger.exception("熔断检查异常")
+
+    def _circuit_break(self) -> None:
+        """全平所有仓位."""
+        num_positions = len([s for s in self.strategies if s.position])
+        self.adapter.cancel_all_orders()
+
+        for s in self.strategies:
+            if s.position:
+                close_side = OrderSide.SELL if s.position == "BUY" else OrderSide.BUY
+                order = OrderRequest(
+                    coin=s.coin,
+                    side=close_side,
+                    order_type=OrderType.MARKET,
+                    size=s.position_size,
+                    reduce_only=True,
+                )
+                try:
+                    self.adapter.place_order(order)
+                except Exception:
+                    logger.exception("[%s] 熔断平仓失败", s.id)
+
+                s.reset_idle()
+
+        self._save_states()
+        logger.warning("🚨 熔断完成，所有仓位已平")
+
+        # 熔断通知（Telegram）
+        try:
+            balance = self.adapter.get_balance()
+            self.report.report_circuit_breaker(
+                balance.get("available", 0), num_positions)
+        except Exception as e:
+            logger.warning("熔断通知异常: %s", e)
+
+    # ========== 崩溃恢复 ==========
+
+    def _startup_recovery(self) -> None:
+        """启动恢复：从 JSON 恢复 + 查交易所挂单 + 补齐/平完."""
+        # 1. 从 JSON 恢复
+        self._load_states()
+
+        active_count = sum(1 for s in self.strategies if s.state != "idle")
+        if active_count > 0:
+            logger.info("恢复 %d 个活跃策略", active_count)
+
+        # 2. 查交易所未完成订单
+        try:
+            # BitMEX: GET /api/v1/order?filter={"open":true}
+            open_orders = self.adapter._get(
+                f'{self.adapter.__class__.__dict__.get("API_BASE", "/api/v1")}/order',
+                query={"filter": json.dumps({"open": True})},
+            )
+            if not isinstance(open_orders, list):
+                open_orders = []
+        except Exception:
+            open_orders = []
+            logger.warning("无法查询交易所挂单，跳过恢复检查")
+
+        # 3. 处理每个策略的恢复
+        for strategy in self.strategies:
+            if strategy.state == "pending_open":
+                # 开仓中途崩溃 → 检查是否部分成交
+                pending = [o for o in open_orders
+                           if strategy.id in o.get("clOrdID", "")]
+                if pending:
+                    filled = float(pending[0].get("cumQty", 0) or 0)
+                    # cumQty 是合约数，转成币数量
+                    u2p = self.adapter._get_u2p(strategy.coin)
+                    filled = filled / u2p if u2p > 0 else filled
+                    if filled > 0:
+                        # 部分成交 → 市价补齐
+                        self.adapter.cancel_order(pending[0]["orderID"])
+                        remaining = strategy._target_size - filled
+                        if remaining > 0:
+                            order = OrderRequest(
+                                coin=strategy.coin,
+                                side=(OrderSide.BUY
+                                      if strategy.position == "BUY"
+                                      else OrderSide.SELL),
+                                order_type=OrderType.MARKET,
+                                size=remaining,
+                            )
+                            self.adapter.place_order(order)
+                        strategy.position_size = strategy._target_size
+                        strategy.state = "active"
+                        strategy.after_open(self.adapter)
+                        logger.info("[%s] 恢复: 补齐开仓", strategy.id)
+                    else:
+                        # 完全没成交 → 撤销
+                        self.adapter.cancel_order(pending[0]["orderID"])
+                        strategy.reset_idle()
+                        logger.info("[%s] 恢复: 撤销未成交开仓", strategy.id)
+                else:
+                    strategy.reset_idle()
+
+            elif strategy.state == "pending_close":
+                # 平仓中途崩溃 → 市价平完
+                pending = [o for o in open_orders
+                           if strategy.id in o.get("clOrdID", "")]
+                for o in pending:
+                    self.adapter.cancel_order(o["orderID"])
+
+                if strategy.position:
+                    close_side = (OrderSide.SELL
+                                  if strategy.position == "BUY"
+                                  else OrderSide.BUY)
+                    order = OrderRequest(
+                        coin=strategy.coin,
+                        side=close_side,
+                        order_type=OrderType.MARKET,
+                        size=strategy.position_size,
+                        reduce_only=True,
+                    )
+                    with contextlib.suppress(Exception):
+                        self.adapter.place_order(order)
+
+                strategy.reset_idle()
+                logger.info("[%s] 恢复: 市价平完 pending_close", strategy.id)
+
+        # 4. 撤无主挂单（不属于任何策略的）
+        try:
+            remaining = self.adapter._get(
+                "/api/v1/order",
+                query={"filter": json.dumps({"open": True})},
+            )
+            if isinstance(remaining, list):
+                known_ids: set[str] = set()
+                for s in self.strategies:
+                    if s.sl_order_id:
+                        known_ids.add(s.sl_order_id)
+                    if s.tp_order_id:
+                        known_ids.add(s.tp_order_id)
+
+                for o in remaining:
+                    oid = o.get("orderID", "")
+                    if oid and oid not in known_ids:
+                        self.adapter.cancel_order(oid)
+                        logger.info("撤无主挂单: %s", oid)
+        except Exception:
+            logger.debug("无主挂单清理异常", exc_info=True)
+
+        # 5. 检查孤儿仓位（内部全 idle 但交易所有仓位 → 市价平仓）
+        try:
+            exchange_positions = self.adapter.get_positions()
+            internal_coins = {s.coin for s in self.strategies
+                              if s.position and s.position_size > 0}
+            for pos in exchange_positions:
+                if pos.coin not in internal_coins:
+                    logger.warning("⚠️ 孤儿仓位: %s %s size=%s，市价平仓",
+                                   pos.coin, pos.side, pos.size)
+                    close_side = (OrderSide.SELL if pos.side == "LONG"
+                                  else OrderSide.BUY)
+                    try:
+                        self.adapter.place_order(OrderRequest(
+                            coin=pos.coin, side=close_side,
+                            order_type=OrderType.MARKET,
+                            size=pos.size, reduce_only=True))
+                        logger.info("孤儿仓位已平: %s", pos.coin)
+                    except Exception:
+                        logger.exception("孤儿仓位平仓失败 %s", pos.coin)
+        except Exception:
+            logger.debug("孤儿仓位检查异常", exc_info=True)
+
+        # 6. 幽灵仓位检查（内部有仓但实际已平 → 停机期间 SL 被触发）
+        # 第 1 层：按 SL 订单状态精确判断
+        for s in self.strategies:
+            if s.state == "active" and s.position and s.sl_order_id:
+                try:
+                    sl_status = self.adapter.get_order_status(s.sl_order_id)
+                    ord_status = sl_status.get("ordStatus", "")
+
+                    if ord_status == "Filled":
+                        logger.warning(
+                            "⚠️ 幽灵仓位: [%s] SL 已触发 "
+                            "(order=%s...)，"
+                            "停机期间被止损 → 重置 idle",
+                            s.id, s.sl_order_id[:8])
+                        s.reset_idle()
+                    elif ord_status in ("New", "PartiallyFilled"):
+                        logger.info("[%s] SL 正常挂着 (%s)", s.id, ord_status)
+                    elif ord_status == "Canceled":
+                        logger.warning("[%s] SL 已取消，走兜底检查", s.id)
+                except Exception:
+                    logger.exception("[%s] SL 状态查询异常", s.id)
+
+        # 第 2 层：按 coin 级别兜底（没有 SL 单、SL 被取消、或查询失败的策略）
+        try:
+            exchange_positions = self.adapter.get_positions()
+            exchange_coins = (
+                {p.coin for p in exchange_positions}
+                if exchange_positions else set()
+            )
+
+            for s in self.strategies:
+                if (s.state == "active" and s.position and s.position_size > 0
+                        and not s.sl_order_id and s.coin not in exchange_coins):
+                        logger.warning(
+                            "⚠️ 幽灵仓位(兜底): [%s] 内部=%s "
+                            "size=%s，交易所无 %s 仓位 "
+                            "→ 重置 idle",
+                            s.id, s.position, s.position_size, s.coin)
+                        s.reset_idle()
+        except Exception:
+            logger.exception("幽灵仓位兜底检查异常")
+
+        self._save_states()
+
+    # ========== 状态持久化 ==========
+
+    def _save_states(self) -> None:
+        """原子写入 JSON（.tmp → os.replace）."""
+        states = {s.id: s.to_dict() for s in self.strategies}
+        tmp = STATE_FILE + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(states, f, indent=2)
+            os.replace(tmp, STATE_FILE)
+        except Exception:
+            logger.exception("保存状态失败")
+
+    def _load_states(self) -> None:
+        """从 JSON 恢复状态."""
+        if not os.path.exists(STATE_FILE):
+            logger.info("无状态文件，全新启动")
+            return
+
+        try:
+            with open(STATE_FILE, encoding="utf-8") as f:
+                states = json.load(f)
+
+            for s in self.strategies:
+                if s.id in states:
+                    s.from_dict(states[s.id])
+                    if s.state != "idle":
+                        logger.info("  恢复: %s state=%s pos=%s size=%s",
+                                    s.id, s.state, s.position, s.position_size)
+        except Exception:
+            logger.exception("加载状态失败")
+
+    # ========== 对账 ==========
+
+    def _reconcile(self) -> None:
+        """每小时：内部状态加总 vs 交易所仓位，偏差报警."""
+        try:
+            exchange_positions = self.adapter.get_positions()
+        except Exception:
+            logger.exception("对账失败（无法获取交易所仓位）")
+            return
+
+        # 内部加总
+        internal_totals: dict[str, dict[str, float]] = {}  # coin → {'long': size, 'short': size}
+        for s in self.strategies:
+            if s.position and s.position_size > 0:
+                coin = s.coin
+                internal_totals.setdefault(coin, {"long": 0.0, "short": 0.0})
+                if s.position == "BUY":
+                    internal_totals[coin]["long"] += s.position_size
+                else:
+                    internal_totals[coin]["short"] += s.position_size
+
+        # 交易所仓位
+        exchange_map = {}
+        for p in exchange_positions:
+            exchange_map[p.coin] = {
+                "side": p.side,
+                "size": p.size,
+                "net": p.size if p.side == "LONG" else -p.size,
+            }
+
+        # 对比
+        all_coins = set(list(internal_totals) + list(exchange_map))
+        for coin in all_coins:
+            internal = internal_totals.get(coin, {"long": 0.0, "short": 0.0})
+            internal_net = internal["long"] - internal["short"]
+            ex = exchange_map.get(coin, {"net": 0.0})
+            exchange_net = ex["net"]
+
+            diff = abs(exchange_net - internal_net)
+            if diff > 0.01:
+                logger.warning("⚠️ 对账偏差 %s: "
+                               "交易所=%.4f 内部=%.4f "
+                               "差=%.4f",
+                               coin, exchange_net, internal_net, diff)
+            else:
+                logger.debug(
+                    "对账正常 %s: 交易所=%.4f"
+                    " 内部=%.4f",
+                    coin, exchange_net, internal_net,
+                )
+
+        # 每小时摘要（Telegram）
+        try:
+            self.report.report_hourly(self.strategies, self.adapter)
+        except Exception as e:
+            logger.warning("每小时摘要通知异常: %s", e)
+
+    # ========== 断网恢复 ==========
+
+    def _on_gateway_disconnect(self) -> None:
+        """Gateway 断线恢复."""
+        logger.info("Gateway 断线，重新预下载 K 线...")
+
+        try:
+            self.dispatcher.on_reconnect(self.adapter)
+        except Exception:
+            logger.exception("K 线重新预下载失败")
+            return
+
+        # 有持仓的策略补算信号
+        for strategy in self.strategies:
+            if strategy.state == "active" and strategy.position:
+                try:
+                    klines = self.dispatcher.get_window(
+                        strategy.coin, strategy.interval)
+                    if klines and len(klines) >= 2:
+                        sig = strategy.on_bar(klines[-1], klines)
+                        close_side = "SELL" if strategy.position == "BUY" else "BUY"
+                        if sig == close_side:
+                            logger.info(
+                                "[%s] 断线恢复后信号反转，市价平仓",
+                                strategy.id)
+                            strategy.before_close(self.adapter)
+                            order = OrderRequest(
+                                coin=strategy.coin,
+                                side=(OrderSide.SELL
+                                      if strategy.position == "BUY"
+                                      else OrderSide.BUY),
+                                order_type=OrderType.MARKET,
+                                size=strategy.position_size,
+                                reduce_only=True,
+                            )
+                            r = self.adapter.place_order(order)
+                            exit_price = r.filled_price if r.success else 0
+                            pnl = (self._calc_pnl(strategy, exit_price)
+                                   if exit_price > 0 else 0)
+                            balance = self.adapter.get_balance()
+                            try:
+                                fee = (self.adapter.get_trade_fee(r.order_id)
+                                       if r.order_id else 0)
+                            except Exception:
+                                fee = 0
+                            self.logger.log_trade(
+                                strategy, "DISCONNECT", exit_price, pnl, fee,
+                                balance.get("available", 0))
+                            # 断线平仓通知（Telegram）
+                            try:
+                                duration = self._calc_duration(strategy.open_time)
+                                self.report.report_close(
+                                    strategy, "DISCONNECT", exit_price, pnl,
+                                    duration, balance.get("available", 0))
+                            except Exception as e:
+                                logger.warning(
+                                    "[%s] 断线平仓通知异常: %s",
+                                    strategy.id, e)
+                            strategy.reset_idle()
+                except Exception:
+                    logger.exception("[%s] 断线恢复补算异常", strategy.id)
+
+        self._save_states()
+
+    # ========== 提款通知 ==========
+
+    def _check_withdraw(self) -> None:
+        """每小时检查，余额 >= WITHDRAW_THRESHOLD → 通知老板."""
+        try:
+            balance = self.adapter.get_balance()
+            available = balance.get("available", 0)
+            if available >= WITHDRAW_THRESHOLD:
+                logger.warning("💰 余额 $%.0f >= $%d，建议提 $%d",
+                               available, WITHDRAW_THRESHOLD, WITHDRAW_AMOUNT)
+                # TODO: 接 Telegram 通知
+        except Exception:
+            logger.debug("余额检查异常", exc_info=True)
+
+    # ========== 每日报告 ==========
+
+    def _send_daily_report(self) -> None:
+        """输出每日报告到日志."""
+        report = self.logger.get_daily_report()
+        if not report:
+            logger.info("📊 每日报告: 今日无交易")
+            return
+
+        total_pnl = sum(r[2] or 0 for r in report)
+        total_trades = sum(r[1] or 0 for r in report)
+        logger.info("📊 每日报告: %d 笔交易, PnL=%.2f", total_trades, total_pnl)
+        for r in report:
+            logger.info("  %s: %s笔 PnL=%.2f", r[0], r[1], r[2])
+
+
+# ==================== 入口 ====================
+
+def main() -> None:
+    trader = UnifiedTrader()
+    trader.start()
+
+
+if __name__ == "__main__":
+    main()

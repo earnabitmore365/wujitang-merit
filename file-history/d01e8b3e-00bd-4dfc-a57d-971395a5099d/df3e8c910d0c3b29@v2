@@ -1,0 +1,231 @@
+"""
+哨兵扫描器 v2 — 从种子数据中找出精准度最高的 regime 哨兵
+
+v2 改动（CMF 窗口化方向）:
+  - 选法从"命中率分化"改为"精准度优先两步走"
+  - 第一步硬门槛：非目标 regime 信号频率 < 阈值（不犯错）
+  - 第二步排序：目标 regime 命中率（真本事）
+
+输出：每个币种每个方向 top 5 候选哨兵
+"""
+import sqlite3
+import os
+import sys
+
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, RESULT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+SEED_DB = os.path.join(REPORT_DIR, 'seed_signal.db')
+
+# 非目标 regime 信号频率上限（每根 K 线发信号的概率）
+# 0.05 = 每 20 根 K 线最多 1 个信号，超过则淘汰
+MAX_DANGER_RATE = 0.05
+
+# BTC 已知事实时间表（与 data_loader.py 一致）
+_TIMELINE = [
+    ('2017-12', '2018-01', '初熊'),
+    ('2018-02', '2018-12', '熊'),
+    ('2019-01', '2019-03', '初牛'),
+    ('2019-04', '2019-06', '牛'),
+    ('2019-07', '2019-08', '初熊'),
+    ('2019-09', '2020-03', '熊'),
+    ('2020-04', '2020-09', '初牛'),
+    ('2020-10', '2021-04', '牛'),
+    ('2021-05', '2021-07', '初熊'),
+    ('2021-08', '2021-11', '牛'),
+    ('2021-12', '2022-01', '初熊'),
+    ('2022-02', '2022-11', '熊'),
+    ('2022-12', '2023-03', '初牛'),
+    ('2023-04', '2023-09', '盘整'),
+    ('2023-10', '2024-03', '牛'),
+    ('2024-04', '2024-09', '盘整'),
+    ('2024-10', '2025-01', '牛'),
+    ('2025-02', '2025-03', '初熊'),
+    ('2025-04', '2025-10', '牛'),
+    ('2025-11', '2025-12', '初熊'),
+    ('2026-01', '2026-03', '熊'),
+]
+
+
+def _estimate_regime_candles():
+    """估算每个 regime 的 1m K 线总数（基于 BTC 已知事实时间表）
+
+    所有币种大盘周期一致，用 BTC 时间表估算对所有币种近似有效。
+    每月 ≈ 43200 根 1m K 线（60×24×30）。
+    """
+    candles_per_month = 60 * 24 * 30
+    regime_candles = {}
+    for start_ym, end_ym, regime in _TIMELINE:
+        start_y, start_m = int(start_ym[:4]), int(start_ym[5:7])
+        end_y, end_m = int(end_ym[:4]), int(end_ym[5:7])
+        months = (end_y - start_y) * 12 + (end_m - start_m) + 1
+        regime_candles[regime] = regime_candles.get(regime, 0) + months * candles_per_month
+    return regime_candles
+
+
+def scan_sentinels():
+    regime_candles = _estimate_regime_candles()
+
+    conn = sqlite3.connect(SEED_DB)
+    conn.row_factory = sqlite3.Row
+
+    # 一次性查所有1m的交易，按 combo 拆 direction × regime 统计命中率
+    # 命中 = long且exit>entry，或 short且exit<entry
+    sql = """
+    SELECT
+        cs.strategy, cs.coin, cs.interval,
+        pt.direction,
+        rfl.regime_fact,
+        COUNT(*) as total,
+        SUM(CASE
+            WHEN pt.direction='long' AND pt.exit_price > pt.entry_price THEN 1
+            WHEN pt.direction='short' AND pt.exit_price < pt.entry_price THEN 1
+            ELSE 0
+        END) as correct
+    FROM combo_summary cs
+    JOIN paired_trades pt ON pt.combo_id = cs.id
+    JOIN regime_fact_labels rfl ON rfl.trade_id = pt.id
+    WHERE cs.interval = '1m'
+    GROUP BY cs.id, pt.direction, rfl.regime_fact
+    """
+
+    print("正在扫描 1m 全量数据（88策略×13币种）...")
+    print("这需要几分钟，请等待...\n")
+
+    rows = conn.execute(sql).fetchall()
+    conn.close()
+
+    # 组织数据: {(strategy, coin, direction): {regime: (correct, total)}}
+    data = {}
+    for r in rows:
+        key = (r['strategy'], r['coin'], r['direction'])
+        if key not in data:
+            data[key] = {}
+        data[key][r['regime_fact']] = (r['correct'], r['total'])
+
+    # 两步走筛选
+    results = []
+    filtered_count = 0
+    for (strategy, coin, direction), regimes in data.items():
+        # 需要至少有牛和熊的数据
+        if '牛' not in regimes or '熊' not in regimes:
+            continue
+
+        bull_correct, bull_total = regimes.get('牛', (0, 0))
+        bear_correct, bear_total = regimes.get('熊', (0, 0))
+        early_bull_correct, early_bull_total = regimes.get('初牛', (0, 0))
+        early_bear_correct, early_bear_total = regimes.get('初熊', (0, 0))
+        range_correct, range_total = regimes.get('盘整', (0, 0))
+
+        if bull_total < 50 or bear_total < 50:
+            continue
+
+        bull_acc = bull_correct / bull_total if bull_total else 0
+        bear_acc = bear_correct / bear_total if bear_total else 0
+        early_bull_acc = early_bull_correct / early_bull_total if early_bull_total else 0
+        early_bear_acc = early_bear_correct / early_bear_total if early_bear_total else 0
+        range_acc = range_correct / range_total if range_total else 0
+
+        total_trades = bull_total + bear_total + early_bull_total + early_bear_total + range_total
+
+        # === 第一步硬门槛：非目标 regime 信号频率 < MAX_DANGER_RATE ===
+        if direction == 'long':
+            # 牛哨兵：danger = 熊 + 初熊
+            danger_trades = bear_total + early_bear_total
+            danger_candles = regime_candles.get('熊', 1) + regime_candles.get('初熊', 1)
+            target_acc = bull_acc
+        else:
+            # 熊哨兵：danger = 牛 + 初牛
+            danger_trades = bull_total + early_bull_total
+            danger_candles = regime_candles.get('牛', 1) + regime_candles.get('初牛', 1)
+            target_acc = bear_acc
+
+        danger_rate = danger_trades / danger_candles
+        if danger_rate > MAX_DANGER_RATE:
+            filtered_count += 1
+            continue  # 淘汰：在非目标 regime 信号太频繁
+
+        # === 第二步排序：目标 regime 命中率 ===
+        results.append({
+            'strategy': strategy,
+            'coin': coin,
+            'direction': direction,
+            'total_trades': total_trades,
+            'bull_acc': bull_acc,
+            'bear_acc': bear_acc,
+            'early_bull_acc': early_bull_acc,
+            'early_bear_acc': early_bear_acc,
+            'range_acc': range_acc,
+            'danger_rate': danger_rate,
+            'target_acc': target_acc,
+        })
+
+    print(f"硬门槛淘汰: {filtered_count} 个（danger_rate > {MAX_DANGER_RATE}）")
+    print(f"通过筛选: {len(results)} 个\n")
+
+    # 按币种×方向分组，每组按 target_acc 排序取 top 5
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in results:
+        groups[(r['coin'], r['direction'])].append(r)
+
+    # 输出
+    coins_order = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'TRX', 'AVAX', 'LINK', 'DOT',
+                   'BTC_COIN', 'ETH_COIN', 'BNB_COIN']
+
+    for dir_label, dir_name in [('long', '牛哨兵（做多方向）'), ('short', '熊哨兵（做空方向）')]:
+        print(f"\n{'='*90}")
+        print(f"  {dir_name}")
+        print(f"{'='*90}")
+
+        for coin in coins_order:
+            key = (coin, dir_label)
+            if key not in groups:
+                continue
+
+            # 按目标 regime 命中率排序（精准度优先）
+            candidates = sorted(groups[key], key=lambda x: x['target_acc'], reverse=True)[:5]
+
+            print(f"\n  [{coin}] Top 5（按目标准确率排序）:")
+            print(f"  {'策略':<25} {'交易量':>6} {'目标准':>6} {'危险率':>8} {'牛准':>6} {'熊准':>6} {'初牛准':>6} {'初熊准':>6} {'盘整准':>6}")
+            print(f"  {'-'*105}")
+
+            for c in candidates:
+                print(f"  {c['strategy']:<25} {c['total_trades']:>6} "
+                      f"{c['target_acc']:>5.1%} {c['danger_rate']:>7.4f} "
+                      f"{c['bull_acc']:>5.1%} {c['bear_acc']:>5.1%} "
+                      f"{c['early_bull_acc']:>5.1%} {c['early_bear_acc']:>5.1%} "
+                      f"{c['range_acc']:>5.1%}")
+
+    # 汇总：每个币种最佳哨兵
+    print(f"\n\n{'='*90}")
+    print(f"  汇总：每个币种最佳哨兵（精准度优先 + 不犯错门槛）")
+    print(f"{'='*90}")
+    print(f"  {'币种':<12} {'牛哨兵':<25} {'目标准':>7} {'危险率':>8}  {'熊哨兵':<25} {'目标准':>7} {'危险率':>8}")
+    print(f"  {'-'*110}")
+
+    for coin in coins_order:
+        bull_key = (coin, 'long')
+        bear_key = (coin, 'short')
+
+        bull_best = sorted(groups.get(bull_key, []), key=lambda x: x['target_acc'], reverse=True)
+        bear_best = sorted(groups.get(bear_key, []), key=lambda x: x['target_acc'], reverse=True)
+
+        bull_name = bull_best[0]['strategy'] if bull_best else '-'
+        bull_acc = bull_best[0]['target_acc'] if bull_best else 0
+        bull_dr = bull_best[0]['danger_rate'] if bull_best else 0
+        bear_name = bear_best[0]['strategy'] if bear_best else '-'
+        bear_acc = bear_best[0]['target_acc'] if bear_best else 0
+        bear_dr = bear_best[0]['danger_rate'] if bear_best else 0
+
+        print(f"  {coin:<12} {bull_name:<25} {bull_acc:>6.1%} {bull_dr:>7.4f}  {bear_name:<25} {bear_acc:>6.1%} {bear_dr:>7.4f}")
+
+
+if __name__ == '__main__':
+    scan_sentinels()

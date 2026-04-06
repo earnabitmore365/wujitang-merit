@@ -1,0 +1,440 @@
+"""build_klines_indicators.py — klines.duckdb 唯一写入口.
+
+三阶段构建脚本：
+  1. 生成镜像 K线：将 klines 表中每组 (coin, interval) 价格取负，
+     存为 {coin}_mirror 行。收益率自然反转，牛市变熊市。
+  2. 计算指标：按 indicator_col_map.json，对所有组（含 _mirror）
+     批量计算指标列，一次 UPDATE 写入，支持断点续传。
+     自动检测 col_map 中有但 DuckDB 表中没有的新列，
+     ALTER TABLE ADD COLUMN 后只对新列做全量补算。
+
+种子防污染：本脚本是 klines.duckdb 的唯一写入口。
+其他所有代码（indicator_cache, 策略, 回测）只能 read_only 连接。
+
+用法：
+    python3 build_klines_indicators.py
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import duckdb
+
+# ─────────────────────────────────────────
+# 通过 .wuji-root 定位项目根
+# ─────────────────────────────────────────
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, ".wuji-root")):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, SRC_DIR  # noqa: E402
+
+# ─────────────────────────────────────────
+# 路径常量
+# ─────────────────────────────────────────
+_DB_PATH = Path(DATA_DIR) / "klines.duckdb"
+_COL_MAP_PATH = Path(DATA_DIR) / "indicator_col_map.json"
+
+# generate_seed.py 和 indicator_cache.py 的 sys.path 注入
+_BACKTEST_DIR = str(Path(ROOT) / "data")
+_CORE_DIR = str(Path(SRC_DIR) / "core")
+
+for _dir in [_BACKTEST_DIR, _CORE_DIR, SRC_DIR]:
+    if _dir not in sys.path:
+        sys.path.insert(0, _dir)
+
+# ─────────────────────────────────────────
+# 导入业务函数（路径注入后才能 import）
+# ─────────────────────────────────────────
+from core.indicator_cache import REGISTRY  # noqa: E402
+
+
+def mirror_candles(candles: list[dict]) -> list[dict]:
+    """价格取负：正常世界的完美镜像。
+
+    收益率自然反转：正常涨 5% → mirror 跌 5%。
+    不需要轴、不需要预热、不需要负值保护。
+    负数价格完全合法——策略看涨跌幅不看绝对值。
+
+    正常: BUY 100 → SELL 105 → 赚 5
+    Mirror: SHORT -100 → COVER -105 → 赚 5
+    """
+    mirrored = []
+    for k in candles:
+        m = dict(k)
+        m["open"]  = -k["open"]
+        m["close"] = -k["close"]
+        m["high"]  = -k["low"]     # 原 low 取负 = 最大负数 = 新 high
+        m["low"]   = -k["high"]    # 原 high 取负 = 最小负数 = 新 low
+        mirrored.append(m)
+    return mirrored
+
+
+# ─────────────────────────────────────────
+# 辅助
+# ─────────────────────────────────────────
+
+def _open_db() -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(str(_DB_PATH))
+    con.execute("SET memory_limit = '4GB'")
+    return con
+
+
+def _sanitize_value(val: Any) -> Any:
+    """把 Python float nan/inf 转成 None，DuckDB 不接受这些值。"""
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return None
+    return val
+
+
+def _sanitize_series(values: list) -> list:
+    """对整个列做 nan/inf → None 清洗。"""
+    return [_sanitize_value(v) for v in values]
+
+
+# ─────────────────────────────────────────
+# 阶段 1：生成镜像 K线
+# ─────────────────────────────────────────
+
+def build_mirror_klines(con: duckdb.DuckDBPyConnection) -> None:
+    print("\n=== 阶段 1：生成镜像 K线 ===")
+
+    # 预过滤：只取还没有 mirror 的组（不进循环再查）
+    _IV_ORDER = {"1d": 0, "12h": 1, "8h": 2, "4h": 3, "2h": 4,
+                 "1h": 5, "30m": 6, "15m": 7, "5m": 8, "1m": 9}
+    groups: list[tuple[str, str]] = sorted(
+        con.execute("""
+            SELECT DISTINCT n.coin, n.interval
+            FROM klines n
+            WHERE n.coin NOT LIKE '%_mirror'
+              AND NOT EXISTS (
+                  SELECT 1 FROM klines m
+                  WHERE m.coin = n.coin || '_mirror'
+                    AND m.interval = n.interval
+              )
+        """).fetchall(),
+        key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]),
+    )
+
+    print(f"待处理: {len(groups)} 组（大周期优先）")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for coin, interval in groups:
+        mirror_coin = f"{coin}_mirror"
+
+        t0 = time.perf_counter()
+
+        # 读原始 K线 → list[dict]（跳过中间 DataFrame）
+        rows = con.execute(
+            "SELECT time, open, high, low, close, volume FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+
+        if not rows:
+            print(f"  [跳过] {coin}/{interval} 无数据")
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        mirrored_candles = mirror_candles(candles)
+
+        # DataFrame 只保留 base_cols，DuckDB 填充 coin/interval 常量
+        mirrored_df = pd.DataFrame(mirrored_candles, columns=base_cols)
+
+        con.register("tmp_mirror", mirrored_df)
+        con.execute("""
+            INSERT INTO klines (coin, interval, time, open, high, low, close, volume)
+            SELECT ?, ?, time, open, high, low, close, volume
+            FROM tmp_mirror
+        """, [mirror_coin, interval])
+        con.unregister("tmp_mirror")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f"  [完成] {mirror_coin}/{interval}  {len(mirrored_df)} 行  {elapsed:.2f}s")
+
+    print("阶段 1 完成\n")
+
+
+# ─────────────────────────────────────────
+# 阶段 2a：新列补算（col_map 有但表里没有的列）
+# ─────────────────────────────────────────
+
+_IV_ORDER = {"1d": 0, "12h": 1, "8h": 2, "4h": 3, "2h": 4,
+             "1h": 5, "30m": 6, "15m": 7, "5m": 8, "1m": 9}
+
+
+def _backfill_new_cols(
+    con: duckdb.DuckDBPyConnection,
+    new_col_map: dict[str, list],
+) -> None:
+    """只对新增的指标列做全量补算。
+
+    col_map 中有但 klines 表中没有的列，ALTER TABLE 后逐组计算写入。
+    """
+    new_cols = list(new_col_map.keys())
+    first_new = new_cols[0]
+
+    # 找所有 coin/interval 组（新列全 NULL 的）
+    check = con.execute(f'''
+        SELECT coin, interval
+        FROM klines
+        GROUP BY coin, interval
+        HAVING COUNT(CASE WHEN "{first_new}" IS NOT NULL THEN 1 END) = 0
+    ''').fetchall()
+    groups = sorted(check, key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]))
+    print(f"  新列补算: {len(groups)} 组 × {len(new_cols)} 列")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for idx, (coin, interval) in enumerate(groups, 1):
+        t0 = time.perf_counter()
+        tag = f"  [新列 {idx}/{len(groups)}] {coin}/{interval}"
+
+        rows = con.execute(
+            f"SELECT {', '.join(base_cols)} FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+        if not rows:
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        times = [r[0] for r in rows]
+        n = len(candles)
+        print(f"{tag} {n:,} 行", end="", flush=True)
+
+        computed = _compute_all_indicators(candles, new_col_map)
+        computed["time"] = times
+        indicator_df = pd.DataFrame(computed)
+
+        con.register("tmp_new", indicator_df)
+        set_clauses = ", ".join(
+            f'"{col}" = tmp_new."{col}"' for col in new_cols
+        )
+        con.execute(f"""
+            UPDATE klines
+            SET {set_clauses}
+            FROM tmp_new
+            WHERE klines.coin = ?
+              AND klines.interval = ?
+              AND klines.time = tmp_new.time
+        """, [coin, interval])
+        con.unregister("tmp_new")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f" ✅ {elapsed:.1f}s")
+
+    print("  新列补算完成\n")
+
+
+# ─────────────────────────────────────────
+# 阶段 2b：全量指标计算（断点续传）
+# ─────────────────────────────────────────
+
+def _compute_all_indicators(
+    candles: list[dict],
+    col_map: dict[str, list],
+) -> dict[str, list]:
+    """对一组 K线批量计算所有指标列。
+
+    返回 {col_name: list_of_values}，len == len(candles)。
+    计算失败的列填 None 序列，不中断整体流程。
+    nan/inf 已清洗为 None。
+    """
+    n = len(candles)
+    total_cols = len(col_map)
+    # 缓存已算过的 (indicator_name, params_json) → 原始结果
+    cache: dict[tuple[str, str], Any] = {}
+    result: dict[str, list] = {}
+
+    for col_idx, (col_name, (ind_name, params_json, sub_key)) in enumerate(col_map.items(), 1):
+        print(f"\r    指标 [{col_idx}/{total_cols}]", end="", flush=True)
+        cache_key = (ind_name, params_json)
+
+        if cache_key not in cache:
+            params = json.loads(params_json)
+            try:
+                raw = REGISTRY[ind_name](candles, **params)
+            except Exception as e:
+                print(f"    [警告] 指标 {ind_name}({params_json}) 计算失败: {e}")
+                cache[cache_key] = None
+            else:
+                cache[cache_key] = raw
+
+        raw = cache[cache_key]
+
+        if raw is None:
+            result[col_name] = [None] * n
+        elif isinstance(raw, dict):
+            # 多值指标，取 sub_key
+            sub_list = raw.get(sub_key)
+            if sub_list is None:
+                print(
+                    f"    [警告] 指标 {ind_name} 无 sub_key={sub_key}，"
+                    f"可用: {list(raw.keys())}"
+                )
+                result[col_name] = [None] * n
+            else:
+                result[col_name] = _sanitize_series(list(sub_list))
+        else:
+            # 单值指标，sub_key 忽略
+            result[col_name] = _sanitize_series(list(raw))
+
+    print("\r" + " " * 30 + "\r", end="", flush=True)  # 清掉进度行
+    return result
+
+
+def build_indicators(con: duckdb.DuckDBPyConnection) -> None:
+    print("\n=== 阶段 2：计算指标 ===")
+
+    # 读列名映射
+    col_map: dict[str, list] = json.loads(_COL_MAP_PATH.read_text())
+    indicator_cols = list(col_map.keys())
+    print(f"指标列数: {len(indicator_cols)}")
+
+    # ---- 新列检测 + 断点补算 ----
+    existing_cols = set(
+        row[0] for row in con.execute("DESCRIBE klines").fetchall()
+    )
+
+    # 1. ALTER TABLE for truly new cols
+    truly_new = [c for c in indicator_cols if c not in existing_cols]
+    if truly_new:
+        print(f"发现 {len(truly_new)} 个新指标列，创建中...")
+        for col in truly_new:
+            con.execute(f'ALTER TABLE klines ADD COLUMN "{col}" DOUBLE')
+        con.commit()
+
+    # 2. 检查是否有列需要补算（新建的 + 上次中断未完成的）
+    last_col = indicator_cols[-1]
+    need_backfill = con.execute(f'''
+        SELECT COUNT(*) FROM (
+            SELECT 1 FROM klines GROUP BY coin, interval
+            HAVING COUNT(CASE WHEN "{last_col}" IS NOT NULL THEN 1 END) = 0
+        )
+    ''').fetchone()[0]
+
+    if need_backfill > 0:
+        # 二分查找第一个不完整的列（假设不完整列是连续后缀）
+        lo, hi = 0, len(indicator_cols) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            c = indicator_cols[mid]
+            test = con.execute(f'''
+                SELECT COUNT(*) FROM (
+                    SELECT 1 FROM klines GROUP BY coin, interval
+                    HAVING COUNT(CASE WHEN "{c}" IS NOT NULL THEN 1 END) = 0
+                )
+            ''').fetchone()[0]
+            if test > 0:
+                hi = mid
+            else:
+                lo = mid + 1
+        backfill_cols = indicator_cols[lo:]
+        print(f"发现 {len(backfill_cols)} 个指标列需要补算...")
+        _backfill_new_cols(con, {c: col_map[c] for c in backfill_cols})
+
+    # ---- 全量断点续传（处理尚未有任何指标值的新增组） ----
+
+    # 断点检查用第一个指标列
+    first_col = indicator_cols[0]
+    check = con.execute(f'''
+        SELECT coin, interval,
+               MIN(time) as kline_first, MAX(time) as kline_last,
+               MIN(CASE WHEN "{first_col}" IS NOT NULL THEN time END) as ind_first,
+               MAX(CASE WHEN "{first_col}" IS NOT NULL THEN time END) as ind_last
+        FROM klines GROUP BY coin, interval
+    ''').fetchall()
+    groups: list[tuple[str, str]] = sorted(
+        [(c, iv) for c, iv, kf, kl, if_, il in check
+         if if_ is None or kf != if_ or kl != il],
+        key=lambda g: (_IV_ORDER.get(g[1], 99), g[0]),
+    )
+    print(f"待处理: {len(groups)} 组（首尾时间戳不一致，大周期优先）")
+
+    base_cols = ["time", "open", "high", "low", "close", "volume"]
+
+    for idx, (coin, interval) in enumerate(groups, 1):
+
+        t0 = time.perf_counter()
+        tag = f"[{idx}/{len(groups)}] {coin}/{interval}"
+        print(f"  {tag} 加载K线...", flush=True)
+
+        # 读 K线 → list[dict]（跳过中间 DataFrame）
+        rows = con.execute(
+            f"SELECT {', '.join(base_cols)} FROM klines "
+            "WHERE coin = ? AND interval = ? ORDER BY time",
+            [coin, interval],
+        ).fetchall()
+
+        if not rows:
+            print(f"  {tag} 无数据，跳过")
+            continue
+
+        candles = [dict(zip(base_cols, r)) for r in rows]
+        times = [r[0] for r in rows]
+        n = len(candles)
+        print(f"  {tag} {n:,} 行 → 计算指标...", flush=True)
+
+        # 计算所有指标
+        computed = _compute_all_indicators(candles, col_map)
+
+        print(f"  {tag} 写入DB...", flush=True)
+
+        # 一次性构建 DataFrame（零碎片，消除 PerformanceWarning）
+        computed["time"] = times
+        indicator_df = pd.DataFrame(computed)
+
+        # 注册为临时表，一次 UPDATE FROM 写入所有指标列（参数化防注入）
+        con.register("tmp_ind", indicator_df)
+
+        set_clauses = ", ".join(
+            f'"{col}" = tmp_ind."{col}"' for col in indicator_cols
+        )
+        con.execute(f"""
+            UPDATE klines
+            SET {set_clauses}
+            FROM tmp_ind
+            WHERE klines.coin = ?
+              AND klines.interval = ?
+              AND klines.time = tmp_ind.time
+              AND klines."{first_col}" IS NULL
+        """, [coin, interval])
+
+        con.unregister("tmp_ind")
+        con.commit()
+
+        elapsed = time.perf_counter() - t0
+        print(f"  {tag} ✅ {elapsed:.1f}s")
+
+    print("阶段 2 完成\n")
+
+
+# ─────────────────────────────────────────
+# 入口
+# ─────────────────────────────────────────
+
+if __name__ == "__main__":
+    total_t0 = time.perf_counter()
+
+    con = _open_db()
+    try:
+        build_mirror_klines(con)
+        build_indicators(con)
+    finally:
+        con.close()
+
+    total_elapsed = time.perf_counter() - total_t0
+    print(f"全部完成，总耗时 {total_elapsed:.1f}s")

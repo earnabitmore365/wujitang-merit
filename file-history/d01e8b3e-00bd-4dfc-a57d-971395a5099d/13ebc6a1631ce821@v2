@@ -1,0 +1,241 @@
+# Binance USDT-M 合约 API 参考
+
+> 改 Binance adapter 前必读。改完后更新本文档。
+> 最后更新：2026-04-06
+
+---
+
+## 概述
+
+Binance USDT-M 合约是 USDT 保证金的永续/交割合约，最高 125x 杠杆。
+
+| 项目 | 值 |
+|------|-----|
+| REST Base URL | `https://fapi.binance.com` |
+| REST Testnet | `https://demo-fapi.binance.com` |
+| WS Market | `wss://fstream.binance.com/ws/<streamName>` |
+| WS Combined | `wss://fstream.binance.com/stream?streams=<s1>/<s2>` |
+| 认证方式 | HMAC-SHA256 / RSA |
+| 杠杆范围 | 1-125x |
+| 持仓模式 | 单向（One-Way）/ 对冲（Hedge） |
+| 保证金模式 | 全仓（Cross）/ 逐仓（Isolated） |
+| Python SDK | `pip install python-binance` |
+
+---
+
+## 认证
+
+### HMAC-SHA256 签名
+
+```
+签名公式: HMAC-SHA256(secretKey, totalParams)
+totalParams = queryString + requestBody（拼接，不加分隔符）
+```
+
+**步骤**：
+1. 拼接所有参数为 `key=value&key=value` 格式
+2. 用 Secret Key 做 HMAC-SHA256
+3. 将签名作为 `signature` 参数附加（必须是最后一个参数）
+4. Header 带 `X-MBX-APIKEY: <your_api_key>`
+
+**Python 示例**：
+```python
+import hmac, hashlib, time
+
+api_key = "your_key"
+api_secret = "your_secret"
+timestamp = int(time.time() * 1000)
+
+params = f"symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&timestamp={timestamp}"
+signature = hmac.new(api_secret.encode(), params.encode(), hashlib.sha256).hexdigest()
+
+url = f"https://fapi.binance.com/fapi/v1/order?{params}&signature={signature}"
+headers = {"X-MBX-APIKEY": api_key}
+```
+
+### timestamp 与 recvWindow
+
+- `timestamp`：毫秒级 Unix 时间戳（必填）
+- `recvWindow`：请求有效窗口，默认 5000ms，建议不超过 5000
+- 验证条件：`timestamp < serverTime + 1000 && serverTime - timestamp <= recvWindow`
+
+---
+
+## REST API
+
+### 下单 — `POST /fapi/v1/order`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | STRING | 是 | 如 BTCUSDT |
+| side | ENUM | 是 | BUY / SELL |
+| type | ENUM | 是 | LIMIT / MARKET / STOP / STOP_MARKET / TAKE_PROFIT / TAKE_PROFIT_MARKET / TRAILING_STOP_MARKET |
+| positionSide | ENUM | 否 | 单向=BOTH（默认），对冲=LONG/SHORT |
+| quantity | DECIMAL | 否 | 数量 |
+| price | DECIMAL | 否 | 价格（限价单必填） |
+| timeInForce | ENUM | 否 | GTC / IOC / FOK / GTX / GTD |
+| reduceOnly | STRING | 否 | "true"/"false" |
+| newClientOrderId | STRING | 否 | 自定义订单 ID |
+| timestamp | LONG | 是 | 毫秒时间戳 |
+
+### 撤单 — `DELETE /fapi/v1/order`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | STRING | 是 | |
+| orderId | LONG | 二选一 | 系统订单 ID |
+| origClientOrderId | STRING | 二选一 | 自定义订单 ID |
+| timestamp | LONG | 是 | |
+
+### 查余额 — `GET /fapi/v3/balance`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| timestamp | LONG | 是 |
+
+返回数组，每个资产：`asset`, `balance`, `crossWalletBalance`, `crossUnPnl`, `availableBalance`, `maxWithdrawAmount`
+
+### 查账户（含持仓）— `GET /fapi/v3/account`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| timestamp | LONG | 是 |
+
+返回 `assets[]` + `positions[]`（含 symbol, positionSide, positionAmt, unrealizedProfit, entryPrice）
+
+### 查 K 线 — `GET /fapi/v1/klines`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | STRING | 是 | |
+| interval | ENUM | 是 | 1m/3m/5m/15m/30m/1h/2h/4h/6h/8h/12h/1d/3d/1w/1M |
+| startTime | LONG | 否 | 毫秒时间戳 |
+| endTime | LONG | 否 | |
+| limit | INT | 否 | 默认 500，最大 1500 |
+
+返回数组：`[开盘时间, open, high, low, close, volume, 收盘时间, 成交额, 笔数, 主动买入量, 主动买入额, 忽略]`
+
+### 设杠杆 — `POST /fapi/v1/leverage`
+
+| 参数 | 类型 | 必填 |
+|------|------|:----:|
+| symbol | STRING | 是 |
+| leverage | INT | 是 |
+| timestamp | LONG | 是 |
+
+### 切持仓模式 — `POST /fapi/v1/positionSide/dual`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| dualSidePosition | STRING | 是 | "true"=对冲，"false"=单向 |
+
+### 设保证金类型 — `POST /fapi/v1/marginType`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| symbol | STRING | 是 | |
+| marginType | ENUM | 是 | ISOLATED / CROSSED |
+
+---
+
+## WebSocket
+
+### 连接
+
+- 单流：`wss://fstream.binance.com/ws/btcusdt@kline_1m`
+- 合并流：`wss://fstream.binance.com/stream?streams=btcusdt@aggTrade/btcusdt@markPrice`
+- 单连接最长 24 小时，最多 1024 streams
+- symbol 必须**小写**
+
+### 心跳
+
+服务端每 3 分钟发 ping，客户端 10 分钟内必须回 pong。可主动发 unsolicited pong 维持连接。
+
+### 订阅格式
+
+```json
+{"method": "SUBSCRIBE", "params": ["btcusdt@kline_1m"], "id": 1}
+{"method": "UNSUBSCRIBE", "params": ["btcusdt@kline_1m"], "id": 2}
+```
+
+### 常用频道
+
+| 频道 | stream 名 | 更新频率 |
+|------|-----------|---------|
+| K 线 | `<symbol>@kline_<interval>` | 250ms |
+| 标记价格 | `<symbol>@markPrice` 或 `@markPrice@1s` | 3s / 1s |
+| 最优挂单 | `<symbol>@bookTicker` | 实时 |
+| 逐笔成交 | `<symbol>@aggTrade` | 实时 |
+
+K 线消息关键字段：`k.o`(open), `k.h`(high), `k.l`(low), `k.c`(close), `k.v`(volume), `k.x`(是否收盘)
+
+---
+
+## 限速
+
+| 类型 | 说明 |
+|------|------|
+| IP 限速 | 响应头 `X-MBX-USED-WEIGHT-*` 追踪 |
+| 下单限速 | 响应头 `X-MBX-ORDER-COUNT-*` 追踪 |
+| 超限 | HTTP 429 |
+| 封禁 | HTTP 418（持续违规，2分钟→3天） |
+| reduce-only 优先 | 系统节流时 reduce-only 订单不受影响 |
+
+具体数值通过 `GET /fapi/v1/exchangeInfo` 的 `rateLimits` 数组获取。
+
+---
+
+## Python SDK
+
+```bash
+pip install python-binance
+```
+
+```python
+from binance.client import Client
+
+client = Client(api_key, api_secret)
+
+# K 线
+klines = client.futures_klines(symbol="BTCUSDT", interval="1m")
+
+# 余额
+balance = client.futures_account_balance()
+
+# 下单
+order = client.futures_create_order(
+    symbol="BTCUSDT", side="BUY", type="MARKET", quantity=0.001
+)
+
+# 设杠杆
+client.futures_change_leverage(symbol="BTCUSDT", leverage=10)
+```
+
+---
+
+## 与 BitMEX 的关键差异
+
+| 维度 | Binance | BitMEX |
+|------|---------|--------|
+| 合约代码 | 直接用 `BTCUSDT` | 需映射 `BTC → XBTUSDT` |
+| 数量单位 | 基础币数量（如 0.001 BTC） | 合约数量（需 u2p 转换） |
+| 签名位置 | `signature` 参数 | `api-signature` header |
+| 市价单 | 原生支持 | IOC 模拟 |
+| K 线周期 | 原生支持 1m-1M 全部 | 只有 1m/5m/1h/1d，15m/30m 需聚合 |
+| WebSocket 订阅 | JSON method | JSON op |
+| 心跳 | 服务端 ping（3分钟） | 客户端主动 ping（15秒） |
+
+---
+
+## 参考链接
+
+- [USDT-M Futures API](https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info)
+- [python-binance GitHub](https://github.com/sammchardy/python-binance)
+- [API Explorer](https://developers.binance.com/docs/binance-spot-api-docs/api-explorer)
+- [Testnet](https://testnet.binancefuture.com/)
+
+---
+
+## 踩过的坑
+
+（暂无，踩了就写）

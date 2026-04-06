@@ -1,0 +1,82 @@
+"""
+指标计算 — v0.9 基础数据 + 归一化 + 镜像
+@see ARCHITECTURE.md — 架构约束（指标统一调用 indicator_cache）
+
+v0.9: 大清理 — 删除 compute_all/load_from_cache/compute_single_close
+  所有技术指标通过 indicator_cache.get_indicator() 获取
+  本文件只保留：基础工具函数(sma/ema) + 归一化 + 镜像 + warmup
+"""
+import numpy as np
+
+
+def sma(arr, period):
+    """简单移动平均"""
+    out = np.full_like(arr, np.nan)
+    cumsum = np.cumsum(arr)
+    out[period - 1:] = (cumsum[period - 1:] - np.concatenate([[0], cumsum[:-period]])) / period
+    return out
+
+
+def ema(arr, period):
+    """指数移动平均"""
+    out = np.empty_like(arr)
+    out[:] = np.nan
+    alpha = 2.0 / (period + 1)
+    if len(arr) < period:
+        return out
+    out[period - 1] = np.mean(arr[:period])
+    for i in range(period, len(arr)):
+        out[i] = alpha * arr[i] + (1 - alpha) * out[i - 1]
+    return out
+
+
+def normalize(indicators, train_end_idx=None):
+    """
+    Z-score 归一化。用训练集(前 train_end_idx 个)的 mean/std 归一化全部数据。
+    """
+    stats = {}
+    normalized = {}
+
+    for name, arr in indicators.items():
+        if train_end_idx is not None:
+            train_part = arr[:train_end_idx]
+        else:
+            train_part = arr
+
+        valid = train_part[~np.isnan(train_part)]
+        if len(valid) == 0:
+            mean, std = 0.0, 1.0
+        else:
+            mean = np.mean(valid)
+            std = np.std(valid)
+            if std < 1e-10:
+                std = 1.0
+
+        stats[name] = {'mean': mean, 'std': std}
+        normalized[name] = (arr - mean) / std
+
+    return normalized, stats
+
+
+def mirror_ohlcv(ohlcv):
+    """
+    价格取负：正常世界的完美镜像。
+
+    公式: mirror = -price
+    high ↔ low 互换，volume 不动。
+    收益率自然反转，不需要轴。
+
+    用途: 验证策略不靠方向性偏见赚钱。
+    """
+    return {
+        'open': -ohlcv['open'],
+        'high': -ohlcv['low'],     # 原 low 取负 = 新 high
+        'low': -ohlcv['high'],     # 原 high 取负 = 新 low
+        'close': -ohlcv['close'],
+        'volume': ohlcv['volume'].copy(),
+    }
+
+
+def warmup_bars():
+    """指标需要的预热 K 线数（取所有指标最大周期 + buffer）"""
+    return 55  # SMA_50 需要 50 根 + buffer

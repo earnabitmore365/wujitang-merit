@@ -1,0 +1,62 @@
+"""BitMEX API 签名模块.
+
+签名公式: hex(HMAC_SHA256(apiSecret, verb + path + expires + data))
+@see src/exchange/bitmex/README.md
+"""
+
+import hashlib
+import hmac
+import time
+
+
+def generate_expires(ttl: int = 30) -> int:
+    """生成过期时间戳（当前时间 + ttl 秒）."""
+    return int(time.time()) + ttl
+
+
+def generate_signature(api_secret: str, verb: str, path: str,
+                       expires: int, data: str = "") -> str:
+    """生成 API 签名.
+
+    Args:
+        api_secret: API Secret
+        verb: HTTP 方法（GET/POST/PUT/DELETE），大写
+        path: 请求路径（含查询参数，如 /api/v1/order?filter=...）
+        expires: 过期时间戳
+        data: 请求体（POST/PUT 的 JSON 字符串，GET 为空）
+
+    Returns:
+        str: 十六进制签名
+
+    """
+    message = verb + path + str(expires) + data
+    return hmac.new(
+        api_secret.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def auth_headers(api_key: str, api_secret: str, verb: str,
+                 path: str, data: str = "") -> dict[str, str]:
+    """生成完整的认证 HTTP 头.
+
+    Args:
+        api_key: API Key
+        api_secret: API Secret
+        verb: HTTP 方法（大写）
+        path: 请求路径
+        data: 请求体
+
+    Returns:
+        dict: 包含 api-key, api-expires, api-signature 的字典
+
+    """
+    expires = generate_expires()
+    signature = generate_signature(api_secret, verb, path, expires, data)
+    return {
+        "api-key": api_key,
+        "api-expires": str(expires),
+        "api-signature": signature,
+        "Content-Type": "application/json",
+    }

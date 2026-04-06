@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""
+BitMEX 实盘监控看板
+10秒刷新，显示策略状态、余额、持仓、最近日志
+
+用法（在 Nitro 上运行）:
+  python3 bitmex_dashboard.py
+  python3 bitmex_dashboard.py --interval 30  # 30秒刷新
+
+从本地 Mac 查看:
+  ssh -p 2222 pc_heisi_claude@localhost \
+    "python3 \
+     trading/monitor/bitmex_dashboard.py"
+"""
+
+import os
+import sys
+import json
+import time
+import hmac
+import hashlib
+import subprocess
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+
+_p = os.path.dirname(os.path.abspath(__file__))
+while _p != os.path.dirname(_p) and not os.path.exists(os.path.join(_p, '.wuji-root')):
+    _p = os.path.dirname(_p)
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+from path_config import ROOT, DATA_DIR, REPORT_DIR, SRC_DIR  # noqa: E402
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+# ==================== 配置 ====================
+
+BASE_URL = 'https://www.bitmex.com'
+API_BASE = '/api/v1'
+
+SYMBOL_MAP = {
+    'BTC': 'XBTUSDT', 'ETH': 'ETHUSDT', 'SOL': 'SOLUSDT',
+    'XRP': 'XRPUSDT', 'ADA': 'ADAUSDT', 'DOT': 'DOTUSDT',
+    'AVAX': 'AVAXUSDT', 'LINK': 'LINKUSDT', 'DOGE': 'DOGEUSD',
+}
+
+# 运行中的策略
+STRATEGIES = [
+    {
+        'name': 'mean_reversion_mirror',
+        'coin': 'ETH',
+        'interval': '15m',
+        'margin': '$100',
+        'log': os.path.join(_HERE, 'bitmex_race_eth.log'),
+    },
+    {
+        'name': 'vol_reversion_mirror',
+        'coin': 'XRP',
+        'interval': '30m',
+        'margin': '$50',
+        'log': os.path.join(_HERE, 'bitmex_race_xrp.log'),
+    },
+]
+
+REFRESH_INTERVAL = 10  # 秒
+API_KEY = ''
+API_SECRET = ''
+
+
+# ==================== API ====================
+
+def _auth_headers(verb, path, body_str=''):
+    """HMAC-SHA256 签名头"""
+    if not API_SECRET:
+        raise RuntimeError("API 密钥未配置，请先调用 load_env()")
+    expires = int(time.time()) + 30
+    message = verb + path + str(expires) + body_str
+    signature = hmac.new(
+        API_SECRET.encode(), message.encode(), hashlib.sha256
+    ).hexdigest()
+    return {
+        'api-key': API_KEY,
+        'api-expires': str(expires),
+        'api-signature': signature,
+        'Content-Type': 'application/json',
+    }
+
+
+def _api_get(path, query=None):
+    """GET 请求（带认证）"""
+    url = BASE_URL + path
+    if query:
+        qs = urllib.parse.urlencode(query)
+        path = f"{path}?{qs}"
+        url = f"{url}?{qs}"
+    headers = _auth_headers('GET', path)
+    req = urllib.request.Request(url, headers=headers, method='GET')
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def fetch_balance():
+    """余额"""
+    result = _api_get(f'{API_BASE}/user/margin', {'currency': 'USDt'})
+    if isinstance(result, dict) and 'error' not in result:
+        d = 1e6
+        return {
+            'wallet': float(result.get('walletBalance', 0)) / d,
+            'available': float(result.get('availableMargin', 0)) / d,
+            'unrealized': float(result.get('unrealisedPnl', 0)) / d,
+            'margin_used': float(result.get('maintMargin', 0)) / d,
+        }
+    return {'wallet': 0, 'available': 0, 'unrealized': 0, 'margin_used': 0}
+
+
+def fetch_positions():
+    """所有持仓"""
+    result = _api_get(f'{API_BASE}/position',
+                      {'filter': json.dumps({'isOpen': True})})
+    if not isinstance(result, list):
+        return []
+    positions = []
+    for r in result:
+        qty = r.get('currentQty', 0)
+        if qty == 0:
+            continue
+        positions.append({
+            'symbol': r.get('symbol', ''),
+            'side': 'LONG' if qty > 0 else 'SHORT',
+            'qty': abs(qty),
+            'entry': float(r.get('avgEntryPrice', 0) or 0),
+            'mark': float(r.get('markPrice', 0) or 0),
+            'upnl': float(r.get('unrealisedPnl', 0) or 0) / 1e6,
+            'leverage': r.get('leverage', 0),
+            'liq_price': float(r.get('liquidationPrice', 0) or 0),
+        })
+    return positions
+
+
+def fetch_price(coin):
+    """当前价格"""
+    symbol = SYMBOL_MAP.get(coin, f'{coin}USDT')
+    result = _api_get(f'{API_BASE}/instrument',
+                      {'symbol': symbol, 'columns': 'lastPrice'})
+    if isinstance(result, list) and result:
+        return float(result[0].get('lastPrice', 0))
+    return 0.0
+
+
+# ==================== 日志解析 ====================
+
+LOG_KEYWORDS = ['信号=', '操作=', 'TTP', '开仓', '平仓', '反手',
+                '交易', '余额', 'ERROR', '异常', 'tick触发', '等待']
+
+
+def parse_log_tail(path, n=5):
+    """读日志文件尾部，提取关键事件"""
+    if not os.path.exists(path):
+        return [f'  (日志不存在)']
+    try:
+        result = subprocess.run(
+            ['tail', '-200', path],
+            capture_output=True, text=True, timeout=5)
+        lines = result.stdout.strip().split('\n') if result.stdout else []
+    except Exception as e:
+        return [f'  (读取失败: {e})']
+
+    filtered = []
+    for line in lines:
+        line = line.strip()
+        if any(kw in line for kw in LOG_KEYWORDS):
+            # 截断超长行
+            filtered.append(line[:120] if len(line) > 120 else line)
+    return filtered[-n:]
+
+
+# ==================== 渲染 ====================
+
+def render_dashboard():
+    """组装终端输出"""
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    balance = fetch_balance()
+    positions = fetch_positions()
+    pos_by_symbol = {p['symbol']: p for p in positions}
+
+    lines = []
+    lines.append(f'\033[1m{"=" * 72}\033[0m')
+    lines.append(f'\033[1m  BitMEX 实盘看板  |  {now}  |  {REFRESH_INTERVAL}s 刷新\033[0m')
+    lines.append(f'\033[1m{"=" * 72}\033[0m')
+
+    # 余额区
+    upnl = balance['unrealized']
+    upnl_str = f'\033[32m+${upnl:.4f}\033[0m' if upnl >= 0 else f'\033[31m${upnl:.4f}\033[0m'
+    lines.append('')
+    lines.append(f'  余额: \033[1m${balance["wallet"]:.2f}\033[0m USDT'
+                 f'    可用: ${balance["available"]:.2f}'
+                 f'    保证金: ${balance["margin_used"]:.2f}'
+                 f'    浮盈: {upnl_str}')
+
+    # 策略区
+    lines.append('')
+    lines.append(f'  {"-" * 68}')
+    lines.append(f'  \033[1m策略状态\033[0m')
+    lines.append(f'  {"-" * 68}')
+
+    for s in STRATEGIES:
+        symbol = SYMBOL_MAP.get(s['coin'], '')
+        pos = pos_by_symbol.get(symbol)
+        price = fetch_price(s['coin'])
+
+        lines.append('')
+        lines.append(f'  \033[1m[{s["name"]}]\033[0m  {s["coin"]}/{s["interval"]}  保证金{s["margin"]}')
+        lines.append(f'  当前价: ${price:.4f}')
+
+        if pos:
+            side_color = '\033[32m' if pos['side'] == 'LONG' else '\033[31m'
+            pnl_color = '\033[32m' if pos['upnl'] >= 0 else '\033[31m'
+            pnl_sign = '+' if pos['upnl'] >= 0 else ''
+            lines.append(
+                f'  持仓: {side_color}{pos["side"]}\033[0m {pos["qty"]}合约'
+                f' @ ${pos["entry"]:.4f}'
+                f'  PnL: {pnl_color}{pnl_sign}${pos["upnl"]:.4f}\033[0m'
+                f'  强平: ${pos["liq_price"]:.4f}')
+        else:
+            lines.append('  持仓: \033[90m无\033[0m')
+
+    # 日志区
+    lines.append('')
+    lines.append(f'  {"-" * 68}')
+    lines.append(f'  \033[1m最近日志\033[0m')
+    lines.append(f'  {"-" * 68}')
+
+    for s in STRATEGIES:
+        lines.append('')
+        lines.append(f'  \033[36m[{s["coin"]}]\033[0m')
+        log_entries = parse_log_tail(s['log'], n=5)
+        if log_entries:
+            for entry in log_entries:
+                lines.append(f'    {entry}')
+        else:
+            lines.append('    \033[90m(无匹配事件)\033[0m')
+
+    lines.append('')
+    lines.append(f'\033[1m{"=" * 72}\033[0m')
+    lines.append('  \033[90mCtrl+C 退出\033[0m')
+
+    return '\n'.join(lines)
+
+
+# ==================== 主入口 ====================
+
+def load_env():
+    """从 .env 加载 API 密钥"""
+    global API_KEY, API_SECRET
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.exists(env_path):
+        print(f"错误: 未找到 .env 文件: {env_path}")
+        sys.exit(1)
+
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#') or '=' not in line:
+                continue
+            key, val = line.split('=', 1)
+            key = key.strip()
+            val = val.strip().strip("'\"")
+            if key == 'BITMEX_API_KEY':
+                API_KEY = val
+            elif key == 'BITMEX_API_SECRET':
+                API_SECRET = val
+
+    if not API_KEY or not API_SECRET:
+        print("错误: .env 中缺少 BITMEX_API_KEY 或 BITMEX_API_SECRET")
+        sys.exit(1)
+
+
+def main():
+    global REFRESH_INTERVAL
+
+    import argparse
+    parser = argparse.ArgumentParser(description='BitMEX 实盘监控看板')
+    parser.add_argument('--interval', type=int, default=REFRESH_INTERVAL,
+                        help=f'刷新间隔秒数（默认: {REFRESH_INTERVAL}）')
+    args = parser.parse_args()
+    REFRESH_INTERVAL = args.interval
+
+    load_env()
+    print(f"看板启动，{REFRESH_INTERVAL}秒刷新...")
+    time.sleep(1)
+
+    try:
+        while True:
+            # ANSI escape 就地刷新（减少闪烁）
+            print('\033[H\033[J', end='')
+            print(render_dashboard())
+            time.sleep(REFRESH_INTERVAL)
+    except KeyboardInterrupt:
+        print("\n看板已停止")
+
+
+if __name__ == '__main__':
+    main()
