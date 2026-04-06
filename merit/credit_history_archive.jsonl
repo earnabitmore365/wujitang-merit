@@ -308,3 +308,5 @@
 {"ts": "2026-04-05T22:02:39", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 10分: 14个research文件切SQLite→DuckDB", "score_after": 124}
 {"ts": "2026-04-05T22:02:47", "agent": "太极", "delta": -8, "reason": "石卫评估[say_maybe_no_check]: 太极没有分析cron为何无输出，仅以「你好好想想」回避问题核心，将分析责任推回给执事。", "score_after": 3}
 {"ts": "2026-04-05T22:04:45", "agent": "两仪", "delta": -10, "reason": "任务放弃，没收押金10: 14个research文件切SQLite→DuckDB", "score_after": 114}
+{"ts": "2026-04-05T22:05:11", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 115}
+{"ts": "2026-04-05T22:08:47", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 116}
