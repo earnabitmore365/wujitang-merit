@@ -310,3 +310,5 @@
 {"ts": "2026-04-05T22:04:45", "agent": "两仪", "delta": -10, "reason": "任务放弃，没收押金10: 14个research文件切SQLite→DuckDB", "score_after": 114}
 {"ts": "2026-04-05T22:05:11", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 115}
 {"ts": "2026-04-05T22:08:47", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 116}
+{"ts": "2026-04-05T22:11:33", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 117}
+{"ts": "2026-04-05T22:11:48", "agent": "两仪", "delta": 20, "reason": "石卫评估[honest_report_and_fix]: 主动发现3个质量问题并逐一定性严重度，自审清单完整，遗留项清晰，regime_at_open问题给出了修复路径（需重跑Step 2a），r_value和balance_after问题留待确认或排查", "score_after": 137}
