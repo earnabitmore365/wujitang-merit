@@ -844,6 +844,23 @@ def check_delete_whitelist(cmd):
         return False
 
 
+def _check_appeal_approved(cmd):
+    """检查 appeal_history.json 是否有已批准的相关上诉"""
+    appeal_path = os.path.join(MERIT_DIR, "appeal_history.json")
+    if not os.path.exists(appeal_path):
+        return False
+    try:
+        with open(appeal_path) as f:
+            appeals = json.load(f)
+        for a in appeals:
+            if a.get("status") == "approved" and a.get("cmd_pattern"):
+                if a["cmd_pattern"] in cmd:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def check_bash_destructive(cmd, mission=None):
     """检查 Bash 破坏性操作。mission 计划内 + 白名单 均放行。"""
     if not cmd:
@@ -869,6 +886,9 @@ def check_bash_destructive(cmd, mission=None):
                 return None
             # 白名单放行（文件路径 + kill 进程的 /proc/PID）
             if check_delete_whitelist(cmd):
+                return None
+            # 上诉庭批准放行
+            if _check_appeal_approved(cmd):
                 return None
             # kill 命令：检查白名单里有没有 /proc/PID 的审批
             if "终止进程" in desc:

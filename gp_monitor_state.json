@@ -1,14 +1,14 @@
 {
-  "last_grad_count": 807,
+  "last_grad_count": 811,
   "restarts": 3,
-  "total_checks": 714,
+  "total_checks": 715,
   "last_jobs": [
-    "LINK/15m",
-    "LINK/15m",
-    "LINK/15m",
-    "LINK/15m"
+    "SOL/15m",
+    "SOL/15m",
+    "SOL/15m",
+    "SOL/15m"
   ],
-  "last_memory_gb": 6.0,
+  "last_memory_gb": 11.4,
   "consecutive_ssh_failures": 0,
   "consecutive_crashes": 0
 }
