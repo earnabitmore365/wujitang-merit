@@ -12,3 +12,15 @@ cache/
 plugins/cache/
 *.jsonl.bak
 stats-cache.json
+
+# 敏感文件（绝对不推）
+.comm_pass
+*.secret*
+*secrets*
+*.env
+*api_key*
+*token*
+*.pem
+*.key
+settings.json.save
+settings.local.json
