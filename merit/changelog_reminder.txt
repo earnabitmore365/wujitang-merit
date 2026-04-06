@@ -1,0 +1,4 @@
+⚠️ 石卫提醒：这轮有以下操作，请更新 CHANGELOG（/Users/allenbot/.claude/projects/-Users-allenbot/memory/CHANGELOG.md）：
+- BASH `which claude 2>/dev/null; ls -la $(which claude 2>/dev/null) 2>/dev/null; npm list -g @anthropic-ai/claude-code 2>/dev/null | head -3`
+- BASH `find /opt/homebrew/lib/node_modules/@anthropic-ai 2>/dev/null -name "*.js" | head -5; find /usr/local/lib/node_modules/@anthropic-ai 2>/dev/null -name "*.js" | head -5; find ~/.npm 2>/dev/null -path "...`
+格式：### HH:MM 一句话描述做了什么和为什么 (YYYY-MM-DD)
