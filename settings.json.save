@@ -1,0 +1,19 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-cp-Vr_vjoiAjHenLFXdSINTSXPgjmU14t7BR6zXLPXyUn3KyeQRqzSKczIdNA7uyw-TkKuvlDMzJ-uhSWSJITdxT3iVW{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-cp-Vr_vjoiAjHenLFXdSINTSXPgjmU14t7BR6zXLPXyUn3KyeQRqzSKczIdNA7uyw-TkKuvlDMzJ-uhSWSJITdxT3iVWDyi2ktW1QBHGZI9vCPTyAiQJaVevDA",
+    "ANTHROPIC_MODEL": "MiniMax-M2.5-highspeed",          // ← 这里改成这个！
+    "ANTHROPIC_SMALL_FAST_MODEL": "MiniMax-M2.5-highspeed",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.5-highspeed",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5-highspeed",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2.5-highspeed",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "model": "MiniMax-M2.5-highspeed",   // ← 也改这里
+  "disableLoginPrompt": true
+}
+
