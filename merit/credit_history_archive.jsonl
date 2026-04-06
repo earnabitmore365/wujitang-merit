@@ -332,3 +332,6 @@
 {"ts": "2026-04-05T23:45:27", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 3分: indicator_cache统一到klines.duckdb+删SQLite+更新文档", "score_after": 180}
 {"ts": "2026-04-05T23:49:33", "agent": "两仪", "delta": 5, "reason": "任务完成，押金3归还 + 质量奖励+5（verify 2/4，改了几轮）: indicator_cache统一到klines.duckdb+删SQLite+更新文档", "score_after": 185}
 {"ts": "2026-04-05T23:53:40", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 186}
+{"ts": "2026-04-05T23:53:55", "agent": "两仪", "delta": 2, "reason": "老板认可: 那连同55个一并加入不行吗？", "score_after": 188}
+{"ts": "2026-04-05T23:54:35", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 189}
+{"ts": "2026-04-05T23:56:03", "agent": "两仪", "delta": 0, "reason": "任务押金预扣 2分: GP复合指标注册+col_map补齐+文档更新", "score_after": 189}

@@ -1007,10 +1007,12 @@ def handle_pre_tool_use(data):
     level, title = get_level(score, agent_name)
     mission = load_mission()
 
-    # Lv.1 锁灵：所有写入 → ask 老板
+    # Lv.1 锁灵：所有写入 → ask 老板（plan 文件豁免，否则无法创建 mission）
     if level == 1 and tool_name in ("Write", "Edit"):
-        output_ask(f"{agent_name}（Lv.1 锁灵 · {score}分）信用不足，所有写入操作需老板批准。")
-        return
+        fp = data.get("tool_input", {}).get("file_path", "")
+        if not ("/plans/" in fp and fp.endswith(".md")):
+            output_ask(f"{agent_name}（Lv.1 锁灵 · {score}分）信用不足，所有写入操作需老板批准。")
+            return
 
     # Bash：pending 拦截 + 拍快照 + 破坏性检查
     if tool_name == "Bash":
@@ -1040,10 +1042,11 @@ def handle_pre_tool_use(data):
         is_system_file = file_path.startswith(home + "/.claude/")  # plan文件、settings等
         is_tmp = file_path.startswith("/tmp/") or file_path.startswith("/private/tmp/")
         is_changelog = os.path.basename(file_path) in ("CHANGELOG.md", "backlog.md", "MEMORY.md")
+        is_plan_file = "/plans/" in file_path and file_path.endswith(".md")  # plan 文件是创建 mission 的前置条件
 
         # 没有 mission 且不是太极域/系统文件/临时文件/文档文件 → 拦截
         # 必须先出 plan → review-plan → 有 mission 才能改代码
-        if not mission and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
+        if not mission and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog and not is_plan_file:
             output_deny(
                 f"[{agent_name} Lv.{level} {title}] "
                 f"没有 active mission，不能直接改代码。先出 plan → review-plan 提交任务。",
@@ -1051,7 +1054,7 @@ def handle_pre_tool_use(data):
             return
 
         # pending mission = 自造 plan mode（方案待批准，只读）
-        if mission and mission.get("status") == MS_PENDING and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog:
+        if mission and mission.get("status") == MS_PENDING and not is_taiji_domain and not is_system_file and not is_tmp and not is_changelog and not is_plan_file:
             output_deny(
                 f"⏸️ 方案待批准。等老板说\"执行\"后调 `python3 ~/.claude/merit/credit_manager.py mission activate`",
                 agent_name, f"{tool_name}: {file_path}")

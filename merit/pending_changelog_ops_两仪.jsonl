@@ -1,0 +1,2 @@
+{"op": "BASH", "cmd": "curl -s -X POST http://localhost:8788 -H \"Authorization: Bearer a1188f5bb3603166795b244965ab9e5a\" -d \"两仪→太极：确认收到，plans/目录豁免已生效。继续干活。\"", "ts": "19:11", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}
+{"op": "CREATE/EDIT", "file": "/Volumes/SSD-2TB/project/auto-trading/plans/handoff_v2_remaining.md", "ts": "19:11", "cwd": "/Volumes/SSD-2TB/project/auto-trading"}

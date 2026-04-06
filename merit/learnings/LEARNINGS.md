@@ -2140,3 +2140,8 @@
 2026-04-06 08:47 | [PENALTY] 太极 (-5) | 递增惩罚: bypass_without_report 第2次触发
 2026-04-06 09:04 | [REWARD] 两仪 (+2) | [routine_complete] 老板认可: Created a file, read a fileCreated a file, read a 
 2026-04-06 09:04 | [REWARD] 两仪 (+1) | 习惯养成: routine_complete 连续3次
+2026-04-06 09:07 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: 你先搞好白纱的回馈
+2026-04-06 09:09 | [REWARD] 太极 (+1) | [routine_complete] 老板认可: 你干嘛？看清楚才回好不好？？那是白纱2的信息
+2026-04-06 09:12 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: 那你就写多一条，跟白纱说你发错了。下次看好再发
+2026-04-06 09:12 | [PENALTY] 太极 (-3) | [panic_no_analysis] 老板反馈: API错误限速又抱怨
+2026-04-06 09:12 | [PENALTY] 太极 (-3) | 递增惩罚: panic_no_analysis 第2次触发

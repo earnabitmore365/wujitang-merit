@@ -23,27 +23,6 @@
   },
   "history": [
     {
-      "ts": "2026-04-05T23:53:55",
-      "agent": "两仪",
-      "delta": 2,
-      "reason": "老板认可: 那连同55个一并加入不行吗？",
-      "score_after": 188
-    },
-    {
-      "ts": "2026-04-05T23:54:35",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 189
-    },
-    {
-      "ts": "2026-04-05T23:56:03",
-      "agent": "两仪",
-      "delta": 0,
-      "reason": "任务押金预扣 2分: GP复合指标注册+col_map补齐+文档更新",
-      "score_after": 189
-    },
-    {
       "ts": "2026-04-05T23:57:44",
       "agent": "两仪",
       "delta": 5,
@@ -721,6 +700,27 @@
       "delta": 1,
       "reason": "习惯养成[routine_complete]连续3次",
       "score_after": 562
+    },
+    {
+      "ts": "2026-04-06T09:12:16",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 那你就写多一条，跟白纱说你发错了。下次看好再发",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T09:12:57",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: API错误限速又抱怨",
+      "score_after": 0
+    },
+    {
+      "ts": "2026-04-06T09:12:57",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "递增惩罚[panic_no_analysis]第2次: ×2",
+      "score_after": 0
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"
