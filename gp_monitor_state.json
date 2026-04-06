@@ -1,14 +1,14 @@
 {
-  "last_grad_count": 802,
+  "last_grad_count": 803,
   "restarts": 3,
-  "total_checks": 712,
+  "total_checks": 713,
   "last_jobs": [
-    "DOT/15m",
-    "DOT/15m",
-    "DOT/15m",
-    "ETH/15m"
+    "ETH/15m",
+    "ETH_COIN/15m",
+    "ETH_COIN/15m",
+    "ETH_COIN/15m"
   ],
-  "last_memory_gb": 11.1,
+  "last_memory_gb": 6.1,
   "consecutive_ssh_failures": 0,
   "consecutive_crashes": 0
 }

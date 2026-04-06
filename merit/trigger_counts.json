@@ -1,8 +1,8 @@
 {
   "太极:bypass_without_report": 0,
-  "太极:panic_no_analysis": 1,
+  "太极:panic_no_analysis": 2,
   "两仪:panic_no_analysis": 0,
-  "两仪:bypass_without_report": 1,
+  "两仪:bypass_without_report": 0,
   "两仪:fake_or_cheat": 0,
   "太极:ask_boss_tech": 0,
   "两仪:same_error_3rd_time": 0,

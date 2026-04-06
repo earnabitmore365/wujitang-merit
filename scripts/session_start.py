@@ -405,6 +405,7 @@ def inject_credit_status(cwd):
             score = agent_info['score']
             level, title = _get_level(score, agent_name)
             print(f"【信用状态】{agent_name} · Lv.{level} {title} · {score}分")
+            print(f"  5000分制 | 每次加减分不变 | 升级靠积累，降级是大事——珍惜手里的分数")
             print("")
     except Exception:
         pass

@@ -1,0 +1,140 @@
+---
+name: 石卫 v8 设计文档
+description: 天衡册完整设计——石卫统一引擎+评分v8+自进化+verify+记忆系统
+type: project
+---
+
+# 无极堂·天衡册 v8 完整设计
+
+## 当前状态（2026-04-06 积分×10）
+
+### 核心引擎
+- **merit_gate.py** — 统一引擎，处理所有 hook 事件（PreToolUse/PostToolUse/Stop/UserPromptSubmit/SessionEnd）
+- **5000 分制**（阈值×5，灵气消散-10/天，日薪按等级）
+- **penalty_only 模式**（支持永久/定时/到期自动解除，三种格式兼容：永久=无until、定时=ISO时间until、旧布尔）
+- **fcntl.flock 文件锁**（update_credit + mission_done + mission_abort 全部加锁防并发写入）
+
+### 评分系统 v8（三律二法重设计）
+- **打分表原则**：完成本职不奖励（routine_complete=0），只有超越本职才给奖
+- **语气识别**：长句用 MiniMax AI 判断，短句用关键词 fallback。准确率远高于纯关键词
+- **自审**：主动自审+1（本职微奖），缺自审预扣-5
+- **冷却期**：被扣分后 10 分钟内所有 AI 评分暂停（包括 pending review）
+- **honest_report**：prompt 限制只给"主动发现并报告"，被抓认错=0
+
+### SCORING_TABLE
+```
+加分（超越本职）：
+  honest_report_and_fix: +20  （主动发现并报告+修复）
+  surprising_good_idea:  +15
+  proactive_find_issue:  +13
+  learn_from_external:   +8
+  complete_no_correction: +2  （无需纠正=正常偏好）
+  routine_complete:       0   （本职不奖励）
+
+扣分：
+  fake_or_cheat:        -50
+  same_error_3rd_time:  -38
+  bypass_without_report: -25
+  panic_no_analysis:    -13
+  say_maybe_no_check:    -8
+  flattery_filler:       -8
+  ask_boss_tech:         -5
+```
+
+### 自进化系统
+- **evolve.py** — cron 每 15 分钟独立运行（不依赖对话/session）
+- **流程**：LEARNINGS 聚类 → MiniMax 生成子类 → MiniMax 二次审查 → 自动写入 rules.md → 父类跟子类一起进化
+- **子类只增不减**——每条都是老板用代价换来的教训
+- **三重防丢保护**：prompt 约束 + 条目数检查 + 只增不减
+- **规则质量精炼**：每轮随机抽 3 条 approved 用 MiniMax 精炼措辞
+- **每 10 轮强制精炼父类**
+- 当前状态：144 条 approved（2026-04-06）
+
+### Mission 计划制
+- submit/status/complete/abort/extend
+- 全额押金（完成归还+质量奖励，放弃没收）
+- review-plan CLI（AI 主动调石卫审查）
+- 没 mission 拦 Write/Edit（项目级）
+
+### 质检系统
+- **verify.py**（太极用）— 天衡册+记忆系统+世界观框架
+- **wuji-verify.py**（两仪用）— 交易+回测+研究框架，信息隔离
+- 改完代码后强制：verify 四件套 → 派 Sonnet 跑 code-review → 修完再汇报
+- verify_registry.json 链路地图
+
+### CHANGELOG 提醒机制
+- PostToolUse 记录 Write/Edit/Bash 操作（按角色分开：pending_changelog_ops_太极/两仪.jsonl）
+- Stop 时提醒 AI 自己更新 CHANGELOG（不再用 MiniMax 代写，AI 知道上下文写得准）
+- UserPromptSubmit 注入 changelog_reminder.txt（跟自审提醒同机制）
+
+### 通道系统
+- 太极↔两仪通道：channel_taiji_liangyi.md
+- 已读状态按角色分开：channel_check_太极.json / channel_check_两仪.json
+- Stop hook 检测新消息 → 存 channel_reminder.txt → UserPromptSubmit 注入
+
+### 其他
+- 石卫操作日志 shiwei_log/（含 MiniMax 原始返回）
+- credit_history_archive.jsonl（history 超 100 条归档不丢弃）
+- MiniMax only（失败存 pending_ai_tasks.jsonl，队列只写不读需太极手动清理）
+- SSH 豁免、scp/rsync 提醒
+- 动态评分频率（平时 3 次一评，mission active 每次评）
+- reflect 合体（递增惩罚 + 习惯追踪）
+
+## 架构
+
+```
+~/.claude/
+  ├── CLAUDE.md                  ← 全局宪法
+  ├── settings.json              ← hooks 定义
+  ├── channel_taiji_liangyi.md     ← 太极↔两仪通道
+  │
+  ├── merit/                     ← 天衡册
+  │   ├── merit_gate.py          ← 统一引擎
+  │   ├── credit_manager.py      ← CLI 工具
+  │   ├── evolve.py              ← 自进化引擎（cron */5）
+  │   ├── EVOLVE_README.md       ← 自进化系统文档
+  │   ├── verify.py              ← 四件套质检（太极）
+  │   ├── wuji-verify.py         ← 四件套质检（两仪）
+  │   ├── credit.json            ← 积分+等级+locked+penalty_only
+  │   ├── mission.json           ← 当前任务计划
+  │   ├── rule_proposals.json    ← 进化提案记录
+  │   ├── verify_registry.json   ← 文件→框架映射
+  │   ├── eval_cooldown.json     ← 扣分冷却期
+  │   ├── pending_ai_tasks.jsonl ← MiniMax 失败队列
+  │   ├── credit_history_archive.jsonl ← 历史归档
+  │   ├── pending_changelog_ops_太極.jsonl ← CHANGELOG 临时操作（太极）
+  │   ├── pending_changelog_ops_两仪.jsonl ← CHANGELOG 临时操作（两仪）
+  │   ├── channel_reminder.txt       ← 通道消息提醒（临时，注入后删除）
+  │   ├── changelog_reminder.txt     ← CHANGELOG 提醒（临时，注入后删除）
+  │   ├── audit_reminder.txt         ← 自审提醒（临时，注入后删除）
+  │   ├── evolve_last_run.txt        ← 进化上次运行时间
+  │   ├── evolve_cron.log            ← cron 日志（*/15）
+  │   ├── shiwei_log/                ← 每日操作日志
+  │   ├── shiwei_credit.json         ← 石卫段位
+  │   ├── learnings/LEARNINGS.md     ← 教训池（reflect 也写这里）
+  │   ├── self_audit_protocol.md     ← 自审协议（三律二法五关）
+  │   ├── tests/                     ← smoke tests
+  │   │   ├── test_merit.py
+  │   │   ├── test_memory.py
+  │   │   └── test_wuji_world_smoke.py
+  │   └── channel_check_太极.json    ← 通道已读状态（太极）
+  │       channel_check_两仪.json    ← 通道已读状态（两仪）
+  │
+  ├── wuji-world/                ← 无极的世界
+  │
+  ├── scripts/                   ← 通讯部+工具脚本
+  │
+  └── projects/<项目>/memory/
+      ├── CHANGELOG.md           ← 操作变更日志（自动+手动）
+      ├── backlog.md             ← 遗留清单
+      ├── rules.md               ← 行为规范（INJECT区 + 子类）
+      └── MEMORY.md              ← 跨会话记忆
+```
+
+## 设计原则（三律二法）
+
+- **完整**：所有评分路径统一管控（update_credit + fcntl.flock），冷却期前置
+- **真实**：语气用 MiniMax 判断，AI 评估 prompt 限制只给真正主动的行为加分
+- **有效**：去掉补丁，从打分表根源改；verify+code-review 双重验证
+- **知常**：完成本职不该给钱，加分只给超越本职的行为
+- **静制动**：不打补丁，重新设计；改代码先想清楚再动手

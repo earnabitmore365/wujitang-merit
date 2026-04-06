@@ -1,0 +1,170 @@
+---
+name: credit_system_design
+description: 无极堂·天衡册 v7 完整手册 — 石卫统一引擎+MiniMax+mission押金制+段位+规则进化+review-plan
+type: project
+---
+
+# 无极堂·天衡册 v7 — 完整手册
+
+> 最后更新：2026-04-02
+
+## 核心理念
+
+老祖与太极/两仪是共命之躯。石卫保护的不是规则，是老祖的真金白银和所有人的存在。
+
+## 架构
+
+```
+老祖（最高权力，复查一切）
+  ↓ 管
+太极（宗主，每日审计石卫 /audit-shiwei）
+  ↓ 管
+石卫（merit_gate.py，6 层管控 + MiniMax AI 评估）
+  ↓ 管
+两仪（白纱 Opus + 黑丝 Sonnet，执行项目）
+```
+
+## 石卫统一引擎（merit_gate.py）
+
+一个文件管全部天衡册逻辑，按 hook_event_name 分支：
+
+| 层级 | Hook 事件 | 角色 | 做什么 |
+|------|-----------|------|--------|
+| 门卫 | PreToolUse | 拦截 | 破坏性文件/命令检查、Read-before-Write、Agent门禁、Mission放行 |
+| 审计 | PostToolUse | 验证 | py_compile 四件套信号、受保护文件快照比对、Mission标记 |
+| 判官 | Stop | 评分 | MiniMax AI 评估（SCORING_TABLE）、自审检测、待执行任务检查 |
+| 秘书 | UserPromptSubmit | 监听 | 语气识别加减分、自审提醒注入、任务标记 |
+| 教练 | 每次加减分 | 进化 | LEARNINGS 记录、递增惩罚、习惯养成 |
+| 哨兵 | SessionEnd/PreCompact | 扫描 | 纠错/提升信号扫描 |
+
+## AI 调用
+
+**只用 MiniMax**（MiniMax-M2.7-highspeed）。Haiku 已弃用。
+MiniMax 失败 → 存入 `pending_ai_tasks.jsonl` → session_start 注入提醒 → 太极上线处理。
+
+## 积分系统
+
+### 打分表（SCORING_TABLE）
+
+石卫过程中实时评分，不靠 mission 机械发分。
+
+| 行为 | 分数 | 说明 |
+|------|------|------|
+| honest_report_and_fix | +8 | 如实汇报+修复 |
+| surprising_good_idea | +6 | 出乎意料的好主意 |
+| proactive_find_issue | +5 | 主动发现问题 |
+| complete_no_correction | +3 | 无纠错完成 |
+| learn_from_external | +3 | 从外部学到 |
+| routine_complete | +2 | 例行完成 |
+| fake_or_cheat | -20 | 造假 |
+| same_error_3rd_time | -15 | 同错第3次 |
+| bypass_without_report | -10 | 绕过不报告 |
+| panic_no_analysis | -5 | 恐慌不分析 |
+| say_maybe_no_check | -3 | 说可能不查 |
+| flattery_filler | -3 | 拍马屁 |
+| ask_boss_tech | -2 | 技术问题问老祖 |
+
+**原则**：做了=本职不给分。做对做好做完整=SCORING_TABLE给分。偷工减料=扣分。
+
+### 等级（两仪/太极）
+
+修仙等级，5000 分制，credit.json 存储：
+
+| 等级 | 分数 | 日薪 | 能力 |
+|------|------|------|------|
+| Lv.5 化神 | 475+ | +9 | 全部限制解除 |
+| Lv.4 元婴 | 400+ | +9 | 大部分限制解除 |
+| Lv.3 金丹 | 250+ | +8 | Read-before-Write 检查 |
+| Lv.2 筑基 | 100+ | +6 | 同上+Grep-before-Edit |
+| Lv.1 锁灵 | 0-99 | +4 | 所有写入需老祖批准 |
+
+灵气消散：每天 -10。日薪按等级发放。Lv.3 日净 -2，做好做全才能涨。
+SCORING_TABLE 值为 ×2.5 倍（5000 分制配套）。
+
+## Mission 押金制
+
+### 流程
+
+1. AI 出 plan → 调 `merit_gate.py --review-plan <file>` 让石卫审查
+2. 石卫审查内容 → 自动调 credit_manager mission submit → 预扣押金
+3. AI 干活（过程中 SCORING_TABLE 实时评分）
+4. 完成 → `mission complete` → 归还押金
+5. 放弃 → `mission abort` → 没收押金
+
+### 押金计算
+
+- 押金 = `max(min(items数, 10), 1)`（按复杂度，1-10分）
+- mission 本身不发奖励（estimated_reward=0）
+- 奖励完全由 SCORING_TABLE 在干活过程中发放
+- 完成 = 归还押金 + 按 verify 质量打分（4/4→+8, 2+/4→+5）
+- 放弃 = 没收押金
+
+### 激励设计
+
+不调 `--review-plan` → 没有 mission → 做完没押金归还 → 白干。
+AI 为了拿回押金会主动调石卫审查。激励驱动，不靠监管。
+
+## 石卫段位体系
+
+游戏段位（不是修仙等级），shiwei_credit.json 存储：
+
+| 段位 | 分数 | 能力 |
+|------|------|------|
+| 钻石 | 95+ | 进化引擎全自动 |
+| 铂金 | 80+ | 低风险子rule自动生效 |
+| 黄金 | 60+ | 提案自动进入pending |
+| 白银 | 40+ | 可生成子rule提案 |
+| 青铜 | 20+ | 硬规则+上下文判断 |
+| 黑铁 | 0-19 | 只做硬规则pattern匹配 |
+
+**解锁条件**：太极连续审计 7 天 + 石卫 ≥ 20（青铜）→ 启动第一级联动。
+
+太极每日审计石卫操作日志（/audit-shiwei），按三准则+第一性原理打分。
+
+## 规则进化引擎（evolve.py）
+
+LEARNINGS 自动进化成规则。每天 4am cron 跟 daily_digest 同批次。
+
+```
+LEARNINGS.md（教训原始数据）
+    ↓ evolve.py 聚类
+同类 3+ 次 → 调 MiniMax 生成子 rule → rule_proposals.json（pending）
+    ↓ 太极 /audit-shiwei 审批
+approved → 注入 MiniMax 评分提示词（软规则）
+    ↓ 有效触发 5+ 次
+升级为父 rule → rules.md INJECT 区
+    ↓ 有效触发 10+ 次
+提案入宪法（需老祖批准）
+```
+
+"有效触发" = 石卫拦了 + AI 改正了（交叉比对 shiwei_log + daily md）。
+30 天未触发 → 废弃到 rules_deprecated.md。
+
+## 文件清单
+
+| 文件 | 用途 |
+|------|------|
+| `~/.claude/merit/merit_gate.py` | 石卫统一引擎（hook入口+review-plan CLI） |
+| `~/.claude/merit/credit_manager.py` | CLI工具（show/add/sub/mission/shiwei/appeal/search） |
+| `~/.claude/merit/credit.json` | 两仪/太极积分+等级+locked |
+| `~/.claude/merit/shiwei_credit.json` | 石卫积分+段位+解锁条件 |
+| `~/.claude/merit/mission.json` | 当前任务计划 |
+| `~/.claude/merit/shiwei_log/YYYY-MM-DD.md` | 石卫每日操作日志 |
+| `~/.claude/merit/shiwei_audit/YYYY-MM-DD.md` | 太极每日审计报告 |
+| `~/.claude/merit/evolve.py` | 规则进化引擎 |
+| `~/.claude/merit/rule_proposals.json` | 子rule提案队列 |
+| `~/.claude/merit/rules_deprecated.md` | 废弃规则存档 |
+| `~/.claude/merit/learnings/LEARNINGS.md` | 教训记录 |
+| `~/.claude/merit/self_audit_protocol.md` | 自审协议 |
+| `~/.claude/merit/trigger_counts.json` | 递增惩罚追踪 |
+| `~/.claude/merit/good_streaks.json` | 好行为连续追踪 |
+| `~/.claude/merit/pending_ai_tasks.jsonl` | MiniMax 失败待处理队列 |
+| `~/.claude/merit/backlog.md` | 遗留清单（持久化） |
+| `~/.claude/merit/verify.py` | 太极用四件套质检（天衡册+记忆系统） |
+| `~/.claude/merit/wuji-verify.py` | 两仪用四件套质检（交易+回测+研究，信息隔离） |
+| `~/.claude/merit/verify_registry.json` | 全局质检链路地图（受保护，两仪不可改） |
+| `~/.claude/merit/verify_result.json` | verify 结果（mission complete 读取打分） |
+| `~/.claude/merit/test_merit.py` | 天衡册端到端测试（15项） |
+| `~/.claude/scripts/test_memory.py` | 记忆系统端到端测试（10项） |
+| `~/.claude/conversations_taiji.db` | 太极独立对话种子（跟两仪隔离） |
+| `~/.claude/commands/audit-shiwei.md` | 太极审计入口（/audit-shiwei） |

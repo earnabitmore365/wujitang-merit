@@ -260,3 +260,6 @@
 {"ts": "2026-04-05T18:38:51", "agent": "太极", "delta": -3, "reason": "老板反馈: 为何连图片也还要权限", "score_after": 72}
 {"ts": "2026-04-05T18:46:53", "agent": "太极", "delta": -5, "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [git push --force]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。", "score_after": 67}
 {"ts": "2026-04-05T18:55:07", "agent": "两仪", "delta": -3, "reason": "老板反馈:       24 -SEED_DB = os.path.join(os.path.dirname(_", "score_after": 62}
+{"ts": "2026-04-05T18:55:07", "agent": "两仪", "delta": -3, "reason": "递增惩罚[panic_no_analysis]第2次: ×2", "score_after": 59}
+{"ts": "2026-04-05T19:12:01", "agent": "太极", "delta": -3, "reason": "老板反馈: 你未完成自动推送任务", "score_after": 64}
+{"ts": "2026-04-05T19:33:26", "agent": "两仪", "delta": 1, "reason": "主动自审：未被提醒就附完整自审+遗留清单", "score_after": 60}
