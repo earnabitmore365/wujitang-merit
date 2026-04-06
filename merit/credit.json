@@ -13,7 +13,7 @@
       }
     },
     "两仪": {
-      "score": 499,
+      "score": 519,
       "held": 28,
       "level": 3,
       "title": "金丹",
@@ -22,20 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-05T20:58:29",
-      "agent": "两仪",
-      "delta": 1,
-      "reason": "主动自审：未被提醒就附完整自审+遗留清单",
-      "score_after": 94
-    },
-    {
-      "ts": "2026-04-05T20:58:40",
-      "agent": "两仪",
-      "delta": 2,
-      "reason": "石卫评估[complete_no_correction]: 5个交易所文档全部完成，CHANGELOG更新，诚实标注Bitget官方403限制，自审清单完整，但属于被分配任务的正常完成，无额外突出表现。",
-      "score_after": 96
-    },
     {
       "ts": "2026-04-05T20:59:55",
       "agent": "两仪",
@@ -721,6 +707,20 @@
       "delta": 2,
       "reason": "石卫评估[complete_no_correction]: 执事询问plan mode操作方式，白纱完整解释了EnterPlanMode/ExitPlanMode的用法，附带提及MCP服务断开问题，回答准确无误但属于常规问答，无额外价值输出。",
       "score_after": 499
+    },
+    {
+      "ts": "2026-04-06T05:27:47",
+      "agent": "两仪",
+      "delta": 20,
+      "reason": "石卫评估[honest_report_and_fix]: AI 主动发现 EnterPlanMode/ExitPlanMode 工具的 MCP 服务不可用，并在回复执事前主动报告了这一障碍，让执事能及时调整计划。",
+      "score_after": 519
+    },
+    {
+      "ts": "2026-04-06T05:29:14",
+      "agent": "太极",
+      "delta": -3,
+      "reason": "老板反馈: 老板不满草案常想跳过",
+      "score_after": 0
     }
   ],
   "last_decay_ts": "2026-04-06T02:13:53"
