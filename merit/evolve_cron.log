@@ -9367,3 +9367,33 @@ To push the current branch and set the remote
 ✅ 完成。pending=0 approved=154
   ⚠️ push 失败: fatal: could not read Username for 'https://github.com': Device not configured
 
+═══ 规则进化引擎 ═══
+时间：2026-04-06 15:00
+
+📊 LEARNINGS 聚类：90 类行为
+  routine_complete: 457 次
+  honest_report_and_fix: 105 次
+  panic_no_analysis: 91 次
+  proactive_find_issue: 59 次
+  bypass_without_report: 53 次
+
+📋 现有提案：0 pending, 154 approved
+
+🔄 检查新子类提案...
+  生成 0 条新提案
+
+🔄 检查父类更新...
+  ⚠️ 【纪律】MiniMax 失败或返回过长
+  ⚠️ 【第一性原理】MiniMax 失败或返回过长
+  ⚠️ 【真实性】MiniMax 失败或返回过长
+  ⚠️ 【完整性】MiniMax 失败或返回过长
+  ⚠️ 【有效性】MiniMax 失败或返回过长
+  ⚠️ 【子目标继承】MiniMax 失败或返回过长
+  更新 0 个父类建议
+
+🔍 检查废弃...
+  废弃 0 条
+
+✅ 完成。pending=0 approved=154
+  ⚠️ push 失败: fatal: could not read Username for 'https://github.com': Device not configured
+

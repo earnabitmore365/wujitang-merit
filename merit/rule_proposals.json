@@ -11,7 +11,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -26,7 +26,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -41,7 +41,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -56,7 +56,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -71,7 +71,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -86,7 +86,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -101,7 +101,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -116,7 +116,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -131,7 +131,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -146,7 +146,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -161,7 +161,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-04",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -176,7 +176,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -192,7 +192,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-014",
@@ -207,7 +207,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-015",
@@ -222,7 +222,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-016",
@@ -237,7 +237,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-017",
@@ -252,7 +252,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-018",
@@ -267,7 +267,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-019",
@@ -282,7 +282,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-020",
@@ -297,7 +297,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-021",
@@ -311,7 +311,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -327,7 +327,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-023",
@@ -341,7 +341,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -357,7 +357,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-025",
@@ -372,7 +372,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-026",
@@ -387,7 +387,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-027",
@@ -402,7 +402,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-028",
@@ -417,7 +417,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-029",
@@ -432,7 +432,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-030",
@@ -447,7 +447,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-031",
@@ -462,7 +462,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-032",
@@ -477,7 +477,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-033",
@@ -492,7 +492,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-034",
@@ -507,7 +507,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-035",
@@ -522,7 +522,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-036",
@@ -537,7 +537,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-037",
@@ -552,7 +552,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-038",
@@ -567,7 +567,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-039",
@@ -582,7 +582,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-040",
@@ -597,7 +597,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-041",
@@ -612,7 +612,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-042",
@@ -627,7 +627,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-043",
@@ -641,7 +641,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -657,7 +657,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-045",
@@ -672,7 +672,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-046",
@@ -687,7 +687,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-047",
@@ -702,7 +702,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-048",
@@ -717,7 +717,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-049",
@@ -732,7 +732,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-050",
@@ -747,7 +747,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-051",
@@ -761,7 +761,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -776,7 +776,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -792,7 +792,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-054",
@@ -807,7 +807,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-055",
@@ -821,7 +821,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -836,7 +836,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -852,7 +852,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-058",
@@ -867,7 +867,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-059",
@@ -882,7 +882,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-060",
@@ -897,7 +897,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-05",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-061",
@@ -912,7 +912,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-062",
@@ -927,7 +927,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-063",
@@ -941,7 +941,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -956,7 +956,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -971,7 +971,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -987,21 +987,21 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-067",
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_最佳实践_老板给任何 toke",
-    "rule_text": "敏感凭证（如 token、API key、密钥、密码）必须通过环境变量或密钥管理服务存储，严禁硬编码或提交至版本控制系统。",
+    "rule_text": "敏感凭证（如 token、API key、密钥、密码）严禁硬编码或提交至版本控制系统，必须通过环境变量或密钥管理服务存储。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1017,7 +1017,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-069",
@@ -1031,7 +1031,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1046,7 +1046,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1061,7 +1061,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1076,7 +1076,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1091,7 +1091,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1106,7 +1106,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1121,7 +1121,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1136,7 +1136,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1144,14 +1144,14 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_做事必须一套完整做完：确认目标→列影响范",
-    "rule_text": "所有改动须经审查通过后方可提交或确认。",
+    "rule_text": "所有改动必须经审查通过后方可提交、合并或部署。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1166,7 +1166,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1181,7 +1181,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1196,7 +1196,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1204,14 +1204,14 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_两个相反的错误：①看到过时代码（seed",
-    "rule_text": "废弃文件应立即清理；在用文件出现异常时，应溯源消除根因；根因无法消除的，应进行修复，修复失败后方可删除。",
+    "rule_text": "废弃文件应立即清理；在用文件出现异常时，应溯源分析并消除根因；根因无法消除的，应对文件进行修复，修复失败后方可删除。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1226,7 +1226,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1241,7 +1241,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1256,7 +1256,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1272,7 +1272,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-086",
@@ -1286,7 +1286,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1301,7 +1301,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1316,7 +1316,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1331,7 +1331,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1346,7 +1346,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1361,7 +1361,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1376,7 +1376,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1391,7 +1391,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1406,7 +1406,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1421,7 +1421,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-096",
@@ -1435,7 +1435,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1450,7 +1450,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1465,7 +1465,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "子目标继承",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1480,7 +1480,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1495,7 +1495,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1510,7 +1510,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1525,7 +1525,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1540,7 +1540,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-104",
@@ -1554,7 +1554,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1569,7 +1569,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1584,7 +1584,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1599,7 +1599,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1615,7 +1615,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-109",
@@ -1629,7 +1629,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1644,7 +1644,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1659,7 +1659,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1674,7 +1674,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-113",
@@ -1688,7 +1688,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1703,7 +1703,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1718,7 +1718,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-116",
@@ -1732,7 +1732,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1747,7 +1747,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1762,7 +1762,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1777,7 +1777,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1792,7 +1792,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-05"
   },
   {
@@ -1807,7 +1807,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1822,7 +1822,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1837,7 +1837,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1852,7 +1852,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1867,7 +1867,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1882,7 +1882,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1898,7 +1898,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "last_refined": "2026-04-06",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-128",
@@ -1912,7 +1912,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1927,7 +1927,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1942,7 +1942,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1957,7 +1957,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1972,7 +1972,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "子目标继承",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -1987,7 +1987,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2002,7 +2002,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2017,7 +2017,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2032,7 +2032,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2047,7 +2047,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2062,7 +2062,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2077,7 +2077,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-140",
@@ -2091,7 +2091,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "有效性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2106,7 +2106,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2121,7 +2121,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2136,7 +2136,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2151,7 +2151,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-145",
@@ -2165,7 +2165,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "有效性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-146",
@@ -2179,7 +2179,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-147",
@@ -2193,7 +2193,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "完整性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-148",
@@ -2207,7 +2207,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "有效性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-149",
@@ -2221,7 +2221,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-150",
@@ -2235,7 +2235,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "纪律",
-    "parent_updated": false,
+    "parent_updated": true,
     "last_refined": "2026-04-06"
   },
   {
@@ -2250,7 +2250,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-152",
@@ -2264,7 +2264,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "纪律",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-153",
@@ -2278,7 +2278,7 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "真实性",
-    "parent_updated": false
+    "parent_updated": true
   },
   {
     "id": "SUB-154",
@@ -2292,6 +2292,6 @@
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-06",
     "parent_category": "纪律",
-    "parent_updated": false
+    "parent_updated": true
   }
 ]
