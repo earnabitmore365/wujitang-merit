@@ -56,3 +56,12 @@ for role in ["太極", "两仪"]:
     # 更新已读
     with open(check_path, "w") as f:
         json.dump({"last_mtime": mtime}, f)
+
+    # touch 白纱项目目录的信号文件（触发 FileChanged hook）
+    signal = "/Volumes/SSD-2TB/project/auto-trading/.claude/channel_signal.txt"
+    try:
+        import time
+        with open(signal, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass

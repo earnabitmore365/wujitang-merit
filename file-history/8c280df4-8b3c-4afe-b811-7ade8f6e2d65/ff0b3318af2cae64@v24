@@ -130,15 +130,6 @@
             "command": "python3 ~/.claude/scripts/check_channel_cron.py"
           }
         ]
-      },
-      {
-        "matcher": "channel_signal.txt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
-          }
-        ]
       }
     ]
   },

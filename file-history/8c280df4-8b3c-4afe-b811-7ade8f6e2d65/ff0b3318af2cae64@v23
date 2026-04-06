@@ -31,6 +31,10 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/merit/merit_gate.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
           }
         ]
       }
@@ -113,10 +117,6 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/merit/merit_gate.py"
-          },
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
           }
         ]
       }
@@ -124,15 +124,6 @@
     "FileChanged": [
       {
         "matcher": "channel_taiji_liangyi.md",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/scripts/check_channel_cron.py"
-          }
-        ]
-      },
-      {
-        "matcher": "channel_signal.txt",
         "hooks": [
           {
             "type": "command",
