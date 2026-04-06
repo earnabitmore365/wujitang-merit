@@ -244,7 +244,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_老板聊设定/想法时，",
-    "rule_text": "**改进版：**\n\n> 任何用户或进程未经明确书面授权，不得对系统文件、配置文件或共享文件进行创建、修改、删除或重命名操作。个人工作目录下的临时文件除外。\n\n**说明：**\n\n- 保留了原规则的完整性，但通过限定“系统文件、配置文件、共享文件”使范围更精准，避免过于宽泛。\n- 增加了“个人工作目录下的临时文件”例外，减少对正常工作流程的干扰。\n\n**如认为原措辞足够简洁直接，可保持原样输出。**",
+    "rule_text": "任何用户或进程未经明确授权，不得对系统文件、配置文件或共享文件进行创建、修改、删除或重命名操作。个人工作目录下的临时文件除外。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -844,7 +844,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_监控只看结果指标（毕",
-    "rule_text": "任务执行期间必须持续监控过程指标（进度、轮次、worker状态）和结果指标，缺失任一监控均视为违规。",
+    "rule_text": "「任务执行期间必须持续监控过程指标（进度、轮次、worker状态）和结果指标，缺失任一监控均视为违规。」",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1578,7 +1578,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_路径比较必须双向展开。白名单存绝对路径，",
-    "rule_text": "在比较路径前，必须先对所有路径调用 `expanduser()` 展开用户目录，随后调用 `abspath()`（或 `resolve()`）统一转换为绝对路径。",
+    "rule_text": "路径比较前，先用 `expanduser()` 展开用户目录，再用 `abspath()` 或 `resolve()` 统一转换为绝对路径。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1586,7 +1586,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "parent_updated": true,
-    "last_refined": "2026-04-05"
+    "last_refined": "2026-04-06"
   },
   {
     "id": "SUB-107",
