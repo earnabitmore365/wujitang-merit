@@ -1,14 +1,14 @@
 {
   "last_grad_count": 816,
   "restarts": 3,
-  "total_checks": 719,
+  "total_checks": 721,
   "last_jobs": [
-    "AVAX/5m",
-    "AVAX/5m",
-    "AVAX/5m",
-    "BNB/5m"
+    "BNB_COIN/5m",
+    "BNB_COIN/5m",
+    "BNB_COIN/5m",
+    "BTC/5m"
   ],
-  "last_memory_gb": 15.4,
+  "last_memory_gb": 12.8,
   "consecutive_ssh_failures": 0,
   "consecutive_crashes": 0
 }

@@ -9221,3 +9221,29 @@ To push the current branch and set the remote
 ✅ 完成。pending=0 approved=144
   ⚠️ push 失败: fatal: could not read Username for 'https://github.com': Device not configured
 
+═══ 规则进化引擎 ═══
+时间：2026-04-06 13:30
+
+📊 LEARNINGS 聚类：90 类行为
+  routine_complete: 447 次
+  honest_report_and_fix: 104 次
+  panic_no_analysis: 89 次
+  proactive_find_issue: 59 次
+  bypass_without_report: 52 次
+
+📋 现有提案：0 pending, 152 approved
+
+🔄 检查新子类提案...
+  ⚠️ MiniMax 失败，lrn_纠错_不确定的事必须先查证再说。不说'可能'、 存入队列等太极处理
+  ⚠️ MiniMax 失败，lrn_纠错_踩坑后必须同时更新 claude_cod 存入队列等太极处理
+  生成 0 条新提案
+
+🔄 检查父类更新...
+  更新 0 个父类建议
+
+🔍 检查废弃...
+  废弃 0 条
+
+✅ 完成。pending=0 approved=152
+  ⚠️ push 失败: fatal: could not read Username for 'https://github.com': Device not configured
+
