@@ -1,11 +1,16 @@
 {
-  "mission": "GP复合指标注册+col_map补齐+文档更新",
+  "mission": "新列补算+种子防污染",
   "agent": "两仪",
-  "started": "2026-04-05T23:56:03",
-  "status": "completed",
+  "started": "2026-04-06T00:20:28",
+  "status": "active",
   "estimated_reward": 0,
-  "held_points": 2,
+  "held_points": 5,
   "items": [
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/build_klines_indicators.py",
+      "done": true
+    },
     {
       "type": "modify",
       "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/src/core/indicator_cache.py",
@@ -13,9 +18,18 @@
     },
     {
       "type": "modify",
-      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/indicator_col_map.json",
+      "file": "/Volumes/SSD-2TB/project/auto-trading/CHANGELOG.md",
+      "done": false
+    },
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/data/README_KLINES_SEED.md",
+      "done": false
+    },
+    {
+      "type": "bash",
+      "desc": "python3 build_klines_indicators.py",
       "done": true
     }
-  ],
-  "completed": "2026-04-05T23:57:44"
+  ]
 }

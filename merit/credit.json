@@ -13,8 +13,8 @@
       }
     },
     "两仪": {
-      "score": 199,
-      "held": 0,
+      "score": 201,
+      "held": 5,
       "level": 3,
       "title": "金丹",
       "penalty_only": false,
@@ -22,13 +22,6 @@
     }
   },
   "history": [
-    {
-      "ts": "2026-04-05T16:00:58",
-      "agent": "两仪",
-      "delta": -5,
-      "reason": "Bash 破坏性命令: 门卫拦截：Bash 命令包含破坏性操作 [rm 删除文件]。G-003 铁律。先用 credit_manager.py declare-delete 预申报要删的文件。",
-      "score_after": 124
-    },
     {
       "ts": "2026-04-05T16:01:08",
       "agent": "两仪",
@@ -721,6 +714,20 @@
       "delta": 1,
       "reason": "习惯养成[routine_complete]连续3次",
       "score_after": 199
+    },
+    {
+      "ts": "2026-04-06T00:19:34",
+      "agent": "两仪",
+      "delta": 2,
+      "reason": "老板认可: 嗯嗯，就这样",
+      "score_after": 201
+    },
+    {
+      "ts": "2026-04-06T00:20:28",
+      "agent": "两仪",
+      "delta": 0,
+      "reason": "任务押金预扣 5分: 新列补算+种子防污染",
+      "score_after": 201
     }
   ],
   "last_decay_ts": "2026-04-05T01:56:49"
