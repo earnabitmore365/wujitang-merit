@@ -1,0 +1,44 @@
+{
+  "mission": "plan: process-cleanup-rule.md",
+  "agent": "太极",
+  "started": "2026-04-09T16:45:59",
+  "status": "completed",
+  "contract_reward": 18,
+  "completion_rate": 0.7,
+  "supplements": [],
+  "held_points": 6,
+  "items": [
+    {
+      "type": "modify",
+      "file": "/tmp/rules.md.bak",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Users/allenbot/.claude/projects/-Users-allenbot/memory/rules.md",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/tmp/self_audit_core.md.bak",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Users/allenbot/.claude/merit/credit_manager.py",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Users/allenbot/.claude/merit/self_audit_core.md",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/tmp/credit_manager.py.bak",
+      "done": true
+    }
+  ],
+  "verify_post_output": "═══ 太极质检：交活前 (--post) ═══\n\n对比基准：--pre 时 0 个违规\n\n── credit_manager.py ──\n  ✅ 语法：py_compile 通过\n  ✅ 反模式：9 项通过\n\n── 太极域反模式 ──\n  ✅ 无新增违规（0）\n\n📊 扫描统计：\n  .py 文件总数：20\n  实际扫描：20/20\n  命中反模式：0\n\n✅ 可以交活",
+  "completed": "2026-04-09T16:50:10"
+}
