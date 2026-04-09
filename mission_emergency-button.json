@@ -1,0 +1,21 @@
+{
+  "mission": "plan: emergency-button.md",
+  "agent": "太极",
+  "started": "2026-04-06T11:32:18",
+  "status": "completed",
+  "estimated_reward": 0,
+  "held_points": 2,
+  "items": [
+    {
+      "type": "modify",
+      "file": "~/.claude/merit/merit_gate.py",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "~/.claude/merit/credit_manager.py",
+      "done": true
+    }
+  ],
+  "completed": "2026-04-06T11:39:59"
+}
