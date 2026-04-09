@@ -1,0 +1,29 @@
+{
+  "mission": "plan: verify-upgrade-basescript.md",
+  "agent": "太极",
+  "started": "2026-04-09T16:20:00",
+  "status": "completed",
+  "contract_reward": 9,
+  "completion_rate": 0.7,
+  "supplements": [],
+  "held_points": 3,
+  "items": [
+    {
+      "type": "modify",
+      "file": "/Volumes/SSD-2TB/project/wuji-auto-trading/src/core/base_script.py",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/tmp/wuji-verify.py.bak",
+      "done": true
+    },
+    {
+      "type": "modify",
+      "file": "/Users/allenbot/.claude/merit/wuji-verify.py",
+      "done": true
+    }
+  ],
+  "verify_post_output": "═══ 太极质检：交活前 (--post) ═══\n\n对比基准：--pre 时 0 个违规\n\n── base_script.py ──\n  ✅ 语法：py_compile 通过\n  ✅ 反模式：10 项通过\n\n── wuji-verify.py ──\n  ✅ 语法：py_compile 通过\n  ✅ 反模式：3 项通过\n\n── 太极域反模式 ──\n  ✅ 无新增违规（0）\n\n📊 扫描统计：\n  .py 文件总数：20\n  实际扫描：20/20\n  命中反模式：0\n\n✅ 可以交活",
+  "completed": "2026-04-09T16:27:15"
+}
