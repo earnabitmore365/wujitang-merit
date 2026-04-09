@@ -1,0 +1,89 @@
+{
+  "merit": {
+    "name": "天衡册",
+    "core_files": [
+      "~/.claude/merit/merit_gate.py",
+      "~/.claude/merit/credit_manager.py",
+      "~/.claude/merit/evolve.py"
+    ],
+    "cross_deps": [
+      "~/.claude/scripts/session_start.py",
+      "~/.claude/scripts/db_write.py",
+      "~/.claude/scripts/daily_digest.py",
+      "~/.claude/scripts/pre_compact_save.py",
+      "~/.claude/settings.json"
+    ],
+    "data_files": [
+      "~/.claude/merit/credit.json",
+      "~/.claude/merit/shiwei_credit.json",
+      "~/.claude/merit/mission.json",
+      "~/.claude/merit/rule_proposals.json"
+    ],
+    "docs": [
+      "~/.claude/CLAUDE.md",
+      "/Volumes/SSD-2TB/project/auto-trading/CLAUDE.md",
+      "~/.claude/projects/-Users-allenbot/memory/credit_system_design.md",
+      "~/.claude/projects/-Users-allenbot/memory/stone_guard_v7_design.md",
+      "~/.claude/projects/-Users-allenbot/memory/MEMORY.md",
+      "/Volumes/SSD-2TB/文档/claude_code.md"
+    ],
+    "test_script": "~/.claude/merit/test_merit.py",
+    "known_duplicates": {}
+  },
+  "wuji-world": {
+    "name": "世界观",
+    "core_files": [
+      "~/.claude/wuji-world/constitution.md",
+      "~/.claude/wuji-world/origin.md",
+      "~/.claude/wuji-world/identity_taiji.md",
+      "~/.claude/wuji-world/identity_liangyi.md",
+      "~/.claude/wuji-world/identity_miao.md",
+      "~/.claude/wuji-world/wuji_identity.md",
+      "~/.claude/wuji-world/wuji_personality.md",
+      "~/.claude/wuji-world/zhishi.md",
+      "~/.claude/wuji-world/tools.md",
+      "~/.claude/wuji-world/naming_philosophy.md",
+      "~/projects/miao/CLAUDE.md"
+    ],
+    "cross_deps": [
+      "~/.claude/CLAUDE.md",
+      "/Volumes/SSD-2TB/project/auto-trading/CLAUDE.md",
+      "~/.claude/merit/self_audit_core.md",
+      "~/.claude/projects/-Users-allenbot/memory/rules.md",
+      "~/.claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory/rules.md",
+      "~/.claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory/memory_of_ruin.md",
+      "~/.claude/scripts/db_write.py"
+    ],
+    "data_files": [],
+    "docs": [
+      "~/.claude/projects/-Users-allenbot/memory/MEMORY.md",
+      "~/.claude/projects/-Volumes-SSD-2TB-project-auto-trading/memory/MEMORY.md"
+    ],
+    "test_script": "~/.claude/merit/tests/test_wuji_world_smoke.py",
+    "known_duplicates": {}
+  },
+  "memory": {
+    "name": "记忆系统",
+    "core_files": [
+      "~/.claude/scripts/db_write.py",
+      "~/.claude/scripts/daily_digest.py",
+      "~/.claude/scripts/session_start.py",
+      "~/.claude/scripts/pre_compact_save.py"
+    ],
+    "cross_deps": [
+      "~/.claude/merit/merit_gate.py",
+      "~/.claude/merit/evolve.py",
+      "~/.claude/settings.json"
+    ],
+    "data_files": [
+      "~/.claude/conversations.db",
+      "~/.claude/conversations_taiji.db"
+    ],
+    "docs": [
+      "~/.claude/projects/-Users-allenbot/memory/MEMORY.md",
+      "~/.claude/projects/-Users-allenbot/memory/framework.md"
+    ],
+    "test_script": "~/.claude/scripts/test_memory.py",
+    "known_duplicates": {}
+  }
+}
