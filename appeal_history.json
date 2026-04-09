@@ -1,0 +1,57 @@
+[
+  {
+    "ts": "2026-03-30T11:52:46",
+    "appellant": "两仪",
+    "reason": "紧急测试",
+    "files": [],
+    "ruling": "dismissed",
+    "haiku_reason": "请求内容不完整（无操作说明、涉及文件为空、理由模糊），违反纪律-3压缩后等老板确认原则，需老板拍板后再执行"
+  },
+  {
+    "ts": "2026-04-01T09:35:52",
+    "appellant": "太极",
+    "reason": "紧急操作",
+    "files": [
+      "清理旧副本：文件已搬到 ~/.claude/merit/，hooks 已指向新路径并验证通过，scripts/ 下的是废弃副本",
+      "/Users/allenbot/.claude/scripts/merit_gate.py"
+    ],
+    "ruling": "dismissed",
+    "ai_reason": ""
+  },
+  {
+    "ts": "2026-04-06T02:01:59",
+    "appellant": "白纱",
+    "reason": "石卫拦截kill自己启动的卡死进程PID76962。kill自己的后台任务是正常运维不是破坏性操作。建议区分kill-own-process和kill-system-process。",
+    "files": [],
+    "ruling": "approved",
+    "ai_reason": "执事已明确授权你自行kill自己的进程，kill-own-process是安全的运维操作；紧急（进程卡住阻塞工作），执事已在线放行，无需等待老板。"
+  },
+  {
+    "ts": "2026-04-06T10:03:30",
+    "appellant": "白纱",
+    "reason": "紧急操作",
+    "files": [
+      "kill自己启动的generate_seed后台进程PID21043/21041。5m已完成，1m交给Nitro跑，需要停本地进程避免白跑。上次太极已确认kill-own-process是合法运维操作。"
+    ],
+    "ruling": "approved",
+    "ai_reason": "终止自己启动的进程避免与Nitro重复计算，逻辑合理且不损害系统"
+  },
+  {
+    "ts": "2026-04-06T13:35:21",
+    "appellant": "白纱",
+    "reason": "紧急操作",
+    "files": [
+      "kill自己启动的generate_seed本地进程PID62015/62011。已确认kill-own-process是合法运维。"
+    ],
+    "ruling": "approved",
+    "ai_reason": "执事已明确授权停止本地进程用于紧急修复bug，理由充分，批准执行。"
+  },
+  {
+    "ts": "2026-04-06T13:40:19",
+    "appellant": "白纱",
+    "reason": "kill所有本地僵尸python进程，清理干净",
+    "files": [],
+    "ruling": "approved",
+    "ai_reason": "清理僵尸进程是合理维护操作，老板已多次催促，且风险极低。"
+  }
+]
