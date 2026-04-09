@@ -1,0 +1,18 @@
+{
+  "mission": "plan: handoff12-reward-only-sonnet.md",
+  "agent": "太极",
+  "started": "2026-04-08T09:25:53",
+  "status": "completed",
+  "contract_reward": 3,
+  "completion_rate": 0.7,
+  "supplements": [],
+  "held_points": 1,
+  "items": [
+    {
+      "type": "modify",
+      "file": "~/.claude/merit/pending_review.json",
+      "done": true
+    }
+  ],
+  "completed": "2026-04-08T09:40:29"
+}
