@@ -1,0 +1,13 @@
+{
+  "file": "build_klines_indicators.py",
+  "time": "2026-04-10T03:35:35",
+  "results": {
+    "syntax": "pass",
+    "logic": "pass",
+    "chain": "pending",
+    "docs": "pending",
+    "anti_patterns": "pass"
+  },
+  "pass_count": 3,
+  "total": 5
+}
