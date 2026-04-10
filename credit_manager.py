@@ -186,6 +186,18 @@ def cmd_show(args):
             bar_len = info["score"] // 5
             bar = "█" * bar_len + "░" * (20 - bar_len)
             print(f"  {name:4s} Lv.{level} {title:3s} [{bar}] {info['score']:3d}分")
+            # 耻辱柱
+            shames = _active_shame_count(name)
+            if shames > 0:
+                print(f"        🪧 耻辱柱: {shames} 条生效")
+                try:
+                    for s in _load_shame():
+                        if s.get("status") == "active" and s.get("agent") == name:
+                            vtype = s.get('violation_type') or '?'
+                            detail = s.get('incident') or ''
+                            print(f"           🔴 [{vtype}] {detail[:50]}")
+                except Exception:
+                    pass
 
 
 def _apply_credit_delta(name, signed_delta, reason):
@@ -927,6 +939,7 @@ def mission_complete():
         return
 
     # verify 强制流程：--pre 基线必须存在 + --post 必须通过
+    verify_output = ""
     py_files = [i.get("file", "") for i in items if i.get("file", "").endswith(".py")]
     if py_files:
         verify_script = os.path.join(MERIT_DIR, "wuji-verify.py") if "auto-trading" in os.getcwd() else os.path.join(MERIT_DIR, "verify.py")
@@ -939,7 +952,6 @@ def mission_complete():
                 print(f"   然后重新 mission complete。")
                 return
             # 跑 --post 对比基线
-            verify_output = ""
             try:
                 vr = subprocess.run(
                     ["python3", verify_script, "--post"] + py_files,
@@ -1078,7 +1090,9 @@ def mission_complete():
             shames = _load_shame()
             for s in shames:
                 if s.get("status") == "active" and (s.get("agent") == agent or not s.get("agent")):
-                    print(f"      🔴 {s.get('text', '?')[:60]}")
+                    title = s.get('violation_type') or s.get('title') or '?'
+                    detail = s.get('incident') or s.get('text') or ''
+                    print(f"      🔴 [{title}] {detail[:50]}")
         except Exception:
             pass
     else:
