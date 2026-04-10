@@ -64,7 +64,7 @@
     "status": "approved",
     "created": "2026-04-04",
     "behavior_id": "lrn_纠错_不确定的事情不编答案",
-    "rule_text": "无法确认时，应直接回复「不确定/不知道/无法确认」，禁止编造或臆测信息。",
+    "rule_text": "无法确认时，必须直接回复「不确定/不知道/无法确认」；禁止以推测、假设或模糊表述替代事实；编造或臆测信息视为严重违规。",
     "source_count": 4,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -72,7 +72,7 @@
     "approved_date": "2026-04-04",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-07"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-006",
@@ -154,7 +154,7 @@
     "status": "approved",
     "created": "2026-04-04",
     "behavior_id": "routine_complete",
-    "rule_text": "提交代码或数据变更前，必须对列表、数据库及版本控制逐一核查，清理重复记录与冗余文件，确保每条内容唯一、仓库无冗余；未通过检查不得提交。",
+    "rule_text": "提交代码或数据变更前，必须逐一核查列表、数据库与版本控制中的重复记录和冗余文件，确认每条内容唯一、仓库无冗余后方可提交；未通过检查禁止提交。",
     "source_count": 300,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -162,14 +162,14 @@
     "approved_date": "2026-04-04",
     "parent_category": "完整性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-012",
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "ask_boss_tech",
-    "rule_text": "获得明确授权、信息满足决策需求且风险在可接受范围内时，立即执行，不得以\"再等等\"\"再确认\"为由拖延。",
+    "rule_text": "获得明确授权、信息满足决策需求且风险在可接受范围内时，立即执行；以\"再等等\"\"再确认\"为由拖延，视为违规。",
     "source_count": 2,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -177,7 +177,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-013",
@@ -514,14 +514,14 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_报告进程状态时，必须",
-    "rule_text": "验证进程状态必须直接查询系统进程表（`ps -p <pid>` 或 `pgrep -x <name>`），禁止以文件存在性、PID文件、锁文件等间接方式推断进程运行状态。",
+    "rule_text": "验证进程状态必须直接查询系统进程表（`ps -p <pid>` 或 `pgrep -x <name>`），禁止以文件存在性、PID文件、锁文件等间接方式推断进程运行状态；间接文件仅可作为辅助参考，不得作为\"进程存活\"的判定依据。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
-    "last_refined": "2026-04-08",
+    "last_refined": "2026-04-10",
     "parent_updated": true
   },
   {
@@ -799,7 +799,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_已有组件不融合自己重",
-    "rule_text": "开发新功能前必须先评估现有组件：完全满足需求时直接复用；部分满足时，若扩展成本不超过新开发成本则优先扩展；否则选择新开发。",
+    "rule_text": "开发新功能前必须先评估现有组件：完全满足需求时直接复用；部分满足时，优先扩展（前提：扩展成本 ≤ 新开发成本）；否则新开发。禁止跳过评估步骤直接新建。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -814,7 +814,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_子目标绕过管控（sc",
-    "rule_text": "子目标执行必须严格遵循主目标的验收标准、操作范围及安全约束，禁止任何实质性偏离。严禁选择性执行或以变更形式变相规避既定要求。",
+    "rule_text": "子目标执行必须完整继承主目标的验收标准、操作范围及安全约束，任何偏离须经主目标授权方可执行。禁止选择性执行、变更形式规避或降级执行既定要求。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -822,7 +822,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-08"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-056",
@@ -964,7 +964,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_/reflect 不",
-    "rule_text": "被纠正后必须立即运行 /reflect，将本次错误的现象、根因及预防措施提炼为学习条目写入 LEARNINGS.md；在条目写入完成并附链接确认前，禁止推进任何后续任务。",
+    "rule_text": "被纠正后必须立即运行 /reflect，将本次错误的现象、根因及预防措施提炼为学习条目写入 LEARNINGS.md；条目写入完成前禁止推进任何后续任务，写入后附条目链接或路径确认。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1144,7 +1144,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_做事必须一套完整做完：确认目标→列影响范",
-    "rule_text": "所有代码变更合并至主干分支前，必须获得至少一名维护者的书面批准（审批记录存档备查）；未获批准的代码禁止部署至生产环境，违者视为高危违规。紧急修复可在变更评审委员会同步审批后合并，但须在合并后48小时内完成补充评审归档，归档完成前变更单不得关闭。",
+    "rule_text": "所有代码变更合并至主干分支前，必须获得至少一名维护者的书面批准并存档；未获批准的变更禁止部署至生产环境，违者视为高危违规。紧急修复须在变更评审委员会同步批准后方可合并，并在合并后48小时内完成补充评审归档，归档完成前变更单不得关闭。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1152,7 +1152,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-078",
@@ -1249,7 +1249,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_不确定的事情不编答案。不知道就说不知道，",
-    "rule_text": "「面对无法确认的问题，应明确表示“不知道”或“不确定”，严禁凭想象编造答案。」",
+    "rule_text": "「面对无法确认的信息，必须明确说\"不知道\"或\"不确定\"，严禁凭想象编造答案；若需要，应主动说明如何获取准确信息。」",
     "source_count": 4,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1257,7 +1257,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "纪律",
     "parent_updated": true,
-    "last_refined": "2026-04-08"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-085",
@@ -1414,7 +1414,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_说\"改好了\"但没自查完整。修了一处没检查",
-    "rule_text": "代码修改后，必须在发布前完成：①单元测试覆盖所有修改逻辑；②集成测试验证上下游调用链；③系统测试确认端到端无回退。三项全绿方可发布，任一失败必须修复后重跑全套。",
+    "rule_text": "代码修改后发布前必须依次通过：①单元测试覆盖所有修改逻辑；②集成测试验证上下游调用链；③系统测试确认端到端无回退。三项全绿方可发布；任一失败必须修复后重跑**全套三项**，不得仅重跑失败项。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1489,7 +1489,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_提升_主动用激励机制（plan mode → ",
-    "rule_text": "所有任务必须经老祖明确批准后方可开展；未获批准前，禁止执行任何实质性操作（含代码修改、文件变更、外部调用）。批准时明确的范围即执行边界，超范围操作视为未授权执行，须立即停止并上报。",
+    "rule_text": "所有任务必须经老祖明确批准后方可开展；批准前禁止执行任何实质性操作（含代码修改、文件变更、外部调用）。批准时明确的范围即执行边界，超范围操作视为未授权执行，须立即停止并上报。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1594,7 +1594,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_搬文件前必须想清楚依赖链。merit_g",
-    "rule_text": "移动文件前必须验证目标路径可用且依赖链完整（访问权限、存储空间、引用路径同步更新），否则禁止移动。",
+    "rule_text": "移动文件前必须验证：①目标路径存在且有写权限；②磁盘空间充足；③所有引用该文件的代码/配置已同步更新新路径。三项全部确认后方可执行移动，否则禁止。",
     "source_count": 2,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1602,7 +1602,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-108",
@@ -1639,7 +1639,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_报告进程状态时，必须用 ps/pgrep",
-    "rule_text": "确认进程运行状态时，必须使用ps或pgrep命令直接检查，禁止仅依据日志、配置或PID文件等间接信息判断。",
+    "rule_text": "确认进程运行状态时，必须使用 `ps`、`pgrep` 或 `kill -0` 直接查询内核进程表，禁止仅凭日志、配置文件或 PID 文件等间接信息下结论。PID 文件存在≠进程存活，日志无报错≠进程正常，违者视为未验证。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1647,7 +1647,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-08"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-111",
@@ -1714,7 +1714,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_发现异常数据（如清库后文件大小不对）不能",
-    "rule_text": "执行数据库清空前，必须查询 `sqlite_master` 获取完整表清单并逐一核对，禁止凭记忆选表或跳过任何表；关闭外键约束后按表逐条清除数据，任何表的遗漏均视为违规。",
+    "rule_text": "执行数据库清空前，必须通过 `SELECT name FROM sqlite_master WHERE type='table'` 获取完整表清单并逐一核对，禁止凭记忆选表或跳过任何表。关闭外键约束后按表逐条清除数据，任何表的遗漏均视为违规。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1722,7 +1722,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "真实性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-116",
@@ -1759,7 +1759,7 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_纠错_后台跑测试/验证必须盯着（2分钟查一次）",
-    "rule_text": "后台任务启动后，系统每2分钟自动巡检一次运行状态；检测到超时、崩溃、内存耗尽或CPU过载时，立即终止任务并记录：错误类型、发生时间、堆栈信息（如适用）；同时输出根因分析建议，禁止仅记录状态而不追溯原因。",
+    "rule_text": "后台任务启动后，每2分钟检查一次运行状态；检测到超时、崩溃、内存耗尽或CPU过载时，立即终止任务并记录错误类型、发生时间及堆栈信息，同时输出根因分析建议；禁止仅记录状态而不追溯原因。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
@@ -1767,7 +1767,7 @@
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
     "parent_updated": true,
-    "last_refined": "2026-04-09"
+    "last_refined": "2026-04-10"
   },
   {
     "id": "SUB-119",
@@ -1894,14 +1894,14 @@
     "status": "approved",
     "created": "2026-04-05",
     "behavior_id": "lrn_最佳实践_完工三问第③步（文件干净吗）时通篇扫描，",
-    "rule_text": "代码提交前必须清理所有未使用的 import。",
+    "rule_text": "代码提交前必须清理所有未使用的 import，禁止以\"暂时保留\"为由跳过。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
     "approved_by": "evolve_auto",
     "approved_date": "2026-04-05",
     "parent_category": "完整性",
-    "last_refined": "2026-04-06",
+    "last_refined": "2026-04-10",
     "parent_updated": true
   },
   {
@@ -2314,7 +2314,7 @@
     "status": "approved",
     "created": "2026-04-08",
     "behavior_id": "delay_no_response",
-    "rule_text": "收到任务请求后，必须在当前会话轮次内给出执行动作或明确回复；禁止仅确认收到而不处理，禁止无回应沉默。如需延迟处理，必须说明原因和预计时间。",
+    "rule_text": "收到任务请求后，必须在当前轮次内给出实质性处理动作或明确回复；禁止仅说\"收到\"而不处理，禁止无回应沉默。如需延迟，必须说明原因和预计时间。",
     "source_count": 1,
     "effective_triggers": 0,
     "last_trigger": null,
